@@ -1,0 +1,10 @@
+node_modules
+out
+dist
+.DS_Store
+*.log
+.env
+.env.*
+flairy.db
+.omc
+.claude/scheduled_tasks.lock

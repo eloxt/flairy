@@ -1,0 +1,535 @@
+import type { BrowserWindow } from "electron";
+import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
+import { getModel, streamSimple } from "@earendil-works/pi-ai";
+import {
+  TITLE_GENERATION_PROMPT_NAME,
+  type ActiveLlm,
+  type ConfigSnapshot,
+  type SyncMessage,
+} from "@flairy/shared";
+import {
+  IPC,
+  type AgentStreamEvent,
+  type Attachment,
+  type PermissionMode,
+} from "@shared/ipc";
+import { createTools, isReadOnlyTool } from "./tools";
+import type { McpManager } from "./mcp";
+import { approvals } from "./approvals";
+import { readSkillFragments } from "./skill-materializer";
+import { saveMessages, getSession, updateSessionTitle } from "../store/db";
+import type { ServerClient } from "../sync/server-client";
+
+const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
+
+/**
+ * One AgentService instance per session. Wraps a pi-agent-core Agent, forwards
+ * its event stream to the renderer over IPC, gates dangerous tools behind the
+ * approval registry, persists messages to SQLite, and mirrors them to the
+ * server for multi-device sync.
+ *
+ * The model, credential, system prompt and tools all come from the server-pushed
+ * ConfigSnapshot (ServerClient) — there is no local API-key path anymore.
+ */
+export class AgentService {
+  private agent: Agent;
+  private win: BrowserWindow;
+  private sessionId: string;
+  private server: ServerClient;
+  /** Shared MCP connections; source of the remote tools merged into the agent. */
+  private mcp: McpManager;
+  /** Current working directory; kept so MCP tool-set changes can rebind tools. */
+  private cwd: string;
+  /** Unsubscribe handle for the MCP tool-set subscription, called on dispose(). */
+  private mcpUnsub?: () => void;
+  /** True once we've pushed the initial full session; later saves use patch. */
+  private upserted = false;
+  /**
+   * True once automatic title generation has been kicked off for this session.
+   * Guards against re-running on later messages (set up-front, even on failure).
+   */
+  private titleGenerated = false;
+  /** Unsubscribe handle for the pi event subscription, called on dispose(). */
+  private unsubscribe?: () => void;
+  /**
+   * Set once the service is being torn down (session deleted). Blocks any
+   * late persist() so a post-abort terminal event can't re-insert messages for
+   * an already-deleted session.
+   */
+  private disposed = false;
+  /**
+   * Tool names the user chose "Allow for this session". In-memory only and
+   * scoped to this AgentService (one per session), so it's discarded when the
+   * session ends — exactly "remember for this session, never persisted".
+   */
+  private sessionAllowed = new Set<string>();
+  /**
+   * Tool-approval posture. `'full'` ("Full access") bypasses the approval gate
+   * entirely. In-memory only and per-session, so it resets to `'ask'` on
+   * restart — matching the "never persisted" semantics of session approvals.
+   */
+  private permissionMode: PermissionMode = "ask";
+  /**
+   * Resolved model for the server-assigned `tool` role, or undefined when no tool
+   * model is assigned. Delivered + resolved but NOT yet wired into the loop — a
+   * stub for a future auxiliary-call feature. See the constructor.
+   */
+  private toolModel: ReturnType<typeof getModel> | undefined;
+
+  constructor(opts: {
+    sessionId: string;
+    cwd: string;
+    win: BrowserWindow;
+    server: ServerClient;
+    mcp: McpManager;
+    messages?: unknown[];
+  }) {
+    const { sessionId, cwd, win, server, mcp } = opts;
+    this.win = win;
+    this.sessionId = sessionId;
+    this.server = server;
+    this.mcp = mcp;
+    this.cwd = cwd;
+
+    const config = server.getConfig();
+    if (!config || !config.llm.main) {
+      // Mirrors the old "no key configured" guard: without a `main` role model we
+      // have no model + no credential, so we can't run the agent yet.
+      throw new Error(
+        "No active model configured yet; sign in and wait for sync",
+      );
+    }
+    const mainLlm = config.llm.main;
+
+    // The `tool` role is delivered and resolved but has no consumer yet — kept as
+    // a stub so a future auxiliary-call feature (e.g. a cheaper tool/summarizer
+    // model) can pick it up without re-plumbing config. See getToolModel().
+    this.toolModel = config.llm.tool ? buildModel(config.llm.tool) : undefined;
+
+    this.agent = new Agent({
+      // Credential is resolved per-request from the latest server config — never
+      // embedded in the model object or sent to the renderer.
+      getApiKey: () => server.getConfig()?.llm.main?.provider.credential,
+      initialState: {
+        systemPrompt: buildSystemPrompt(config),
+        model: buildModel(mainLlm),
+        tools: [...createTools(cwd), ...mcp.getTools()],
+        messages: (opts.messages ?? []) as AgentMessage[],
+      },
+      // Only forward roles the LLM should see.
+      convertToLlm: (messages: any[]) =>
+        messages.filter((m) =>
+          ["user", "assistant", "toolResult"].includes(m.role),
+        ),
+      // Approval gate: every tool runs through here. Read-only tools (read/grep/
+      // find/ls) pass silently; everything else — mutating local tools and all
+      // MCP/remote tools — needs user confirmation, unless already approved for
+      // this session.
+      beforeToolCall: async ({ toolCall, args }: any) => {
+        const name = toolCall.name as string;
+        // "Full access" auto-approves everything, including mutating/MCP tools.
+        if (this.permissionMode === "full") return undefined;
+        if (isReadOnlyTool(name)) return undefined;
+        if (this.sessionAllowed.has(name)) return undefined;
+
+        const decision = await approvals.request(win, {
+          sessionId,
+          toolName: name,
+          args,
+          reason: `Agent wants to run "${name}"`,
+        });
+        if (!decision.approved)
+          return { block: true, reason: "User denied the action" };
+        if (decision.scope === "session") this.sessionAllowed.add(name);
+        return undefined;
+      },
+    });
+
+    this.agent.sessionId = sessionId;
+
+    // MCP servers connect asynchronously and can come and go as the server pushes
+    // config. Re-merge the live tool set onto the running agent whenever it
+    // changes (assigning state.tools is pi's sanctioned injection point).
+    this.mcpUnsub = this.mcp.onToolsChanged(() => {
+      this.agent.state.tools = [
+        ...createTools(this.cwd),
+        ...this.mcp.getTools(),
+      ];
+    });
+
+    // Forward every pi event to the renderer, tagged with sessionId.
+    this.unsubscribe = this.agent.subscribe((event: any) => {
+      // pi has no top-level "error" AgentEvent: a failed stream surfaces as an
+      // inner assistantMessageEvent of type "error". Lift it to a visible error.
+      const inner = event?.assistantMessageEvent;
+      if (event.type === "message_update" && inner?.type === "error") {
+        const msg =
+          inner.error?.errorMessage ?? `LLM stream ${inner.reason ?? "error"}`;
+        this.send(sessionId, { type: "error", message: msg });
+        return;
+      }
+      this.send(sessionId, normalizeEvent(event));
+      // Persist on turn boundaries so a crash doesn't lose history.
+      if (event.type === "turn_end" || event.type === "agent_end") {
+        void this.persist();
+      }
+    });
+  }
+
+  private send(sessionId: string, event: AgentStreamEvent): void {
+    if (!this.win.isDestroyed()) {
+      this.win.webContents.send(IPC.AgentEvent, { sessionId, event });
+    }
+  }
+
+  /** Snapshot messages to SQLite and mirror them to the server. */
+  private async persist(): Promise<void> {
+    // A terminal event can land after dispose() (session deleted); skip so we
+    // don't re-insert a messages row for a session that's already gone.
+    if (this.disposed) return;
+    const messages = this.agent.state.messages;
+    await saveMessages(this.sessionId, messages);
+    this.syncToServer(messages);
+  }
+
+  /**
+   * Mirror the current message set to the server as a FULL snapshot (upsert =
+   * server-side DELETE + reinsert). Best-effort: no-op offline.
+   *
+   * Why always upsert instead of an incremental patch: we never actually compute
+   * a message-level delta — `messages` is the entire `agent.state.messages` every
+   * turn. pi also does NOT assign ids to user messages (agent.prompt builds them
+   * as `{ role, content, timestamp }`), so `toSyncMessage` mints a fresh random id
+   * for those each call. A per-message "append keyed by id" therefore fails to
+   * dedupe id-less messages and re-inserts them every turn, piling up duplicates
+   * server-side — which then overwrite the local copy on the next session:pull. A
+   * full upsert makes the server a pure mirror of local state, immune to id churn.
+   * (sendSessionPatch is still used for title-only updates via syncTitle.)
+   */
+  private syncToServer(messages: unknown[]): void {
+    const meta = getSession(this.sessionId);
+    if (!meta) return;
+    const synced = messages.map(toSyncMessage);
+    const updatedAt = Date.now();
+
+    this.server.sendSessionUpsert({
+      session: {
+        id: meta.id,
+        // userId is filled in server-side from the authenticated token.
+        userId: "",
+        title: meta.title,
+        createdAt: meta.createdAt,
+        updatedAt,
+      },
+      messages: synced,
+    });
+    // Mark the session as established server-side so syncTitle's title-only patch
+    // (which is UPDATE-only on the server) targets an existing row.
+    this.upserted = true;
+  }
+
+  async prompt(text: string, attachments?: Attachment[]): Promise<void> {
+    // First user message in a fresh session → generate a title from it. Capture
+    // "is first" BEFORE agent.prompt mutates state.messages, and fire it off
+    // before the await so it runs in parallel with (never blocks) the turn.
+    const isFirst = this.agent.state.messages.length === 0;
+    if (isFirst && !this.titleGenerated && text.trim()) {
+      void this.maybeGenerateTitle(text);
+    }
+    try {
+      await this.agent.prompt(text, attachments as any);
+    } catch (err) {
+      // A rejected run (bad credential, provider/baseUrl, network) would
+      // otherwise vanish silently — surface it as a visible error event.
+      this.send(this.sessionId, {
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Generate a session title from the user's first message using the
+   * server-delivered `title_generation` system prompt and the `tool`-role model
+   * (falling back to `main`). Best-effort: any failure keeps the default title
+   * and never surfaces a chat error. Runs in parallel with the agent turn.
+   */
+  private async maybeGenerateTitle(firstMessage: string): Promise<void> {
+    this.titleGenerated = true; // guard re-entry even if this throws
+    const config = this.server.getConfig();
+    const meta = getSession(this.sessionId);
+    // Only title a fresh, still-default session.
+    if (!config || !meta || meta.title !== "New session") return;
+    const sysPrompt = findTitlePrompt(config);
+    if (!sysPrompt) return; // strictly server-driven: no prompt → no title
+    const llm = config.llm.tool ?? config.llm.main;
+    if (!llm) return;
+    try {
+      const stream = streamSimple(
+        buildModel(llm),
+        {
+          systemPrompt: sysPrompt,
+          messages: [
+            {
+              role: "user",
+              content: `<userMessage>${firstMessage}</userMessage>`,
+              timestamp: Date.now(),
+            },
+          ] as any,
+        },
+        { apiKey: llm.provider.credential, maxTokens: 64 },
+      );
+      const result = await stream.result();
+      // .result() resolves even on a SOFT stream error (an AssistantMessage with
+      // stopReason 'error'/'aborted'); bail before turning that into a title.
+      if (result.stopReason === "error" || result.stopReason === "aborted")
+        return;
+      const raw = result.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("");
+      const title = sanitizeTitle(raw);
+      if (!title) return;
+      updateSessionTitle(this.sessionId, title);
+      this.emitTitle(title);
+      this.syncTitle(title);
+    } catch (err) {
+      // Catches THROWN setup/network failures; soft errors handled above. Never
+      // a chat error — just log.
+      console.warn("[title-gen] failed:", err);
+    }
+  }
+
+  /** Notify the renderer so the sidebar reflects the new title live. */
+  private emitTitle(title: string): void {
+    if (!this.win.isDestroyed()) {
+      this.win.webContents.send(IPC.SessionTitleUpdated, {
+        sessionId: this.sessionId,
+        title,
+      });
+    }
+  }
+
+  /**
+   * Mirror the title to the server — but only once the session row exists there.
+   * Pre-upsert, the imminent first-turn sendSessionUpsert re-reads meta.title and
+   * carries this title; sending a patch now would hit a non-existent row (the
+   * server's patch is UPDATE-only) and be dropped.
+   */
+  private syncTitle(title: string): void {
+    if (!this.upserted) return;
+    this.server.sendSessionPatch({
+      sessionId: this.sessionId,
+      appendMessages: [],
+      updatedAt: Date.now(),
+      title,
+    });
+  }
+
+  steer(text: string): void {
+    this.agent.steer({ role: "user", content: text, timestamp: Date.now() });
+  }
+
+  /** Switch the tool-approval posture for the rest of this session. */
+  setPermissionMode(mode: PermissionMode): void {
+    this.permissionMode = mode;
+  }
+
+  /**
+   * The resolved `tool`-role model, if the server assigned one. Stub accessor: no
+   * caller consumes it yet (see constructor). Exposed so a future auxiliary-call
+   * feature can use a separate, server-configured model without re-plumbing.
+   */
+  getToolModel(): ReturnType<typeof getModel> | undefined {
+    return this.toolModel;
+  }
+
+  /**
+   * Rebind the working directory: rebuild the local tools against `cwd` and swap
+   * them onto the live agent, preserving the MCP tools. Assigning `state.tools`
+   * is the sanctioned pi-agent-core injection point (copy-on-assign semantics).
+   */
+  setCwd(cwd: string): void {
+    this.cwd = cwd;
+    this.agent.state.tools = [...createTools(cwd), ...this.mcp.getTools()];
+  }
+
+  abort(): void {
+    this.agent.abort();
+  }
+
+  /**
+   * Full teardown for a deleted session: stop the run, mark disposed so no late
+   * terminal event re-persists messages, and detach the pi subscription so the
+   * callback (and its persist path) can't fire again.
+   */
+  dispose(): void {
+    this.disposed = true;
+    this.agent.abort();
+    this.unsubscribe?.();
+    this.mcpUnsub?.();
+  }
+}
+
+/**
+ * Concatenate the base prompt with every enabled skill's materialized SKILL.md
+ * body. The config snapshot only carries lightweight `SkillSummary` rows (no
+ * body), so we read the composed bodies straight from the materialized SKILL.md
+ * files on disk (via the manifest). A skill present in the snapshot but not yet
+ * materialized (e.g. its fetch failed/offline) is simply skipped.
+ */
+function buildSystemPrompt(config: ConfigSnapshot): string {
+  // Server-configured prompts (already ordered) form the base; fall back to the
+  // built-in default when none are configured. The reserved title-generation
+  // prompt is excluded — it's consumed separately and must not leak in here.
+  const agentPrompts = config.systemPrompts
+    .filter((p) => p.enabled && !isTitlePrompt(p))
+    .map((p) => p.body.trim())
+    .filter(Boolean);
+  const base =
+    agentPrompts.length > 0 ? agentPrompts.join("\n\n") : BASE_SYSTEM_PROMPT;
+
+  const enabledIds = new Set(
+    config.skills.filter((s) => s.enabled).map((s) => s.id),
+  );
+  const fragments = readSkillFragments()
+    .filter((s) => s.enabled && enabledIds.has(s.id))
+    .map((s) => s.body.trim())
+    .filter(Boolean);
+  return [base, ...fragments].join("\n\n");
+}
+
+/**
+ * Single predicate matching the reserved title-generation prompt by name
+ * (trimmed, case-insensitive). Shared by find + exclude so they never drift: a
+ * mismatch must fail both, otherwise the prompt would leak into the agent prompt.
+ */
+function isTitlePrompt(p: ConfigSnapshot["systemPrompts"][number]): boolean {
+  return p.name.trim().toLowerCase() === TITLE_GENERATION_PROMPT_NAME;
+}
+
+/** The enabled title-generation prompt body, or undefined if none configured. */
+function findTitlePrompt(config: ConfigSnapshot): string | undefined {
+  const body = config.systemPrompts
+    .find((p) => p.enabled && isTitlePrompt(p))
+    ?.body.trim();
+  return body || undefined;
+}
+
+/** Normalize a model-produced title: drop wrapping quotes, collapse whitespace, clamp length. */
+function sanitizeTitle(raw: string): string {
+  const collapsed = raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^["'“”]+|["'“”]+$/g, "")
+    .trim();
+  return collapsed.slice(0, 60).trim();
+}
+
+/**
+ * Resolve a pi-ai Model from the active LLM's provider vendor + model id.
+ *
+ * getModel is typed over a known provider/model union, but our config carries
+ * dynamic strings, so we cast at the boundary. The provider's baseUrl, if
+ * supplied, overrides the model's default endpoint (e.g. a gateway/proxy).
+ */
+function buildModel(llm: ActiveLlm): ReturnType<typeof getModel> {
+  const provider = llm.provider.provider;
+  const baseUrl = llm.provider.baseUrl;
+  const resolved = getModel(
+    provider as Parameters<typeof getModel>[0],
+    llm.model.model as never,
+  );
+  if (baseUrl) {
+    // Model.baseUrl is a plain settable field on the resolved model object.
+    return { ...resolved, baseUrl };
+  }
+  return resolved;
+}
+
+/** Map a pi-agent-core message to the wire SyncMessage shape. */
+function toSyncMessage(raw: unknown): SyncMessage {
+  const m = raw as {
+    id?: string;
+    role?: string;
+    content?: unknown;
+    timestamp?: number;
+  };
+  return {
+    id: m.id ?? crypto.randomUUID(),
+    role: normalizeRole(m.role),
+    text: projectText(m.content),
+    timestamp: m.timestamp ?? Date.now(),
+    raw,
+  };
+}
+
+/** Coerce a pi role into the SyncMessage role union (default: assistant). */
+function normalizeRole(role: string | undefined): SyncMessage["role"] {
+  if (role === "user" || role === "assistant" || role === "toolResult")
+    return role;
+  return "assistant";
+}
+
+/** Flatten pi message content into a plain-text projection for search/display. */
+function projectText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part) {
+          return String((part as { text: unknown }).text ?? "");
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("");
+  }
+  return "";
+}
+
+/** Map pi-agent-core's raw events to our minimal AgentStreamEvent union. */
+function normalizeEvent(event: any): AgentStreamEvent {
+  switch (event.type) {
+    case "message_update": {
+      // assistantMessageEvent is itself a discriminated union; only text_delta
+      // carries visible-message text. thinking_delta/toolcall_delta also have
+      // `.delta` but must not leak into the rendered message body.
+      const inner = event.assistantMessageEvent;
+      const delta = inner?.type === "text_delta" ? (inner.delta ?? "") : "";
+      return {
+        type: "message_update",
+        messageId: event.message?.id ?? "",
+        delta,
+      };
+    }
+    case "message_end":
+      // Carry the authoritative full message text so the renderer can finalize
+      // (or build, for non-streaming responses) the assistant bubble even if the
+      // incremental deltas never accumulated. pi also emits message_end for the
+      // user prompt, so role lets the renderer ignore those.
+      return {
+        type: "message_end",
+        messageId: event.message?.id ?? "",
+        role: event.message?.role ?? "assistant",
+        text: projectText(event.message?.content),
+      };
+    case "tool_execution_start":
+      return {
+        type: "tool_execution_start",
+        toolCallId: event.toolCallId,
+        name: event.toolName ?? event.toolCall?.name ?? "",
+        args: event.args,
+      };
+    case "tool_execution_end":
+      return {
+        type: "tool_execution_end",
+        toolCallId: event.toolCallId,
+        result: event.result,
+        isError: Boolean(event.isError),
+      };
+    default:
+      return { type: event.type } as AgentStreamEvent;
+  }
+}

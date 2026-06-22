@@ -1,0 +1,4 @@
+# Bundled CLI binaries (ripgrep / fd) shipped with the desktop app.
+# Mark as binary so Git never applies text/EOL normalization to them.
+apps/desktop/resources/bin/** binary
+*.exe binary

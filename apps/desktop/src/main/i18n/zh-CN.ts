@@ -1,0 +1,12 @@
+import type { MainCatalog } from './en'
+
+/** Main-process (native) Simplified Chinese strings — mirrors `./en`'s shape. */
+export const zhCN: MainCatalog = {
+  notificationTitle: 'Flairy 需要你的确认',
+  defaultSessionTitle: '新对话',
+  'menu.file': '文件',
+  'menu.edit': '编辑',
+  'menu.view': '视图',
+  'menu.window': '窗口',
+  'menu.help': '帮助'
+}

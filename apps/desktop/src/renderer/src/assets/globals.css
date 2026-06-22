@@ -1,0 +1,237 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* ── Typefaces ──────────────────────────────────────────────────────────────
+   Two voices, no more. The UI speaks in one warm grotesque; the machine
+   (tool output, code) speaks in mono. Restraint is the whole point.
+   Hanken Grotesk  → UI / body (warm grotesque, deliberately not Inter)
+   JetBrains Mono  → tool output, code, machine surfaces
+   Instrument Serif → reserved for the brand mark only (the "F" logo)          */
+@import "@fontsource-variable/hanken-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/instrument-serif";
+
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    --font-sans: "Hanken Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+    --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* Motion is allowed — but only where it carries meaning: a message
+       settling into place, the live caret, the agent's quiet "thinking" bob. */
+    --animate-message-in: message-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-rise-in: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-caret: caret 1.1s steps(1) infinite;
+    --animate-thinking: thinking 1.3s ease-in-out infinite;
+
+    @keyframes message-in {
+        from { opacity: 0; transform: translateY(5px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes rise-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes caret {
+        0%, 50%  { opacity: 1; }
+        51%, 100% { opacity: 0; }
+    }
+    @keyframes thinking {
+        0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+        40%           { opacity: 0.9; transform: translateY(-2px); }
+    }
+}
+
+/* ── Graphite · Light (Paper) ────────────────────────────────────────────────
+   Warm monochrome: a whisper of stone (hue ~80, chroma ≤0.006) so the grays
+   read as a deliberate choice rather than the stock neutral ramp.             */
+:root {
+    --radius: 0.625rem;
+
+    --background: oklch(0.992 0.002 80);
+    --foreground: oklch(0.205 0.006 75);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.205 0.006 75);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.205 0.006 75);
+    --primary: oklch(0.22 0.006 75);
+    --primary-foreground: oklch(0.985 0.002 80);
+    --secondary: oklch(0.965 0.003 80);
+    --secondary-foreground: oklch(0.245 0.006 75);
+    --muted: oklch(0.965 0.003 80);
+    --muted-foreground: oklch(0.512 0.006 75);
+    --accent: oklch(0.95 0.004 80);
+    --accent-foreground: oklch(0.22 0.006 75);
+    --destructive: oklch(0.55 0.2 25);
+    --border: oklch(0.905 0.004 80);
+    --input: oklch(0.9 0.004 80);
+    --ring: oklch(0.66 0.006 75);
+
+    --chart-1: oklch(0.45 0.006 75);
+    --chart-2: oklch(0.55 0.006 75);
+    --chart-3: oklch(0.65 0.006 75);
+    --chart-4: oklch(0.75 0.006 75);
+    --chart-5: oklch(0.85 0.006 75);
+
+    --sidebar: oklch(0.972 0.003 80);
+    --sidebar-foreground: oklch(0.3 0.006 75);
+    --sidebar-primary: oklch(0.22 0.006 75);
+    --sidebar-primary-foreground: oklch(0.985 0.002 80);
+    --sidebar-accent: oklch(0.93 0.004 80);
+    --sidebar-accent-foreground: oklch(0.22 0.006 75);
+    --sidebar-border: oklch(0.9 0.004 80);
+    --sidebar-ring: oklch(0.66 0.006 75);
+}
+
+/* ── Graphite · Dark ─────────────────────────────────────────────────────────
+   True graphite, not pure black. Structure comes from hairline borders and
+   inner highlights rather than drop shadows.                                  */
+.dark {
+    --background: oklch(0.172 0.004 75);
+    --foreground: oklch(0.93 0.003 80);
+    --card: oklch(0.205 0.004 75);
+    --card-foreground: oklch(0.93 0.003 80);
+    --popover: oklch(0.205 0.004 75);
+    --popover-foreground: oklch(0.93 0.003 80);
+    --primary: oklch(0.93 0.003 80);
+    --primary-foreground: oklch(0.205 0.004 75);
+    --secondary: oklch(0.255 0.004 75);
+    --secondary-foreground: oklch(0.93 0.003 80);
+    --muted: oklch(0.255 0.004 75);
+    --muted-foreground: oklch(0.66 0.004 75);
+    --accent: oklch(0.28 0.004 75);
+    --accent-foreground: oklch(0.93 0.003 80);
+    --destructive: oklch(0.7 0.17 22);
+    --border: oklch(1 0 0 / 8%);
+    --input: oklch(1 0 0 / 12%);
+    --ring: oklch(0.55 0.004 75);
+
+    --chart-1: oklch(0.9 0.004 75);
+    --chart-2: oklch(0.78 0.004 75);
+    --chart-3: oklch(0.66 0.004 75);
+    --chart-4: oklch(0.54 0.004 75);
+    --chart-5: oklch(0.42 0.004 75);
+
+    --sidebar: oklch(0.158 0.004 75);
+    --sidebar-foreground: oklch(0.78 0.004 75);
+    --sidebar-primary: oklch(0.93 0.003 80);
+    --sidebar-primary-foreground: oklch(0.205 0.004 75);
+    --sidebar-accent: oklch(0.25 0.004 75);
+    --sidebar-accent-foreground: oklch(0.93 0.003 80);
+    --sidebar-border: oklch(1 0 0 / 7%);
+    --sidebar-ring: oklch(0.55 0.004 75);
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+
+    html, body, #root {
+        height: 100%;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+        font-family: var(--font-sans);
+        font-feature-settings: "ss01", "cv01", "cv11";
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    ::selection {
+        background: var(--foreground);
+        color: var(--background);
+    }
+
+    /* Quiet, monochrome scrollbars that match the precision-tool tone. */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
+    }
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-thumb {
+        background: color-mix(in oklch, var(--foreground) 16%, transparent);
+        border: 3px solid transparent;
+        background-clip: content-box;
+        border-radius: 999px;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in oklch, var(--foreground) 28%, transparent);
+        background-clip: content-box;
+    }
+}
+
+/* Frameless-window drag regions (titleBarStyle: 'hiddenInset'). */
+@layer utilities {
+    .app-drag { -webkit-app-region: drag; }
+    .app-no-drag { -webkit-app-region: no-drag; }
+
+    /* Tiny uppercase eyebrow label used on message authors / section heads. */
+    .eyebrow {
+        font-size: 0.625rem;
+        line-height: 1;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: var(--muted-foreground);
+    }
+
+    /* A hairline that reads sharper than a 1px border on HiDPI panels. */
+    .hairline { box-shadow: inset 0 0 0 0.5px var(--border); }
+
+    .blink-caret::after {
+        content: "";
+        display: inline-block;
+        width: 0.5ch;
+        height: 1em;
+        margin-left: 1px;
+        vertical-align: text-bottom;
+        background: currentColor;
+        animation: var(--animate-caret);
+    }
+}

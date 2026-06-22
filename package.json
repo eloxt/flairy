@@ -1,0 +1,17 @@
+{
+  "name": "flairy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flairy — managed desktop AI agent (monorepo)",
+  "author": "eloxt",
+  "license": "MIT",
+  "scripts": {
+    "build:shared": "pnpm --filter @flairy/shared build",
+    "dev": "pnpm --filter @flairy/desktop dev",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm --filter @flairy/shared build && pnpm --filter @flairy/desktop build"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "name": "@flairy/desktop",
+  "version": "0.1.0",
+  "description": "Desktop AI coding agent built on pi-agent-core + Electron",
+  "main": "./out/main/index.js",
+  "author": "eloxt",
+  "license": "MIT",
+  "type": "module",
+  "build": {
+    "appId": "com.eloxt.flairy",
+    "productName": "Flairy",
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "extraResources": [{ "from": "resources/bin/darwin-arm64", "to": "bin" }]
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "extraResources": [{ "from": "resources/bin/win32-x64", "to": "bin" }]
+    }
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "package": "electron-vite build && electron-builder",
+    "package:mac": "electron-vite build && electron-builder --mac",
+    "lint": "eslint .",
+    "postinstall": "electron-rebuild -f",
+    "rebuild": "electron-rebuild -f"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.5.0",
+    "@earendil-works/pi-agent-core": "^0.79.6",
+    "@earendil-works/pi-ai": "^0.79.6",
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@flairy/shared": "workspace:*",
+    "@fontsource-variable/hanken-grotesk": "^5.2.8",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource/instrument-serif": "^5.2.8",
+    "better-sqlite3": "^11.8.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "diff": "^8.0.4",
+    "drizzle-orm": "^0.38.3",
+    "i18next": "^24.2.0",
+    "lucide-react": "^0.469.0",
+    "react-i18next": "^15.4.0",
+    "react-markdown": "^9.0.1",
+    "react-virtuoso": "^4.12.3",
+    "remark-gfm": "^4.0.0",
+    "shadcn": "^4.11.0",
+    "shiki": "^1.24.4",
+    "socket.io-client": "^4.8.1",
+    "tailwind-merge": "^2.6.0",
+    "typebox": "^1.2.14",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.1",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.19.21",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
+  }
+}

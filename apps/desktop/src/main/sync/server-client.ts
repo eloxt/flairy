@@ -1,0 +1,214 @@
+import { io, type Socket } from 'socket.io-client'
+import {
+  SocketEvent,
+  type ClientToServerEvents,
+  type ConfigSnapshot,
+  type ConfigUpdate,
+  type ServerToClientEvents,
+  type SessionPatchPayload,
+  type SessionPullPayload,
+  type SessionRemotePayload,
+  type SessionUpsertPayload,
+  type SessionWithMessages,
+  type SkillSummary,
+  type SocketAuth
+} from '@flairy/shared'
+import { getAuthToken } from '../store/secrets'
+import { saveCachedConfig, loadCachedConfig, clearCachedConfig } from '../store/config-cache'
+import { materializeSkills } from '../agent/skill-materializer'
+
+/** Where to reach the Flairy server. Overridable via env for dev/staging. */
+export const SERVER_URL = process.env.FLAIRY_SERVER_URL ?? 'http://localhost:8787'
+
+type ConfigListener = (config: ConfigSnapshot) => void
+type SessionRemoteListener = (payload: SessionRemotePayload) => void
+type SessionsPulledListener = (sessions: SessionWithMessages[]) => void
+
+/**
+ * Thin wrapper around a typed socket.io connection to the Flairy server.
+ *
+ * Lives entirely in the MAIN process: it holds the JWT and the server-pushed
+ * ConfigSnapshot (which carries the LLM credential) and never exposes either to
+ * the renderer. The agent reads the latest config through getConfig()/onConfig().
+ *
+ * Config sync: the server sends a full `config:snapshot` on connect and
+ * incremental `config:updated` deltas afterwards; we merge deltas into the held
+ * snapshot so getConfig() always returns the current full config.
+ *
+ * Offline resilience: the last snapshot is cached (encrypted) in SQLite and
+ * loaded on construction, so getConfig() returns the last-known config even
+ * before — or without — a server connection.
+ */
+export class ServerClient {
+  private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null
+  private config: ConfigSnapshot | null = null
+  private configListeners = new Set<ConfigListener>()
+  private sessionRemoteListeners = new Set<SessionRemoteListener>()
+  private sessionsPulledListeners = new Set<SessionsPulledListener>()
+  /** JWT used for the active socket; reused for REST skill materialization. */
+  private token: string | undefined
+
+  constructor() {
+    // Seed from the encrypted on-disk cache so the client is usable before the
+    // server delivers a fresh snapshot (and through a server outage entirely).
+    this.config = loadCachedConfig()
+  }
+
+  /** Open the socket using a previously obtained JWT. Idempotent-ish: reconnects. */
+  connect(token: string): void {
+    this.disconnect()
+    this.token = token
+
+    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SERVER_URL, {
+      auth: { token } satisfies SocketAuth,
+      transports: ['websocket'],
+      reconnection: true
+    })
+
+    socket.on(SocketEvent.ConfigSnapshot, (payload: ConfigSnapshot) => {
+      this.config = payload
+      saveCachedConfig(payload)
+      this.emitConfig()
+      this.materialize(payload.skills)
+    })
+
+    socket.on(SocketEvent.ConfigUpdated, (payload: ConfigUpdate) => {
+      this.config = mergeConfig(this.config, payload)
+      if (this.config) {
+        saveCachedConfig(this.config)
+        this.emitConfig()
+        this.materialize(this.config.skills)
+      }
+    })
+
+    socket.on(SocketEvent.SessionRemote, (payload: SessionRemotePayload) => {
+      for (const cb of this.sessionRemoteListeners) cb(payload)
+    })
+
+    // Pull the user's sessions on every (re)connect — including the first one
+    // after sign-in — so a fresh device (or a relogin) gets its history back.
+    // socket.io fires `connect` on the initial handshake and on every reconnect.
+    socket.on('connect', () => {
+      console.log('[sync] socket connected; pulling sessions')
+      this.pullSessions()
+    })
+
+    socket.on('connect_error', (err) => {
+      console.error('[sync] socket connect_error:', err.message)
+    })
+
+    socket.on('disconnect', (reason) => {
+      console.log('[sync] socket disconnected:', reason)
+    })
+
+    this.socket = socket
+  }
+
+  /**
+   * Ask the server for all of the user's sessions and hand the result to the
+   * pulled-session listeners (which persist them locally). No-op if offline.
+   * Pulls everything (no `since` watermark) so a relogin with an empty/stale
+   * local cache is fully repopulated.
+   */
+  private pullSessions(): void {
+    const payload: SessionPullPayload = {}
+    if (!this.socket) {
+      console.warn('[sync] pullSessions: no socket')
+      return
+    }
+    this.socket.emit(SocketEvent.SessionPull, payload, (sessions) => {
+      console.log('[sync] session:pull ack —', sessions?.length ?? 'no', 'sessions')
+      for (const cb of this.sessionsPulledListeners) cb(sessions)
+    })
+  }
+
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect()
+      this.socket = null
+    }
+  }
+
+  /**
+   * Forget the current config entirely (sign-out): drop the in-memory snapshot
+   * and the encrypted on-disk cache so no stale config survives the next launch.
+   * Kept separate from disconnect(), which fires on every reconnect.
+   */
+  clearConfig(): void {
+    this.config = null
+    clearCachedConfig()
+  }
+
+  /** Latest full config, or null until the server delivers the first snapshot. */
+  getConfig(): ConfigSnapshot | null {
+    return this.config
+  }
+
+  /** Subscribe to config changes. Fires immediately if a snapshot already exists. */
+  onConfig(cb: ConfigListener): () => void {
+    this.configListeners.add(cb)
+    if (this.config) cb(this.config)
+    return () => this.configListeners.delete(cb)
+  }
+
+  /** Subscribe to sessions changed on the user's other devices. */
+  onSessionRemote(cb: SessionRemoteListener): () => void {
+    this.sessionRemoteListeners.add(cb)
+    return () => this.sessionRemoteListeners.delete(cb)
+  }
+
+  /** Subscribe to the bulk session list pulled from the server on (re)connect. */
+  onSessionsPulled(cb: SessionsPulledListener): () => void {
+    this.sessionsPulledListeners.add(cb)
+    return () => this.sessionsPulledListeners.delete(cb)
+  }
+
+  /** Push a full session (create/replace) to the server. No-op if offline. */
+  sendSessionUpsert(payload: SessionUpsertPayload): void {
+    this.socket?.emit(SocketEvent.SessionUpsert, payload)
+  }
+
+  /** Append messages to an existing server-side session. No-op if offline. */
+  sendSessionPatch(payload: SessionPatchPayload): void {
+    this.socket?.emit(SocketEvent.SessionPatch, payload)
+  }
+
+  private emitConfig(): void {
+    if (!this.config) return
+    for (const cb of this.configListeners) cb(this.config)
+  }
+
+  /**
+   * Materialize the pushed skill summaries to disk. Fire-and-forget: the agent
+   * reads materialized bodies straight from the on-disk SKILL.md files, so we
+   * don't block the socket handler. Uses the socket's JWT, falling back to the
+   * stored token.
+   */
+  private materialize(skills: SkillSummary[]): void {
+    const token = this.token ?? getAuthToken()
+    void materializeSkills(skills, token, SERVER_URL).catch((err) => {
+      console.error('[server-client] skill materialization failed:', err)
+    })
+  }
+}
+
+/** Merge a ConfigUpdate delta onto the held snapshot (omitted fields unchanged). */
+function mergeConfig(
+  current: ConfigSnapshot | null,
+  update: ConfigUpdate
+): ConfigSnapshot | null {
+  if (!current) {
+    // We only have a partial delta and no base snapshot; can't form a full
+    // ConfigSnapshot. Wait for the next full snapshot instead.
+    return current
+  }
+  return {
+    // `llm` is the full role map and is always sent on an update — adopt it
+    // wholesale (each role may be null when unassigned).
+    llm: update.llm ?? current.llm,
+    mcpServers: update.mcpServers ?? current.mcpServers,
+    skills: update.skills ?? current.skills,
+    systemPrompts: update.systemPrompts ?? current.systemPrompts,
+    version: update.version
+  }
+}
