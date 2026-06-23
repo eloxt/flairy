@@ -37,6 +37,46 @@ impl LlmProvider {
     }
 }
 
+/// Reasoning / "thinking" effort the client applies to a model. Mirrors
+/// `ThinkingLevel` in `packages/shared/src/config.ts` and pi-agent-core's
+/// `AgentState.thinkingLevel`. Stored as TEXT (nullable) on `llm_models`; a
+/// `None` means no explicit level is forced and the client/provider default wins.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThinkingLevel {
+    Off,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+}
+
+impl ThinkingLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ThinkingLevel::Off => "off",
+            ThinkingLevel::Minimal => "minimal",
+            ThinkingLevel::Low => "low",
+            ThinkingLevel::Medium => "medium",
+            ThinkingLevel::High => "high",
+            ThinkingLevel::Xhigh => "xhigh",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "off" => Some(ThinkingLevel::Off),
+            "minimal" => Some(ThinkingLevel::Minimal),
+            "low" => Some(ThinkingLevel::Low),
+            "medium" => Some(ThinkingLevel::Medium),
+            "high" => Some(ThinkingLevel::High),
+            "xhigh" => Some(ThinkingLevel::Xhigh),
+            _ => None,
+        }
+    }
+}
+
 /// A scenario slot a model can be assigned to.
 /// - `Main` — the primary agent loop (required for the client to run).
 /// - `Tool` — an auxiliary / cheaper model.
@@ -105,6 +145,10 @@ pub struct LlmModelConfig {
     pub name: String,
     /// Provider model id, e.g. "claude-sonnet-4-20250514".
     pub model: String,
+    /// Reasoning effort the client applies when running this model. `None` →
+    /// no explicit level forced (client/provider default decides).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<ThinkingLevel>,
 }
 
 /// Create/update payload for a model (no server-owned fields).
@@ -114,6 +158,8 @@ pub struct LlmModelInput {
     pub provider_id: String,
     pub name: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<ThinkingLevel>,
 }
 
 /// The active LLM delivered to clients: the active model joined with its provider.

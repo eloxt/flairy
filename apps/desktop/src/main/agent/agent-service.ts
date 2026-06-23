@@ -113,6 +113,13 @@ export class AgentService {
       initialState: {
         systemPrompt: buildSystemPrompt(config),
         model: buildModel(mainLlm),
+        // Reasoning effort is server-driven per model. Only set it when delivered
+        // so an unset value leaves pi's own default in place. pi maps this uniform
+        // level onto the provider's native control (Anthropic effort, OpenAI
+        // reasoning_effort, …).
+        ...(mainLlm.model.thinkingLevel
+          ? { thinkingLevel: mainLlm.model.thinkingLevel }
+          : {}),
         tools: [...createTools(cwd), ...mcp.getTools()],
         messages: (opts.messages ?? []) as AgentMessage[],
       },
@@ -489,31 +496,62 @@ function projectText(content: unknown): string {
   return "";
 }
 
+/**
+ * Flatten the `thinking` blocks of a pi assistant message into plain text. pi
+ * represents reasoning as content parts of type `thinking` (`{ type: 'thinking',
+ * thinking: string }`), distinct from `text` parts — kept separate so reasoning
+ * never bleeds into the answer body. Returns '' when there is no reasoning.
+ */
+function projectThinking(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      part && typeof part === "object" && (part as any).type === "thinking"
+        ? String((part as { thinking?: unknown }).thinking ?? "")
+        : "",
+    )
+    .filter(Boolean)
+    .join("");
+}
+
 /** Map pi-agent-core's raw events to our minimal AgentStreamEvent union. */
 function normalizeEvent(event: any): AgentStreamEvent {
   switch (event.type) {
+    case "message_start":
+      // Carry the new message's id so the renderer can tag the tool calls that
+      // belong to this turn with a shared batch id (parallel calls fold into one
+      // group). Fires before the turn's tool_execution_start events.
+      return {
+        type: "message_start",
+        messageId: event.message?.id ?? "",
+      };
     case "message_update": {
-      // assistantMessageEvent is itself a discriminated union; only text_delta
-      // carries visible-message text. thinking_delta/toolcall_delta also have
-      // `.delta` but must not leak into the rendered message body.
+      // assistantMessageEvent is itself a discriminated union; text_delta carries
+      // the visible body, thinking_delta the model's reasoning stream. Forward
+      // each on its own channel so the renderer can show reasoning separately and
+      // never fold it into the answer. toolcall_delta carries neither.
       const inner = event.assistantMessageEvent;
       const delta = inner?.type === "text_delta" ? (inner.delta ?? "") : "";
+      const thinkingDelta =
+        inner?.type === "thinking_delta" ? (inner.delta ?? "") : "";
       return {
         type: "message_update",
         messageId: event.message?.id ?? "",
         delta,
+        thinkingDelta,
       };
     }
     case "message_end":
-      // Carry the authoritative full message text so the renderer can finalize
-      // (or build, for non-streaming responses) the assistant bubble even if the
-      // incremental deltas never accumulated. pi also emits message_end for the
-      // user prompt, so role lets the renderer ignore those.
+      // Carry the authoritative full message text + reasoning so the renderer can
+      // finalize (or build, for non-streaming responses) the assistant bubble even
+      // if the incremental deltas never accumulated. pi also emits message_end for
+      // the user prompt, so role lets the renderer ignore those.
       return {
         type: "message_end",
         messageId: event.message?.id ?? "",
         role: event.message?.role ?? "assistant",
         text: projectText(event.message?.content),
+        thinking: projectThinking(event.message?.content),
       };
     case "tool_execution_start":
       return {

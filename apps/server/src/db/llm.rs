@@ -9,8 +9,15 @@ use super::{config::bump_version, parse_uuid};
 use crate::error::{AppError, AppResult};
 use crate::models::llm::{
     ActiveLlm, LlmModelConfig, LlmModelInput, LlmProvider, LlmProviderConfig, LlmProviderInput,
-    LlmRole, LlmRoleAssignment, RoleModels,
+    LlmRole, LlmRoleAssignment, RoleModels, ThinkingLevel,
 };
+
+/// Parse the nullable `thinking_level` TEXT column into the enum. An unknown
+/// non-null value (shouldn't happen given the CHECK constraint) degrades to
+/// `None` rather than failing the whole read.
+fn parse_thinking_level(raw: Option<String>) -> Option<ThinkingLevel> {
+    raw.as_deref().and_then(ThinkingLevel::from_str)
+}
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -130,10 +137,12 @@ fn map_model(row: &PgRow) -> LlmModelConfig {
         provider_id: row.get::<Uuid, _>("provider_id").to_string(),
         name: row.get("name"),
         model: row.get("model"),
+        thinking_level: parse_thinking_level(row.get("thinking_level")),
     }
 }
 
-const MODEL_SELECT: &str = "SELECT id, provider_id, name, model FROM llm_models";
+const MODEL_SELECT: &str =
+    "SELECT id, provider_id, name, model, thinking_level FROM llm_models";
 
 /// All models across every provider, oldest first.
 pub async fn list_models(pool: &PgPool) -> AppResult<Vec<LlmModelConfig>> {
@@ -166,14 +175,15 @@ pub async fn create_model(
     }
 
     let row = sqlx::query(
-        "INSERT INTO llm_models (id, provider_id, name, model)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, provider_id, name, model",
+        "INSERT INTO llm_models (id, provider_id, name, model, thinking_level)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, provider_id, name, model, thinking_level",
     )
     .bind(id)
     .bind(provider_uid)
     .bind(&input.name)
     .bind(&input.model)
+    .bind(input.thinking_level.map(ThinkingLevel::as_str))
     .fetch_one(&mut *tx)
     .await?;
 
@@ -217,14 +227,15 @@ pub async fn update_model(
 
     let row = sqlx::query(
         "UPDATE llm_models
-         SET provider_id = $2, name = $3, model = $4, updated_at = now()
+         SET provider_id = $2, name = $3, model = $4, thinking_level = $5, updated_at = now()
          WHERE id = $1
-         RETURNING id, provider_id, name, model",
+         RETURNING id, provider_id, name, model, thinking_level",
     )
     .bind(uid)
     .bind(provider_uid)
     .bind(&input.name)
     .bind(&input.model)
+    .bind(input.thinking_level.map(ThinkingLevel::as_str))
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -282,6 +293,7 @@ fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
             provider_id: row.get::<Uuid, _>("m_provider_id").to_string(),
             name: row.get("m_name"),
             model: row.get("m_model"),
+            thinking_level: parse_thinking_level(row.get("m_thinking_level")),
         },
     })
 }
@@ -291,10 +303,11 @@ pub async fn role_models(pool: &PgPool) -> AppResult<RoleModels> {
     let rows = sqlx::query(
         "SELECT
             r.role        AS r_role,
-            m.id          AS m_id,
-            m.provider_id AS m_provider_id,
-            m.name        AS m_name,
-            m.model       AS m_model,
+            m.id             AS m_id,
+            m.provider_id    AS m_provider_id,
+            m.name           AS m_name,
+            m.model          AS m_model,
+            m.thinking_level AS m_thinking_level,
             p.id          AS p_id,
             p.name        AS p_name,
             p.provider    AS p_provider,

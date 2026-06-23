@@ -14,6 +14,17 @@
 export type LlmProvider = 'anthropic' | 'openai' | 'google'
 
 /**
+ * Reasoning / "thinking" effort delivered per model and applied by the client's
+ * agent loop (pi-agent-core `AgentState.thinkingLevel`). pi maps this uniform
+ * level onto each vendor's native control (Anthropic `effort`, OpenAI
+ * `reasoning_effort`, …). `off` disables extended thinking; `xhigh` is only
+ * honored by select model families and degrades gracefully elsewhere. Omitted
+ * on a model means "let the client/provider default decide". Mirrors
+ * `ThinkingLevel` in `apps/server/src/models/llm.rs`.
+ */
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
+/**
  * A provider connection (catalog row). Holds the vendor + the credential and
  * optional gateway used to reach it. Many models can hang off one provider and
  * share its credential. Client injects `credential` via `new Agent({ getApiKey })`.
@@ -54,6 +65,11 @@ export interface LlmModelConfig {
   name: string
   /** Provider model id, e.g. "claude-sonnet-4-20250514". */
   model: string
+  /**
+   * Reasoning effort the client applies when running this model. Omitted →
+   * provider/client default (no explicit level forced). See {@link ThinkingLevel}.
+   */
+  thinkingLevel?: ThinkingLevel
 }
 
 /** Create/update payload for a model (no server-owned fields). */
@@ -61,6 +77,7 @@ export interface LlmModelInput {
   providerId: string
   name: string
   model: string
+  thinkingLevel?: ThinkingLevel
 }
 
 /**

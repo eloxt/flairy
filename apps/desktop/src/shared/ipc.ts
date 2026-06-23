@@ -214,8 +214,8 @@ export type AgentStreamEvent =
   | { type: 'turn_start' }
   | { type: 'turn_end' }
   | { type: 'message_start'; messageId: string }
-  | { type: 'message_update'; messageId: string; delta: string }
-  | { type: 'message_end'; messageId: string; role: string; text: string }
+  | { type: 'message_update'; messageId: string; delta: string; thinkingDelta?: string }
+  | { type: 'message_end'; messageId: string; role: string; text: string; thinking?: string }
   | { type: 'tool_execution_start'; toolCallId: string; name: string; args: unknown }
   | { type: 'tool_execution_update'; toolCallId: string; partial: unknown }
   | { type: 'tool_execution_end'; toolCallId: string; result: unknown; isError: boolean }
