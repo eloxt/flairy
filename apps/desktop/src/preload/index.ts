@@ -21,6 +21,7 @@ const api: FlairyApi = {
   setPermissionMode: (args) => ipcRenderer.invoke(IPC.AgentSetPermissionMode, args),
   listSessions: () => ipcRenderer.invoke(IPC.SessionList),
   loadSession: (sessionId) => ipcRenderer.invoke(IPC.SessionLoad, sessionId),
+  searchMessages: (args) => ipcRenderer.invoke(IPC.SearchMessages, args),
   createSession: (args) => ipcRenderer.invoke(IPC.SessionCreate, args),
   setWorkingDirectory: (args) => ipcRenderer.invoke(IPC.SessionSetCwd, args),
   listRecentDirectories: () => ipcRenderer.invoke(IPC.SessionListRecentDirs),

@@ -28,10 +28,13 @@ const en = {
   chat: {
     newChat: 'New chat',
     search: 'Search',
-    closeSearch: 'Close search',
-    searchPlaceholder: 'Search chats…',
+    searchPlaceholder: 'Search chats and messages…',
+    searchTitle: 'Search',
+    searchEmptyHint: 'Search across all your chats and messages.',
+    noResults: 'No results found',
+    resultCount_one: '{{count}} result',
+    resultCount_other: '{{count}} results',
     history: 'History',
-    noMatchingChats: 'No matching chats',
     chatsWillAppearHere: 'Your chats will appear here',
     untitled: 'Untitled chat',
     deleteTitle: 'Delete this chat?',
@@ -39,12 +42,41 @@ const en = {
       'This action cannot be undone. The chat and its messages will be permanently deleted.',
     cancel: 'Cancel',
     delete: 'Delete',
+    rename: 'Rename chat',
     emptyTitle: 'What can I help you with?',
     emptySubtitle: 'Ask in plain words. Flairy handles the rest.',
     imageCount_one: '📎 {{count}} image',
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
-    toolDone: 'done'
+    toolDone: 'done',
+    working: 'Working…',
+    reasoning: 'Reasoning',
+    reasoningLive: 'Reasoning…'
+  },
+  /**
+   * Aggregated, jargon-free summary clauses for a grouped run of tool calls
+   * (e.g. "Read 3 files, ran 2 commands"). One stem per `toolBucket`; i18next
+   * selects `_one` / `_other` by count. Clauses are lowercase verb phrases so
+   * they join cleanly; the renderer capitalizes the first letter of the join.
+   */
+  activity: {
+    read_one: 'read 1 file',
+    read_other: 'read {{count}} files',
+    write_one: 'wrote 1 file',
+    write_other: 'wrote {{count}} files',
+    edit_one: 'made 1 edit',
+    edit_other: 'made {{count}} edits',
+    bash_one: 'ran 1 command',
+    bash_other: 'ran {{count}} commands',
+    grep_one: 'ran 1 search',
+    grep_other: 'ran {{count}} searches',
+    find_one: 'searched files once',
+    find_other: 'searched files {{count}}×',
+    ls_one: 'listed 1 folder',
+    ls_other: 'listed {{count}} folders',
+    other_one: 'used 1 tool',
+    other_other: 'used {{count}} tools',
+    separator: ', '
   },
   approval: {
     allowThisAction: 'Allow this action?',

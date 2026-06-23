@@ -16,7 +16,8 @@ import {
   type LoginArgs,
   type RegisterArgs,
   type AuthStatus,
-  type AuthUser
+  type AuthUser,
+  type SearchMessagesArgs
 } from '@shared/ipc'
 import { AgentService } from '../agent/agent-service'
 import type { McpManager } from '../agent/mcp'
@@ -42,7 +43,8 @@ import {
   clearAllSessions,
   addRecentDirectory,
   listRecentDirectories,
-  upsertRemoteSession
+  upsertRemoteSession,
+  searchMessages
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
@@ -195,6 +197,10 @@ export function registerIpcHandlers(
     if (!meta) throw new Error(`Unknown session: ${sessionId}`)
     return { meta, messages: loadMessages(sessionId) }
   })
+
+  ipcMain.handle(IPC.SearchMessages, (_e, args: SearchMessagesArgs) =>
+    searchMessages(args.query, args.limit)
+  )
 
   ipcMain.handle(IPC.SessionCreate, (_e, args: CreateSessionArgs) => createSession(args))
 

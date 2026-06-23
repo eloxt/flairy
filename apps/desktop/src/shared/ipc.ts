@@ -24,6 +24,7 @@ export const IPC = {
   AgentSetPermissionMode: 'agent:set-permission-mode',
   SessionList: 'session:list',
   SessionLoad: 'session:load',
+  SearchMessages: 'search:messages',
   SessionCreate: 'session:create',
   SessionSetCwd: 'session:set-cwd',
   SessionListRecentDirs: 'session:list-recent-dirs',
@@ -137,6 +138,24 @@ export interface SessionMeta {
   createdAt: number
   updatedAt: number
 }
+export interface SearchMessagesArgs {
+  query: string
+  limit?: number
+}
+
+/**
+ * One full-text search hit. `msgIndex` is the position in the session's persisted
+ * messages[] array (the jump target), or -1 for a session-title match. `snippet`
+ * wraps matched spans in control chars ( … ) for the renderer to highlight.
+ */
+export interface SearchHit {
+  sessionId: string
+  sessionTitle: string
+  msgIndex: number
+  role: 'user' | 'assistant' | 'title'
+  snippet: string
+  updatedAt: number
+}
 
 export interface SetSecretArgs {
   provider: 'anthropic' | 'openai' | 'google'
@@ -245,6 +264,8 @@ export interface FlairyApi {
   setPermissionMode(args: SetPermissionModeArgs): Promise<void>
   listSessions(): Promise<SessionMeta[]>
   loadSession(sessionId: string): Promise<{ meta: SessionMeta; messages: unknown[] }>
+  /** Full-text search over message content + session titles. */
+  searchMessages(args: SearchMessagesArgs): Promise<SearchHit[]>
   createSession(args: CreateSessionArgs): Promise<SessionMeta>
   /**
    * Open a native directory picker and set it as the session's working

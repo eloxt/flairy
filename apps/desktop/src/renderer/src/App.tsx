@@ -1,9 +1,11 @@
 import { useEffect } from "react";
+import { createHashRouter, RouterProvider, Outlet } from "react-router";
 import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
 import { AppSidebar } from "@/components/AppSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { Composer } from "@/components/chat/Composer";
+import { SearchPage } from "@/components/search/SearchPage";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import {
   SidebarInset,
@@ -14,9 +16,25 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
+ * Hash router (the renderer loads over file:// in production, where BrowserRouter's
+ * clean paths break). The authed shell is the layout; pages mount in its Outlet.
+ * New pages slot into `children`. Created once at module scope.
+ */
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <ChatView /> },
+      { path: "search", element: <SearchPage /> },
+    ],
+  },
+]);
+
+/**
  * Auth gate. The client is unusable until signed in: we restore any persisted
  * session on launch, show the auth screen while anonymous, and only mount the
- * app shell (with its agent/session wiring) once authenticated. We also follow
+ * router (with its agent/session wiring) once authenticated. We also follow
  * cross-window auth changes so signing out from the Settings window re-gates.
  */
 export default function App(): React.JSX.Element {
@@ -30,7 +48,7 @@ export default function App(): React.JSX.Element {
 
   if (phase === "loading") return <Splash />;
   if (phase === "anon") return <AuthScreen />;
-  return <AppShell />;
+  return <RouterProvider router={router} />;
 }
 
 /** Brief launch placeholder while we check the persisted session. */
@@ -38,11 +56,14 @@ function Splash(): React.JSX.Element {
   return <div className="h-screen w-screen bg-background" />;
 }
 
-/** The authenticated app: sidebar + chat. Mounted only when signed in. */
-function AppShell(): React.JSX.Element {
-  const { messages, init, loadSessions, openSession, newChat } = useChat();
+/**
+ * The authenticated app shell: sidebar + the active page (Outlet). Mounted only
+ * when signed in. The agent IPC subscription (init) lives here, NOT in ChatView,
+ * so streaming keeps flowing into the store while the user is on another route.
+ */
+function AppLayout(): React.JSX.Element {
+  const { init, loadSessions, openSession, newChat } = useChat();
 
-  // Subscribe to the main-process event stream, then ensure a session exists.
   useEffect(() => {
     const dispose = init();
     void (async () => {
@@ -57,13 +78,23 @@ function AppShell(): React.JSX.Element {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="relative z-10 min-w-0 bg-transparent">
-        <ChatHeader />
-        <div className="relative flex-1 overflow-hidden">
-          <MessageList messages={messages} />
-          <Composer />
-        </div>
+        <Outlet />
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+/** The chat page: header + thread + composer. */
+function ChatView(): React.JSX.Element {
+  const messages = useChat((s) => s.messages);
+  return (
+    <>
+      <ChatHeader />
+      <div className="relative flex-1 overflow-hidden">
+        <MessageList messages={messages} />
+        <Composer />
+      </div>
+    </>
   );
 }
 
