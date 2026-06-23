@@ -186,10 +186,8 @@ export function SkillDetailView({
         <SkillEditView
           form={form}
           skillId={skillId}
-          skillName={skill.name}
           onSave={() => void handleSave()}
           onCancel={handleCancelEdit}
-          onBack={handleCancelEdit}
           isSaving={isUpdating}
         />
       ) : (

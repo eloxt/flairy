@@ -27,6 +27,7 @@ import {
   Check,
   Bot,
   BookOpen,
+  Braces,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
@@ -40,9 +41,8 @@ import {
   FolderOpen,
   Hammer,
   MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
   Scale,
+  Table2,
   X
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
@@ -60,6 +60,38 @@ const Markdown = (props: ComponentProps<typeof LazyMarkdown>): React.JSX.Element
 
 // Sentinel used as the "selected file" value for the SKILL.md body node.
 export const SKILLMD_KEY = '__skillmd__'
+
+/**
+ * One row in a skill's left navigator. Shared by the read-only detail view and
+ * the editor so both rails look identical. Active state mirrors the app sidebar.
+ */
+export function RailRow({
+  icon: Icon,
+  label,
+  active,
+  onClick
+}: {
+  icon: typeof FileText
+  label: string
+  active: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+        active
+          ? 'bg-accent text-accent-foreground font-medium'
+          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  )
+}
 
 // ---------- HeaderMetaItem ----------
 
@@ -133,7 +165,7 @@ export function SkillHeader({
     <>
       <div
         className={cn(
-          'flex flex-col items-start gap-2 bg-card w-full',
+          'flex flex-col items-start gap-2 w-full',
           sticky && 'sticky top-0 z-30 py-4'
         )}
       >
@@ -267,7 +299,7 @@ export function ReadOnlyYamlBlock({
 
   return (
     <FormSection title={title} className={cn('flex flex-1 flex-col', className)}>
-      <div className="bg-muted/10 flex-1 overflow-y-auto rounded-sm border p-3">
+      <div className="bg-muted/10 flex-1 overflow-y-auto rounded-lg border hairline p-3">
         <Markdown content={`\`\`\`yaml\n${yaml}\n\`\`\``} />
       </div>
     </FormSection>
@@ -286,7 +318,7 @@ export function ReadOnlyMetadataTable({
 
   return (
     <FormSection title="Metadata" className={cn('flex flex-1 flex-col', className)}>
-      <div className="flex flex-1 flex-col rounded-sm border">
+      <div className="flex flex-1 flex-col rounded-lg border hairline">
         <div className="bg-muted/30 sticky top-0 z-10 grid grid-cols-2 border-b px-3 py-2 text-sm font-medium">
           <span>Key</span>
           <span>Value</span>
@@ -342,7 +374,7 @@ export function ReadOnlySkillBody({ body }: { body: string }): React.JSX.Element
   return (
     <FormSection title="SKILL.md Body" className="flex min-h-0 flex-1 flex-col">
       <Tabs defaultValue="rendered" className="flex min-h-0 w-full flex-1 flex-col">
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border hairline">
           <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
             <TabsList className="bg-muted h-8 shadow-sm backdrop-blur">
               <TabsTrigger value="rendered" className="h-6 px-2.5 text-xs">
@@ -764,52 +796,51 @@ export function SkillReadOnlyContent({
   const hasMetadata = metadata && Object.keys(metadata).length > 0
   const hasFrontmatter = extraFrontmatter && Object.keys(extraFrontmatter).length > 0
 
+  const hasSkillGroup = hasMetadata || hasFrontmatter
+
   return (
     <div className={cn('flex min-h-0 w-full gap-3', className)}>
-      <div className="flex w-72 shrink-0 flex-col gap-2">
-        {(hasMetadata || hasFrontmatter) && (
-          <div className="flex gap-1.5">
-            {hasMetadata && (
-              <button
-                type="button"
-                onClick={() => setSelected(METADATA_KEY)}
-                className={cn(
-                  'flex-1 rounded-md border px-3 py-2 text-left text-xs font-medium transition-colors',
-                  selected === METADATA_KEY
-                    ? 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/10'
-                    : 'bg-card hover:bg-muted'
-                )}
-              >
-                Metadata
-              </button>
-            )}
-            {hasFrontmatter && (
-              <button
-                type="button"
-                onClick={() => setSelected(FRONTMATTER_KEY)}
-                className={cn(
-                  'flex-1 rounded-md border px-3 py-2 text-left text-xs font-medium transition-colors',
-                  selected === FRONTMATTER_KEY
-                    ? 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/10'
-                    : 'bg-card hover:bg-muted'
-                )}
-              >
-                Extra Frontmatter
-              </button>
-            )}
+      {/* One unified navigator — frontmatter sections + files, matching the editor. */}
+      <div className="bg-card flex min-h-0 w-64 shrink-0 flex-col overflow-hidden rounded-lg border hairline">
+        {hasSkillGroup && (
+          <div className="shrink-0 p-2">
+            <div className="eyebrow px-2 pt-1 pb-1.5">Skill</div>
+            <div className="flex flex-col gap-0.5">
+              {hasMetadata && (
+                <RailRow
+                  icon={Table2}
+                  label="Metadata"
+                  active={selected === METADATA_KEY}
+                  onClick={() => setSelected(METADATA_KEY)}
+                />
+              )}
+              {hasFrontmatter && (
+                <RailRow
+                  icon={Braces}
+                  label="Extra frontmatter"
+                  active={selected === FRONTMATTER_KEY}
+                  onClick={() => setSelected(FRONTMATTER_KEY)}
+                />
+              )}
+            </div>
           </div>
         )}
-
-        <SkillFilesSidebar
-          skillId={skillId}
-          skillName={skillName}
-          files={files}
-          composedSkillMd={composedSkillMd}
-          selectedPath={
-            selected === METADATA_KEY || selected === FRONTMATTER_KEY ? undefined : selected
-          }
-          onSelectPath={setSelected}
-        />
+        <div className={cn('flex min-h-0 flex-1 flex-col', hasSkillGroup && 'border-t')}>
+          <div className="eyebrow shrink-0 px-4 pt-3 pb-1.5">Files</div>
+          <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
+            <ReadOnlyFileTree
+              bare
+              skillId={skillId}
+              skillName={skillName}
+              files={files}
+              composedSkillMd={composedSkillMd}
+              selectedPath={
+                selected === METADATA_KEY || selected === FRONTMATTER_KEY ? undefined : selected
+              }
+              onSelectPath={setSelected}
+            />
+          </ScrollArea>
+        </div>
       </div>
 
       <div className="flex grow flex-col overflow-auto">
@@ -823,86 +854,6 @@ export function SkillReadOnlyContent({
           <ReadOnlySkillBody body={skillMdBody} />
         )}
       </div>
-    </div>
-  )
-}
-
-const FILES_COLLAPSE_STORAGE_KEY = 'skill-files-sidebar-collapsed'
-
-function SkillFilesSidebar({
-  skillId,
-  skillName,
-  files,
-  composedSkillMd,
-  selectedPath,
-  onSelectPath
-}: {
-  skillId: string
-  skillName: string
-  files: SkillFileEntry[]
-  composedSkillMd: string
-  selectedPath?: string
-  onSelectPath?: (path: string) => void
-}): React.JSX.Element {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(FILES_COLLAPSE_STORAGE_KEY) === 'true'
-  })
-
-  const toggleCollapsed = (): void => {
-    setCollapsed((prev) => {
-      const next = !prev
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(FILES_COLLAPSE_STORAGE_KEY, String(next))
-      }
-      return next
-    })
-  }
-
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        className="bg-card group flex h-full w-10 shrink-0 cursor-pointer flex-col items-center gap-3 rounded-md border py-4 text-sm font-medium"
-        title="Show files"
-        aria-label="Show files"
-      >
-        <PanelLeftOpen className="text-muted-foreground group-hover:text-foreground size-4 transition-colors" />
-        <span className="rotate-180 select-none [writing-mode:vertical-rl]">Files</span>
-      </button>
-    )
-  }
-
-  return (
-    <div className="bg-card flex h-full w-72 shrink-0 flex-col rounded-md border">
-      <div className="flex h-11 items-center justify-between border-b pr-2 pl-4">
-        <span className="text-sm font-semibold">Files</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={toggleCollapsed}
-          title="Hide files"
-          aria-label="Hide files"
-        >
-          <PanelLeftClose className="size-4" />
-        </Button>
-      </div>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="p-1">
-          <ReadOnlyFileTree
-            bare
-            skillId={skillId}
-            skillName={skillName}
-            files={files}
-            composedSkillMd={composedSkillMd}
-            selectedPath={selectedPath}
-            onSelectPath={onSelectPath}
-          />
-        </div>
-      </ScrollArea>
     </div>
   )
 }

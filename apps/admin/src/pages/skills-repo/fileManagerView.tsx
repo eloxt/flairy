@@ -1567,9 +1567,11 @@ export function FileManagerSection({
                 <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   Files
                 </div>
-                <ul className="text-muted-foreground flex max-h-32 flex-col gap-1 overflow-auto font-mono">
+                <ul className="text-muted-foreground flex max-h-32 flex-col gap-1 overflow-y-auto font-mono">
                   {folderDeleteImpact.nestedFiles.map((file) => (
-                    <li key={file}>{file}</li>
+                    <li key={file} className="break-all">
+                      {file}
+                    </li>
                   ))}
                 </ul>
               </div>

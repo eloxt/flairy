@@ -29,7 +29,7 @@ export function SkillsPage(): React.JSX.Element {
 
   if (view.kind === 'create') {
     return (
-      <div className="flex h-[calc(100vh-3.5rem)] w-full flex-col p-0">
+      <div className="flex h-full min-h-0 w-full flex-col">
         <SkillCreateView onCreated={handleCreated} onBack={handleBack} />
       </div>
     )
@@ -40,8 +40,8 @@ export function SkillsPage(): React.JSX.Element {
       <div
         className={
           view.editing
-            ? 'flex h-[calc(100vh-3.5rem)] w-full flex-col p-0'
-            : 'flex h-[calc(100vh-3.5rem)] w-full flex-col p-4 pt-0'
+            ? 'flex h-full min-h-0 w-full flex-col'
+            : 'flex h-full min-h-0 w-full flex-col px-6 pb-6'
         }
       >
         <SkillDetailView
@@ -55,7 +55,7 @@ export function SkillsPage(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] w-full flex-col p-4">
+    <div className="flex h-full min-h-0 w-full flex-col p-6">
       <SkillsListView onSelectSkill={handleSelectSkill} onCreateNew={() => setView({ kind: 'create' })} />
     </div>
   )

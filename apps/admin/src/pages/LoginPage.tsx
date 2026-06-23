@@ -37,11 +37,21 @@ export function LoginPage(): React.JSX.Element {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
-      <Card className="w-full max-w-sm">
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-3">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-primary font-serif text-2xl leading-none text-primary-foreground">
+            F
+          </span>
+          <span className="flex flex-col">
+            <span className="text-base font-semibold leading-tight tracking-tight">Flairy</span>
+            <span className="eyebrow">Admin</span>
+          </span>
+        </div>
+      <Card className="w-full">
         <CardHeader>
-          <CardTitle className="text-xl">Flairy Admin</CardTitle>
-          <CardDescription>Sign in to manage your team configuration.</CardDescription>
+          <CardTitle className="text-lg">Sign in</CardTitle>
+          <CardDescription>Manage the configuration delivered to every client.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -67,7 +77,7 @@ export function LoginPage(): React.JSX.Element {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting && <Loader2 className="size-4 animate-spin" />}
               Sign in
@@ -75,6 +85,7 @@ export function LoginPage(): React.JSX.Element {
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }

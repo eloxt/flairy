@@ -33,7 +33,6 @@ export function SkillCreateView({
       form={form}
       onSave={() => void handleCreate()}
       onCancel={onBack}
-      onBack={onBack}
       isSaving={createMutation.isPending}
       mode="create"
     />

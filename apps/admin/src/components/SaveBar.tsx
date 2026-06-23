@@ -20,9 +20,9 @@ export function SaveBar({
         Save changes
       </Button>
       {recentlySaved && !saving && (
-        <span className="flex items-center gap-1 text-sm text-green-600">
-          <Check className="size-4" />
-          Saved
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground animate-rise-in">
+          <Check className="size-4 text-foreground" />
+          Published to all clients
         </span>
       )}
     </div>

@@ -11,8 +11,9 @@ export function PageLoading(): React.JSX.Element {
 
 export function PageError({ message }: { message: string }): React.JSX.Element {
   return (
-    <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-      {message}
+    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+      <span className="eyebrow mt-0.5 shrink-0 text-destructive/70">Error</span>
+      <span className="text-foreground">{message}</span>
     </div>
   )
 }

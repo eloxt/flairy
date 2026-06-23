@@ -15,10 +15,22 @@ import { CodeEditor, type CompletionItem } from '@/components/ui/codeEditor'
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { cn } from '@/lib/utils'
 import type { SkillFileEntry } from '@/lib/types/skills'
-import { AlertTriangle, ArrowLeft, Check, Copy, Eye, Loader2, Plus, Save, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Braces,
+  Check,
+  Copy,
+  Eye,
+  FileText,
+  Loader2,
+  Plus,
+  Save,
+  Table2,
+  X
+} from 'lucide-react'
 import { useState } from 'react'
 import { type SkillFormReturn, composeFrontmatter } from './helpers'
-import { FormSection } from './shared'
+import { FormSection, RailRow } from './shared'
 import { FilePreviewPane } from './filePreview'
 import { FileManagerSection } from './fileManagerView'
 import { MetadataTableEditor } from './metadataEditorTableView'
@@ -32,22 +44,27 @@ const Markdown = (props: ComponentProps<typeof LazyMarkdown>): React.JSX.Element
   </Suspense>
 )
 
+type DetailsPane = 'details' | 'metadata' | 'frontmatter'
+
+/** The non-file sections of a skill, shown as rows in the left navigator. */
+const SKILL_PANES: { key: DetailsPane; label: string; icon: typeof FileText }[] = [
+  { key: 'details', label: 'Details', icon: FileText },
+  { key: 'metadata', label: 'Metadata', icon: Table2 },
+  { key: 'frontmatter', label: 'Extra frontmatter', icon: Braces }
+]
+
 export function SkillEditView({
   form,
   skillId,
-  skillName,
   onSave,
   onCancel,
-  onBack,
   isSaving,
   mode = 'edit'
 }: {
   form: SkillFormReturn
   skillId?: string
-  skillName?: string
   onSave: () => void
   onCancel: () => void
-  onBack: () => void
   isSaving: boolean
   mode?: 'edit' | 'create'
 }): React.JSX.Element {
@@ -86,110 +103,61 @@ export function SkillEditView({
   if (descriptionLength > 1024) {
     descriptionLimitColor = 'text-destructive'
   } else if (descriptionLength > 900) {
-    descriptionLimitColor = 'text-yellow-600 dark:text-yellow-500'
+    descriptionLimitColor = 'text-foreground font-medium'
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 overflow-y-auto px-4">
-        <div className="bg-card flex items-center gap-3 py-4">
-          <Button variant="ghost" size="sm" onClick={onBack} aria-label="Go back">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-sm">
-            <span>{isCreate ? 'Creating' : 'Editing'}</span>
-            <span className="text-foreground truncate font-mono">
-              {isCreate ? form.name || '<new-skill>' : skillName}
-            </span>
-          </div>
-        </div>
-
-        <div className="mb-6 flex gap-3 rounded-sm border border-amber-500/40 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/40 dark:text-amber-200">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <p>
-            Files added to a skill are delivered to every signed-in client. Do not upload secrets,
-            credentials, private code, or other sensitive files.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-8">
-          {isCreate && (
-            <FormSection title="Name">
-              <Input
-                value={form.name}
-                onChange={(e) => {
-                  form.setName(e.target.value)
-                  form.validateField('name', e.target.value)
-                }}
-                placeholder="my-skill-name"
-                className={cn('font-mono', form.errors.name && 'border-destructive')}
-              />
-              {form.errors.name && (
-                <p className="text-destructive text-xs" role="alert">
-                  {form.errors.name}
-                </p>
-              )}
-              <p className="text-muted-foreground text-xs">
-                Lowercase letters, numbers, and hyphens only.{' '}
-                <span className="font-bold">Cannot be changed after creation.</span>
+      {isCreate && (
+        <div className="shrink-0 border-b px-4 py-4">
+          <FormSection title="Name">
+            <Input
+              value={form.name}
+              onChange={(e) => {
+                form.setName(e.target.value)
+                form.validateField('name', e.target.value)
+              }}
+              placeholder="my-skill-name"
+              className={cn('font-mono', form.errors.name && 'border-destructive')}
+            />
+            {form.errors.name && (
+              <p className="text-destructive text-xs" role="alert">
+                {form.errors.name}
               </p>
-            </FormSection>
-          )}
+            )}
+            <p className="text-muted-foreground text-xs">
+              Lowercase letters, numbers, and hyphens only.{' '}
+              <span className="font-medium text-foreground">Cannot be changed after creation.</span>
+            </p>
+          </FormSection>
         </div>
-      </div>
+      )}
 
       {/* Files + SKILL.md two-pane workspace */}
       <div className="min-h-0 flex-1 px-4 pt-4 pb-2">
         <div className="flex h-full min-h-0 gap-3">
-          {/* Left: files panel */}
-          <div className="bg-card flex min-h-0 w-72 shrink-0 flex-col gap-2">
-            <div className="grid gap-1.5">
-              <div className="grid grid-cols-2 gap-1.5">
-                {(
-                  [
-                    ['details', 'Details'],
-                    ['metadata', 'Metadata']
-                  ] as const
-                ).map(([pane, label]) => (
-                  <button
-                    key={pane}
-                    type="button"
+          {/* Left: one unified navigator — frontmatter sections + files. */}
+          <div className="bg-card flex min-h-0 w-64 shrink-0 flex-col overflow-hidden rounded-lg border hairline">
+            <div className="shrink-0 p-2">
+              <div className="eyebrow px-2 pt-1 pb-1.5">Skill</div>
+              <div className="flex flex-col gap-0.5">
+                {SKILL_PANES.map(({ key, label, icon: Icon }) => (
+                  <RailRow
+                    key={key}
+                    icon={Icon}
+                    label={label}
+                    active={selectedDetailsPane === key}
                     onClick={() => {
-                      setSelectedDetailsPane(pane)
+                      setSelectedDetailsPane(key)
                       setSelectedFileIndex(null)
                     }}
-                    className={cn(
-                      'rounded-md border px-3 py-2 text-left text-xs font-medium transition-colors',
-                      selectedDetailsPane === pane
-                        ? 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/10'
-                        : 'bg-card hover:bg-muted'
-                    )}
-                  >
-                    {label}
-                  </button>
+                  />
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDetailsPane('frontmatter')
-                  setSelectedFileIndex(null)
-                }}
-                className={cn(
-                  'rounded-md border px-3 py-2 text-left text-xs font-medium transition-colors',
-                  selectedDetailsPane === 'frontmatter'
-                    ? 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/10'
-                    : 'bg-card hover:bg-muted'
-                )}
-              >
-                Extra Frontmatter
-              </button>
             </div>
-            <div className="bg-card flex min-h-0 flex-1 flex-col rounded-md border">
-              <div className="flex py-2 items-center border-b px-3">
-                <span className="text-sm font-semibold">Files</span>
-              </div>
-              <ScrollArea className="min-h-0 flex-1 p-1">
+            <div className="flex min-h-0 flex-1 flex-col border-t">
+              <div className="eyebrow shrink-0 px-4 pt-3 pb-1.5">Files</div>
+              <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
                 <FileManagerSection
                   files={form.files}
                   onAddFile={form.addFile}
@@ -236,40 +204,32 @@ export function SkillEditView({
                 }}
               />
             ) : (
-              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-sm border">
+              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border hairline">
                 <div
-                  className="flex h-9 shrink-0 items-center gap-1 border-b px-2"
+                  className="flex h-10 shrink-0 items-center gap-2 border-b px-2"
                   role="tablist"
                   aria-label="Body editor tabs"
                 >
-                  <button
-                    type="button"
-                    className={cn(
-                      'px-3 py-1 text-xs rounded-sm transition-colors cursor-pointer',
-                      bodyTab === 'edit'
-                        ? 'bg-muted font-medium'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                    onClick={() => setBodyTab('edit')}
-                    role="tab"
-                    aria-selected={bodyTab === 'edit'}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      'px-3 py-1 text-xs rounded-sm transition-colors cursor-pointer',
-                      bodyTab === 'preview'
-                        ? 'bg-muted font-medium'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                    onClick={() => setBodyTab('preview')}
-                    role="tab"
-                    aria-selected={bodyTab === 'preview'}
-                  >
-                    Preview
-                  </button>
+                  <span className="eyebrow px-1">SKILL.md</span>
+                  <div className="flex items-center gap-0.5">
+                    {(['edit', 'preview'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        className={cn(
+                          'cursor-pointer rounded-md px-2.5 py-1 text-xs capitalize transition-colors',
+                          bodyTab === tab
+                            ? 'bg-accent font-medium text-accent-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                        onClick={() => setBodyTab(tab)}
+                        role="tab"
+                        aria-selected={bodyTab === tab}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
                   <span className="text-muted-foreground ml-auto pr-1 text-xs">
                     Use <code className="font-mono">@</code> to reference files
                   </span>
@@ -306,7 +266,11 @@ export function SkillEditView({
                       </p>
                     )}
                     {form.bodyWarning && (
-                      <p className="text-xs text-yellow-600 dark:text-yellow-500" role="status">
+                      <p
+                        className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                        role="status"
+                      >
+                        <AlertTriangle className="size-3.5 shrink-0" />
                         {form.bodyWarning}
                       </p>
                     )}
@@ -318,12 +282,12 @@ export function SkillEditView({
         </div>
       </div>
 
-      <div className="bg-card sticky bottom-0 z-20 mt-4 flex items-center justify-end gap-2 border-t px-1 py-3">
+      <div className="bg-card flex shrink-0 items-center justify-end gap-2 border-t px-4 py-3">
         <Button
           variant="ghost"
           size="sm"
           onClick={onCancel}
-          className="text-muted-foreground hover:bg-transparent hover:text-red-600 dark:hover:text-red-400"
+          className="text-muted-foreground hover:bg-transparent hover:text-destructive"
         >
           Cancel
         </Button>
@@ -431,12 +395,12 @@ function DetailsEditorPane({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex h-9 shrink-0 items-center gap-2 px-1">
-        <span className="text-sm font-semibold">Details</span>
+        <span className="eyebrow">Details</span>
         <span className="text-muted-foreground text-xs">
           Edit the skill description and spec fields
         </span>
       </div>
-      <ScrollArea className="min-h-0 flex-1 rounded-sm border">
+      <ScrollArea className="min-h-0 flex-1 rounded-lg border hairline">
         <div className="flex flex-col gap-8 p-4">
           <FormSection title="Description">
             <div className="flex flex-col gap-2">
@@ -506,12 +470,12 @@ function MetadataEditorPane({ form }: { form: SkillFormReturn }): React.JSX.Elem
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex h-9 shrink-0 items-center gap-2 px-1">
-        <span className="text-sm font-semibold">Metadata</span>
+        <span className="eyebrow">Metadata</span>
         <span className="text-muted-foreground text-xs">
           Flat key-value pairs nested under <code className="font-mono">metadata:</code> in SKILL.md
         </span>
       </div>
-      <ScrollArea className="min-h-0 flex-1 rounded-sm border">
+      <ScrollArea className="min-h-0 flex-1 rounded-lg border hairline">
         <div className="p-3">
           <MetadataTableEditor
             metadataJson={form.metadataJson}
@@ -531,12 +495,12 @@ function ExtraFrontmatterEditorPane({ form }: { form: SkillFormReturn }): React.
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex h-9 shrink-0 items-center gap-2 px-1">
-        <span className="text-sm font-semibold">Extra Frontmatter</span>
+        <span className="eyebrow">Extra Frontmatter</span>
         <span className="text-muted-foreground text-xs">
           Valid JSON merged into the SKILL.md YAML frontmatter
         </span>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-sm border p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-lg border hairline p-3">
         <div className="min-h-0 flex-1 overflow-hidden">
           <CodeEditor
             className="z-0 w-full"

@@ -1,146 +1,168 @@
-import { useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
-import type { McpServerConfig, McpServerInput, McpTransport } from '@flairy/shared'
-import { useConfig } from '@/hooks/useConfig'
-import { createMcpServer, deleteMcpServer, updateMcpServer } from '@/api/client'
-import { PageError, PageLoading } from '@/components/PageState'
-import { PageHeader } from '@/components/PageHeader'
+import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import type {
+  McpServerConfig,
+  McpServerInput,
+  McpTransport,
+} from "@flairy/shared";
+import { useConfig } from "@/hooks/useConfig";
+import {
+  createMcpServer,
+  deleteMcpServer,
+  updateMcpServer,
+} from "@/api/client";
+import { PageError, PageLoading } from "@/components/PageState";
+import { PageHeader } from "@/components/PageHeader";
 import {
   KeyValueEditor,
   recordToRows,
   rowsToRecord,
-  type KvRow
-} from '@/components/KeyValueEditor'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+  type KvRow,
+} from "@/components/KeyValueEditor";
+import { TablePanel, TableEmpty } from "@/components/TablePanel";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
-} from '@/components/ui/table'
+  TableRow,
+} from "@/components/ui/table";
 
-type TransportKind = McpTransport['kind']
+type TransportKind = McpTransport["kind"];
 
 /** Local editor form: holds every transport field so switching kind keeps input. */
 interface ServerForm {
   /** Empty for a new (unsaved) server. */
-  id: string
-  name: string
-  enabled: boolean
-  kind: TransportKind
-  command: string
-  args: string
-  url: string
-  envRows: KvRow[]
-  headerRows: KvRow[]
+  id: string;
+  name: string;
+  enabled: boolean;
+  kind: TransportKind;
+  command: string;
+  args: string;
+  url: string;
+  envRows: KvRow[];
+  headerRows: KvRow[];
 }
 
 function toForm(server: McpServerConfig): ServerForm {
-  const t = server.transport
+  const t = server.transport;
   return {
     id: server.id,
     name: server.name,
     enabled: server.enabled,
     kind: t.kind,
-    command: t.kind === 'stdio' ? t.command : '',
-    args: t.kind === 'stdio' ? (t.args ?? []).join(' ') : '',
-    url: t.kind === 'stdio' ? '' : t.url,
-    envRows: t.kind === 'stdio' ? recordToRows(t.env) : [],
-    headerRows: t.kind === 'stdio' ? [] : recordToRows(t.headers)
-  }
+    command: t.kind === "stdio" ? t.command : "",
+    args: t.kind === "stdio" ? (t.args ?? []).join(" ") : "",
+    url: t.kind === "stdio" ? "" : t.url,
+    envRows: t.kind === "stdio" ? recordToRows(t.env) : [],
+    headerRows: t.kind === "stdio" ? [] : recordToRows(t.headers),
+  };
 }
 
 function emptyForm(): ServerForm {
   return {
-    id: '',
-    name: '',
+    id: "",
+    name: "",
     enabled: true,
-    kind: 'stdio',
-    command: '',
-    args: '',
-    url: '',
+    kind: "stdio",
+    command: "",
+    args: "",
+    url: "",
     envRows: [],
-    headerRows: []
-  }
+    headerRows: [],
+  };
 }
 
 function buildTransport(form: ServerForm): McpTransport {
-  if (form.kind === 'stdio') {
-    const args = form.args.trim() ? form.args.trim().split(/\s+/) : undefined
-    const env = rowsToRecord(form.envRows)
+  if (form.kind === "stdio") {
+    const args = form.args.trim() ? form.args.trim().split(/\s+/) : undefined;
+    const env = rowsToRecord(form.envRows);
     return {
-      kind: 'stdio',
+      kind: "stdio",
       command: form.command.trim(),
       ...(args ? { args } : {}),
-      ...(env ? { env } : {})
-    }
+      ...(env ? { env } : {}),
+    };
   }
-  const headers = rowsToRecord(form.headerRows)
+  const headers = rowsToRecord(form.headerRows);
   return {
     kind: form.kind,
     url: form.url.trim(),
-    ...(headers ? { headers } : {})
-  }
+    ...(headers ? { headers } : {}),
+  };
 }
 
 function formToInput(form: ServerForm): McpServerInput {
-  return { name: form.name.trim(), enabled: form.enabled, transport: buildTransport(form) }
+  return {
+    name: form.name.trim(),
+    enabled: form.enabled,
+    transport: buildTransport(form),
+  };
 }
 
 /** Project a stored server back to an input payload (for enable/disable toggles). */
-function serverToInput(server: McpServerConfig, enabled: boolean): McpServerInput {
-  return { name: server.name, transport: server.transport, enabled }
+function serverToInput(
+  server: McpServerConfig,
+  enabled: boolean,
+): McpServerInput {
+  return { name: server.name, transport: server.transport, enabled };
 }
 
 function transportSummary(t: McpTransport): string {
-  return t.kind === 'stdio' ? `stdio · ${t.command}` : `${t.kind} · ${t.url}`
+  return t.kind === "stdio" ? `stdio · ${t.command}` : `${t.kind} · ${t.url}`;
 }
 
 export function McpPage(): React.JSX.Element {
-  const { config, loading, error, saving, mutate } = useConfig()
-  const [editing, setEditing] = useState<ServerForm | null>(null)
+  const { config, loading, error, saving, mutate } = useConfig();
+  const [editing, setEditing] = useState<ServerForm | null>(null);
 
-  if (loading) return <PageLoading />
-  if (error && !config) return <PageError message={error} />
-  if (!config) return <PageError message="No configuration available." />
+  if (loading) return <PageLoading />;
+  if (error && !config) return <PageError message={error} />;
+  if (!config) return <PageError message="No configuration available." />;
 
-  const servers = config.mcpServers
+  const servers = config.mcpServers;
 
   async function handleSubmit(): Promise<void> {
-    if (!editing) return
-    const input = formToInput(editing)
+    if (!editing) return;
+    const input = formToInput(editing);
     try {
       await mutate(() =>
-        editing.id ? updateMcpServer(editing.id, input) : createMcpServer(input)
-      )
-      setEditing(null)
+        editing.id
+          ? updateMcpServer(editing.id, input)
+          : createMcpServer(input),
+      );
+      setEditing(null);
     } catch {
       // surfaced via hook error state
     }
   }
 
-  async function handleToggle(server: McpServerConfig, enabled: boolean): Promise<void> {
+  async function handleToggle(
+    server: McpServerConfig,
+    enabled: boolean,
+  ): Promise<void> {
     try {
-      await mutate(() => updateMcpServer(server.id, serverToInput(server, enabled)))
+      await mutate(() =>
+        updateMcpServer(server.id, serverToInput(server, enabled)),
+      );
     } catch {
       // surfaced via hook error state
     }
@@ -148,7 +170,7 @@ export function McpPage(): React.JSX.Element {
 
   async function handleDelete(id: string): Promise<void> {
     try {
-      await mutate(() => deleteMcpServer(id))
+      await mutate(() => deleteMcpServer(id));
     } catch {
       // surfaced via hook error state
     }
@@ -166,64 +188,64 @@ export function McpPage(): React.JSX.Element {
           </Button>
         }
       />
-      {error && <div className="mb-4"><PageError message={error} /></div>}
+      {error && (
+        <div className="mb-4">
+          <PageError message={error} />
+        </div>
+      )}
 
-      <Card>
-        <CardContent className="p-0">
-          {servers.length === 0 ? (
-            <p className="px-6 py-8 text-center text-sm text-muted-foreground">
-              No MCP servers configured yet.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Transport</TableHead>
-                  <TableHead className="w-20">Enabled</TableHead>
-                  <TableHead className="w-24 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {servers.map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {transportSummary(s.transport)}
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={s.enabled}
-                        onCheckedChange={(v) => void handleToggle(s, v)}
+      <TablePanel>
+        {servers.length === 0 ? (
+          <TableEmpty>No MCP servers configured yet.</TableEmpty>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Transport</TableHead>
+                <TableHead className="w-20">Enabled</TableHead>
+                <TableHead className="w-24 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {servers.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {transportSummary(s.transport)}
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={s.enabled}
+                      onCheckedChange={(v) => void handleToggle(s, v)}
+                      disabled={saving}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditing(toForm(s))}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void handleDelete(s.id)}
                         disabled={saving}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditing(toForm(s))}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => void handleDelete(s.id)}
-                          disabled={saving}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </TablePanel>
 
       {editing && (
         <ServerEditor
@@ -235,7 +257,7 @@ export function McpPage(): React.JSX.Element {
         />
       )}
     </div>
-  )
+  );
 }
 
 function ServerEditor({
@@ -243,27 +265,31 @@ function ServerEditor({
   saving,
   onChange,
   onCancel,
-  onSubmit
+  onSubmit,
 }: {
-  form: ServerForm
-  saving: boolean
-  onChange: (form: ServerForm) => void
-  onCancel: () => void
-  onSubmit: () => void
+  form: ServerForm;
+  saving: boolean;
+  onChange: (form: ServerForm) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
 }): React.JSX.Element {
   function patch(next: Partial<ServerForm>): void {
-    onChange({ ...form, ...next })
+    onChange({ ...form, ...next });
   }
 
   const valid =
     form.name.trim().length > 0 &&
-    (form.kind === 'stdio' ? form.command.trim().length > 0 : form.url.trim().length > 0)
+    (form.kind === "stdio"
+      ? form.command.trim().length > 0
+      : form.url.trim().length > 0);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-h-[90vh] gap-0 overflow-auto sm:max-w-lg">
         <DialogHeader className="mb-4">
-          <DialogTitle>{form.id ? `Edit ${form.name}` : 'New MCP server'}</DialogTitle>
+          <DialogTitle>
+            {form.id ? `Edit ${form.name}` : "New MCP server"}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-5">
           <div className="space-y-2">
@@ -292,7 +318,7 @@ function ServerEditor({
             </Select>
           </div>
 
-          {form.kind === 'stdio' ? (
+          {form.kind === "stdio" ? (
             <>
               <div className="space-y-2">
                 <Label htmlFor="mcp-command">Command</Label>
@@ -357,5 +383,5 @@ function ServerEditor({
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

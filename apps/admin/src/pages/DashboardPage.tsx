@@ -25,56 +25,67 @@ export function DashboardPage(): React.JSX.Element {
   return (
     <div>
       <PageHeader
+        eyebrow="Control plane"
         title="Dashboard"
-        description={`Configuration version ${config.version}. This is what every connected client receives.`}
+        description="Everything below is delivered to every connected client the moment you change it. No client-side setup required."
       />
       <div className="grid gap-4 sm:grid-cols-3">
-        <Link to="/llm">
-          <Card className="transition-colors hover:bg-muted/40">
+        <Link to="/llm" className="group">
+          <Card className="hairline h-full transition-colors group-hover:bg-accent/50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Bot className="size-4" />
+              <CardDescription className="eyebrow flex items-center gap-1.5">
+                <Bot className="size-3.5" />
                 LLM
-              </CardTitle>
-              <CardDescription>Main model</CardDescription>
+              </CardDescription>
+              <CardTitle className="text-base">Main model</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-sm font-medium">{mainModel?.model || '—'}</div>
-              <div className="text-xs capitalize text-muted-foreground">
+              <div className="truncate font-mono text-sm font-medium">
+                {mainModel?.model || '—'}
+              </div>
+              <div className="mt-0.5 font-mono text-xs lowercase text-muted-foreground">
                 {mainProvider ? mainProvider.provider : 'not set'}
               </div>
             </CardContent>
           </Card>
         </Link>
 
-        <Link to="/mcp">
-          <Card className="transition-colors hover:bg-muted/40">
+        <Link to="/mcp" className="group">
+          <Card className="hairline h-full transition-colors group-hover:bg-accent/50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Server className="size-4" />
+              <CardDescription className="eyebrow flex items-center gap-1.5">
+                <Server className="size-3.5" />
                 MCP Servers
-              </CardTitle>
-              <CardDescription>Tool providers</CardDescription>
+              </CardDescription>
+              <CardTitle className="text-base">Tool providers</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{config.mcpServers.length}</div>
-              <div className="text-xs text-muted-foreground">{enabledMcp} enabled</div>
+              <div className="font-mono text-2xl font-semibold tracking-tight">
+                {config.mcpServers.length}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                <span className="font-mono">{enabledMcp}</span> enabled
+              </div>
             </CardContent>
           </Card>
         </Link>
 
-        <Link to="/skills">
-          <Card className="transition-colors hover:bg-muted/40">
+        <Link to="/skills" className="group">
+          <Card className="hairline h-full transition-colors group-hover:bg-accent/50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="size-4" />
+              <CardDescription className="eyebrow flex items-center gap-1.5">
+                <Sparkles className="size-3.5" />
                 Skills
-              </CardTitle>
-              <CardDescription>System-prompt presets</CardDescription>
+              </CardDescription>
+              <CardTitle className="text-base">System-prompt presets</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{config.skills.length}</div>
-              <div className="text-xs text-muted-foreground">{enabledSkills} enabled</div>
+              <div className="font-mono text-2xl font-semibold tracking-tight">
+                {config.skills.length}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                <span className="font-mono">{enabledSkills}</span> enabled
+              </div>
             </CardContent>
           </Card>
         </Link>
