@@ -6,6 +6,7 @@
 //! and `session:remote` is broadcast to the user's other devices.
 
 use socketioxide::extract::{AckSender, Data, SocketRef};
+use socketioxide::socket::DisconnectReason;
 use socketioxide::SocketIo;
 
 use crate::db;
@@ -13,7 +14,8 @@ use crate::models::auth::SocketAuth;
 use crate::models::config::ConfigSnapshot;
 use crate::models::events;
 use crate::models::session::{
-    SessionPatchPayload, SessionPullPayload, SessionUpsertPayload, SessionWithMessages,
+    SessionDeletePayload, SessionPatchPayload, SessionPullPayload, SessionRemoteDeletePayload,
+    SessionUpsertPayload, SessionWithMessages,
 };
 use crate::state::AppState;
 
@@ -94,6 +96,23 @@ async fn on_connect(socket: SocketRef, Data(auth): Data<Option<SocketAuth>>, sta
         );
     }
 
+    // ---- session:delete ----
+    {
+        let state = state.clone();
+        let uid = user_id.clone();
+        socket.on(
+            events::SESSION_DELETE,
+            move |s: SocketRef, Data(payload): Data<SessionDeletePayload>, ack: AckSender| {
+                let state = state.clone();
+                let uid = uid.clone();
+                async move {
+                    let ok = handle_delete(&state, &uid, &s, payload).await;
+                    let _ = ack.send(&ok);
+                }
+            },
+        );
+    }
+
     // ---- session:pull ----
     {
         let state = state.clone();
@@ -109,6 +128,17 @@ async fn on_connect(socket: SocketRef, Data(auth): Data<Option<SocketAuth>>, sta
                 }
             },
         );
+    }
+
+    // ---- disconnect ----
+    {
+        let uid = user_id.clone();
+        socket.on_disconnect(move |reason: DisconnectReason| {
+            let uid = uid.clone();
+            async move {
+                tracing::debug!(%uid, ?reason, "socket disconnected");
+            }
+        });
     }
 
     // Handlers are registered; now do the awaiting work. Emit the initial config
@@ -140,6 +170,13 @@ async fn handle_upsert(
     socket: &SocketRef,
     payload: SessionUpsertPayload,
 ) -> bool {
+    tracing::debug!(
+        event = events::SESSION_UPSERT,
+        %user_id,
+        session_id = %payload.session.id,
+        messages = payload.messages.len(),
+        "recv socket event"
+    );
     let Some(pool) = &state.pool else {
         tracing::warn!("session:upsert with no DB");
         return false;
@@ -168,6 +205,14 @@ async fn handle_patch(
     socket: &SocketRef,
     payload: SessionPatchPayload,
 ) -> bool {
+    tracing::debug!(
+        event = events::SESSION_PATCH,
+        %user_id,
+        session_id = %payload.session_id,
+        append = payload.append_messages.len(),
+        title = payload.title.is_some(),
+        "recv socket event"
+    );
     let Some(pool) = &state.pool else {
         tracing::warn!("session:patch with no DB");
         return false;
@@ -192,11 +237,47 @@ async fn handle_patch(
     true
 }
 
+async fn handle_delete(
+    state: &AppState,
+    user_id: &str,
+    socket: &SocketRef,
+    payload: SessionDeletePayload,
+) -> bool {
+    tracing::debug!(
+        event = events::SESSION_DELETE,
+        %user_id,
+        session_id = %payload.session_id,
+        "recv socket event"
+    );
+    let Some(pool) = &state.pool else {
+        tracing::warn!("session:delete with no DB");
+        return false;
+    };
+    match db::delete_session(pool, user_id, &payload.session_id).await {
+        Ok(removed) => {
+            // Tell the user's other devices to drop it too. Emit even when the
+            // row was already gone — the sender's ack still reports the result.
+            broadcast_remote_delete(socket, user_id, &payload.session_id).await;
+            removed
+        }
+        Err(e) => {
+            tracing::warn!("session:delete failed: {e}");
+            false
+        }
+    }
+}
+
 async fn handle_pull(
     state: &AppState,
     user_id: &str,
     payload: SessionPullPayload,
 ) -> Vec<SessionWithMessages> {
+    tracing::debug!(
+        event = events::SESSION_PULL,
+        %user_id,
+        since = ?payload.since,
+        "recv socket event"
+    );
     let Some(pool) = &state.pool else {
         return Vec::new();
     };
@@ -218,5 +299,20 @@ async fn broadcast_remote(socket: &SocketRef, user_id: &str, payload: SessionWit
         .await
     {
         tracing::warn!("session:remote broadcast failed: {e}");
+    }
+}
+
+/// Emit `session:remote-delete` to the user's other devices (not the sender).
+async fn broadcast_remote_delete(socket: &SocketRef, user_id: &str, session_id: &str) {
+    let room = user_room(user_id);
+    let payload = SessionRemoteDeletePayload {
+        session_id: session_id.to_string(),
+    };
+    if let Err(e) = socket
+        .to(room)
+        .emit(events::SESSION_REMOTE_DELETE, &payload)
+        .await
+    {
+        tracing::warn!("session:remote-delete broadcast failed: {e}");
     }
 }

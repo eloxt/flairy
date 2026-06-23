@@ -13,7 +13,9 @@ export const en = {
   'menu.edit': 'Edit',
   'menu.view': 'View',
   'menu.window': 'Window',
-  'menu.help': 'Help'
+  'menu.help': 'Help',
+  'menu.renameChat': 'Rename',
+  'menu.deleteChat': 'Delete'
 } as const
 
 export type MainCatalog = Record<keyof typeof en, string>

@@ -19,8 +19,11 @@ async fn main() {
 
     tracing_subscriber::fmt()
         .with_env_filter(
+            // `socketioxide=debug` surfaces the crate's per-event/packet logs
+            // (every inbound socket.io event + payload). engineioxide is left at
+            // info so low-level transport ping/pong/poll noise stays out.
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,flairy_server=debug".into()),
+                .unwrap_or_else(|_| "info,flairy_server=debug,socketioxide=debug".into()),
         )
         .init();
 

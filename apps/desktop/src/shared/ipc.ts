@@ -31,6 +31,7 @@ export const IPC = {
   SessionChooseDir: 'session:choose-dir',
   SessionRename: 'session:rename',
   SessionDelete: 'session:delete',
+  SessionContextMenu: 'session:context-menu',
   DialogPickDirectory: 'dialog:pick-directory',
   SecretsSet: 'secrets:set',
   SecretsHas: 'secrets:has',
@@ -138,6 +139,9 @@ export interface SessionMeta {
   createdAt: number
   updatedAt: number
 }
+/** Item the user picked from a session row's native right-click menu. */
+export type SessionMenuAction = 'rename' | 'delete'
+
 export interface SearchMessagesArgs {
   query: string
   limit?: number
@@ -284,6 +288,12 @@ export interface FlairyApi {
   renameSession(args: RenameSessionArgs): Promise<SessionMeta | null>
   /** Delete a session and its messages locally. Returns true if a row was removed. */
   deleteSession(args: DeleteSessionArgs): Promise<boolean>
+  /**
+   * Pop up the native (OS) right-click menu for a session row. Resolves with the
+   * chosen action, or null if the menu was dismissed without a selection. The
+   * renderer carries out the action so the store stays the source of truth.
+   */
+  showSessionMenu(): Promise<SessionMenuAction | null>
   /**
    * Open a native directory picker WITHOUT a session (home screen). Returns the
    * chosen path, or null if cancelled. The caller stashes it for the session

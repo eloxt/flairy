@@ -5,8 +5,10 @@ import {
   type ConfigSnapshot,
   type ConfigUpdate,
   type ServerToClientEvents,
+  type SessionDeletePayload,
   type SessionPatchPayload,
   type SessionPullPayload,
+  type SessionRemoteDeletePayload,
   type SessionRemotePayload,
   type SessionUpsertPayload,
   type SessionWithMessages,
@@ -22,6 +24,7 @@ export const SERVER_URL = process.env.FLAIRY_SERVER_URL ?? 'http://localhost:878
 
 type ConfigListener = (config: ConfigSnapshot) => void
 type SessionRemoteListener = (payload: SessionRemotePayload) => void
+type SessionRemoteDeleteListener = (payload: SessionRemoteDeletePayload) => void
 type SessionsPulledListener = (sessions: SessionWithMessages[]) => void
 
 /**
@@ -44,6 +47,7 @@ export class ServerClient {
   private config: ConfigSnapshot | null = null
   private configListeners = new Set<ConfigListener>()
   private sessionRemoteListeners = new Set<SessionRemoteListener>()
+  private sessionRemoteDeleteListeners = new Set<SessionRemoteDeleteListener>()
   private sessionsPulledListeners = new Set<SessionsPulledListener>()
   /** JWT used for the active socket; reused for REST skill materialization. */
   private token: string | undefined
@@ -62,7 +66,16 @@ export class ServerClient {
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SERVER_URL, {
       auth: { token } satisfies SocketAuth,
       transports: ['websocket'],
-      reconnection: true
+      // Reconnect with exponential backoff + jitter. socket.io's Manager computes
+      // each delay as reconnectionDelay * 2^attempt, capped at reconnectionDelayMax,
+      // then randomized by ±randomizationFactor: ~1s, 2s, 4s, 8s, 16s, 30s (capped).
+      // Retry forever (a laptop can be offline for hours) and jitter so reconnecting
+      // clients don't stampede the server in lockstep after an outage.
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.5
     })
 
     socket.on(SocketEvent.ConfigSnapshot, (payload: ConfigSnapshot) => {
@@ -85,6 +98,10 @@ export class ServerClient {
       for (const cb of this.sessionRemoteListeners) cb(payload)
     })
 
+    socket.on(SocketEvent.SessionRemoteDelete, (payload: SessionRemoteDeletePayload) => {
+      for (const cb of this.sessionRemoteDeleteListeners) cb(payload)
+    })
+
     // Pull the user's sessions on every (re)connect — including the first one
     // after sign-in — so a fresh device (or a relogin) gets its history back.
     // socket.io fires `connect` on the initial handshake and on every reconnect.
@@ -99,6 +116,13 @@ export class ServerClient {
 
     socket.on('disconnect', (reason) => {
       console.log('[sync] socket disconnected:', reason)
+    })
+
+    // Manager-level reconnection events: log each backoff attempt so the retry
+    // cadence is observable. (`socket.io` is the shared Manager; these don't fire
+    // on the Socket itself.)
+    socket.io.on('reconnect_attempt', (attempt) => {
+      console.log('[sync] reconnect attempt', attempt)
     })
 
     this.socket = socket
@@ -157,6 +181,12 @@ export class ServerClient {
     return () => this.sessionRemoteListeners.delete(cb)
   }
 
+  /** Subscribe to a session deleted on the user's other devices. */
+  onSessionRemoteDelete(cb: SessionRemoteDeleteListener): () => void {
+    this.sessionRemoteDeleteListeners.add(cb)
+    return () => this.sessionRemoteDeleteListeners.delete(cb)
+  }
+
   /** Subscribe to the bulk session list pulled from the server on (re)connect. */
   onSessionsPulled(cb: SessionsPulledListener): () => void {
     this.sessionsPulledListeners.add(cb)
@@ -171,6 +201,11 @@ export class ServerClient {
   /** Append messages to an existing server-side session. No-op if offline. */
   sendSessionPatch(payload: SessionPatchPayload): void {
     this.socket?.emit(SocketEvent.SessionPatch, payload)
+  }
+
+  /** Delete a session server-side (and on the user's other devices). No-op if offline. */
+  sendSessionDelete(payload: SessionDeletePayload): void {
+    this.socket?.emit(SocketEvent.SessionDelete, payload)
   }
 
   private emitConfig(): void {

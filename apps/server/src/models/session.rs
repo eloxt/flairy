@@ -64,6 +64,20 @@ pub struct SessionPatchPayload {
     pub title: Option<String>,
 }
 
+/// Client -> server: delete a session (and its messages) everywhere.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDeletePayload {
+    pub session_id: String,
+}
+
+/// Server -> client: another device deleted a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRemoteDeletePayload {
+    pub session_id: String,
+}
+
 /// Client -> server: pull sessions changed since a watermark (all if omitted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

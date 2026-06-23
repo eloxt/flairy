@@ -1,4 +1,4 @@
-import { ipcMain, dialog, type BrowserWindow } from 'electron'
+import { ipcMain, dialog, Menu, type BrowserWindow } from 'electron'
 import {
   IPC,
   type PromptArgs,
@@ -17,8 +17,10 @@ import {
   type RegisterArgs,
   type AuthStatus,
   type AuthUser,
-  type SearchMessagesArgs
+  type SearchMessagesArgs,
+  type SessionMenuAction
 } from '@shared/ipc'
+import { t } from '../locale'
 import { AgentService } from '../agent/agent-service'
 import type { McpManager } from '../agent/mcp'
 import { approvals } from '../agent/approvals'
@@ -130,6 +132,17 @@ export function registerIpcHandlers(
     })
   })
 
+  // A session deleted on another device: tear down any live service, remove the
+  // local rows, and tell every window to refresh its sidebar.
+  server.onSessionRemoteDelete(({ sessionId }) => {
+    services.get(sessionId)?.dispose()
+    services.delete(sessionId)
+    permissionModes.delete(sessionId)
+    approvals.rejectSession(sessionId)
+    deleteSession(sessionId)
+    broadcast(IPC.SessionsChanged)
+  })
+
   // Sessions pulled in bulk on (re)connect: persist each one locally, then tell
   // every window its session list changed so the sidebar repopulates. This is
   // what brings a user's history back after a relogin on a fresh/stale device.
@@ -238,6 +251,19 @@ export function registerIpcHandlers(
     if (!title) return getSession(args.sessionId) ?? null
     const meta = updateSessionTitle(args.sessionId, title)
     broadcast(IPC.SessionTitleUpdated, { sessionId: args.sessionId, title })
+    // Mirror the new title to the server so a restart/reconnect doesn't pull the
+    // old title back over it. Reuse the existing updatedAt (rename intentionally
+    // doesn't reorder the sidebar) and let the server's patch apply title only.
+    // No-op if offline or if the session was never synced (server patch is
+    // UPDATE-only — and an unsynced session can't be resurrected by a pull).
+    if (meta) {
+      server.sendSessionPatch({
+        sessionId: args.sessionId,
+        appendMessages: [],
+        updatedAt: meta.updatedAt,
+        title
+      })
+    }
     return meta ?? null
   })
 
@@ -250,7 +276,35 @@ export function registerIpcHandlers(
     services.delete(args.sessionId)
     permissionModes.delete(args.sessionId)
     approvals.rejectSession(args.sessionId)
+    server.sendSessionDelete({ sessionId: args.sessionId })
     return deleteSession(args.sessionId)
+  })
+
+
+  // Pop the OS-native right-click menu for a session row and resolve with the
+  // chosen action (or null if dismissed). The renderer performs the action so
+  // the store remains the single source of truth for UI state.
+  ipcMain.handle(IPC.SessionContextMenu, () => {
+    return new Promise<SessionMenuAction | null>((resolve) => {
+      let action: SessionMenuAction | null = null
+      const menu = Menu.buildFromTemplate([
+        {
+          label: t('menu.renameChat'),
+          click: () => {
+            action = 'rename'
+          }
+        },
+        {
+          label: t('menu.deleteChat'),
+          click: () => {
+            action = 'delete'
+          }
+        }
+      ])
+      // `callback` fires once the menu closes — after any item's click handler —
+      // so `action` reflects the selection (or stays null on dismissal).
+      menu.popup({ window: win, callback: () => resolve(action) })
+    })
   })
 
   // Pick a directory with no session yet (home screen). Returns the path (and

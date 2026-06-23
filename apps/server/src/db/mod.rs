@@ -15,7 +15,9 @@ pub mod system_prompt;
 pub mod users;
 
 // Re-export the flat user/session API so existing call sites keep working.
-pub use sessions::{fetch_session, patch_session, pull_sessions, upsert_session};
+pub use sessions::{
+    delete_session, fetch_session, patch_session, pull_sessions, upsert_session,
+};
 pub use users::{create_user, find_user_by_email, upsert_admin};
 
 use chrono::{DateTime, Utc};

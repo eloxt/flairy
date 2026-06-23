@@ -8,5 +8,7 @@ pub const CONFIG_SNAPSHOT: &str = "config:snapshot";
 pub const CONFIG_UPDATED: &str = "config:updated";
 pub const SESSION_UPSERT: &str = "session:upsert";
 pub const SESSION_PATCH: &str = "session:patch";
+pub const SESSION_DELETE: &str = "session:delete";
 pub const SESSION_PULL: &str = "session:pull";
 pub const SESSION_REMOTE: &str = "session:remote";
+pub const SESSION_REMOTE_DELETE: &str = "session:remote-delete";

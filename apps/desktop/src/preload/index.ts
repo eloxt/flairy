@@ -28,6 +28,7 @@ const api: FlairyApi = {
   chooseDirectory: (args) => ipcRenderer.invoke(IPC.SessionChooseDir, args),
   renameSession: (args) => ipcRenderer.invoke(IPC.SessionRename, args),
   deleteSession: (args) => ipcRenderer.invoke(IPC.SessionDelete, args),
+  showSessionMenu: () => ipcRenderer.invoke(IPC.SessionContextMenu),
   pickDirectory: () => ipcRenderer.invoke(IPC.DialogPickDirectory),
   setSecret: (args) => ipcRenderer.invoke(IPC.SecretsSet, args),
   hasSecret: (provider) => ipcRenderer.invoke(IPC.SecretsHas, provider),

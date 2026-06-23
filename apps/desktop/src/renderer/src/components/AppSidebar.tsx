@@ -16,33 +16,26 @@ import {
     SidebarGroupContent,
     SidebarGroupLabel,
     SidebarHeader,
-    SidebarInput,
     SidebarMenu,
-    SidebarMenuAction,
     SidebarMenuButton,
     SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useChat } from "@/store/chat-store";
 import type { SessionMeta } from "@shared/ipc";
-import { CircleX, Plus, Search, Settings, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Plus, Search, Settings } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NavLink, useLocation, useNavigate } from "react-router";
 
 /**
- * Left navigation: New Chat, Search, then the session history.
- * Search toggles an inline input that filters the history by title.
+ * Left navigation: New Chat, Search (its own page at /search), then the session
+ * history. Selecting a chat navigates back to the chat route.
  */
 export function AppSidebar(): React.JSX.Element {
   const { t } = useTranslation();
   const { sessions, sessionId, newChat } = useChat();
-  const [searching, setSearching] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => s.title.toLowerCase().includes(q));
-  }, [sessions, query]);
+  const navigate = useNavigate();
+  const onSearch = useLocation().pathname === "/search";
 
   return (
     <Sidebar className="border-r border-sidebar-border">
@@ -51,7 +44,10 @@ export function AppSidebar(): React.JSX.Element {
           <SidebarMenuItem>
             <SidebarMenuButton
               className="app-no-drag h-9 rounded-lg border border-border bg-card font-medium hover:bg-accent"
-              onClick={() => void newChat()}
+              onClick={() => {
+                void newChat();
+                navigate("/");
+              }}
             >
               <Plus className="size-4" />
               <span>{t('chat.newChat')}</span>
@@ -59,32 +55,15 @@ export function AppSidebar(): React.JSX.Element {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              render={<NavLink to="/search" />}
+              isActive={onSearch}
               className="app-no-drag h-9 rounded-lg text-muted-foreground"
-              isActive={searching}
-              onClick={() => {
-                setSearching((v) => !v);
-                setQuery("");
-              }}
             >
-              {searching ? (
-                <X className="size-4" />
-              ) : (
-                <Search className="size-4" />
-              )}
-              <span>{searching ? t('chat.closeSearch') : t('chat.search')}</span>
+              <Search className="size-4" />
+              <span>{t('chat.search')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-
-        {searching && (
-          <SidebarInput
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('chat.searchPlaceholder')}
-            className="app-no-drag mt-1 rounded-lg"
-          />
-        )}
       </SidebarHeader>
 
       <SidebarContent className="px-1">
@@ -94,12 +73,12 @@ export function AppSidebar(): React.JSX.Element {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {visible.length === 0 ? (
+              {sessions.length === 0 ? (
                 <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                  {query ? t('chat.noMatchingChats') : t('chat.chatsWillAppearHere')}
+                  {t('chat.chatsWillAppearHere')}
                 </p>
               ) : (
-                visible.map((s) => (
+                sessions.map((s) => (
                   <SessionRow key={s.id} s={s} active={s.id === sessionId} />
                 ))
               )}
@@ -126,8 +105,9 @@ export function AppSidebar(): React.JSX.Element {
 }
 
 /**
- * One history row. Hover/focus reveals a ⋯ menu (rename / delete). Renaming
- * swaps the title for an inline input; deleting asks for confirmation first.
+ * One history row. Right-clicking opens the OS-native context menu (Rename /
+ * Delete). Rename swaps the title for an inline input; Delete asks for
+ * confirmation first.
  */
 function SessionRow({
   s,
@@ -137,29 +117,53 @@ function SessionRow({
   active: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const { openSession, deleteSession } = useChat();
+  const { openSession, deleteSession, renameSession } = useChat();
+  const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Enter and blur both fire commit(); this guards against the double-run.
+  const [renaming, setRenaming] = useState(false);
 
+  const commitRename = (value: string): void => {
+    setRenaming(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== s.title) void renameSession(s.id, trimmed);
+  };
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={active}
-        onClick={() => void openSession(s)}
-        className="group/item rounded-lg"
-      >
-        <span className="truncate text-[0.8125rem]">
-          {s.title || t('chat.untitled')}
-        </span>
-      </SidebarMenuButton>
-
-      <SidebarMenuAction
-        showOnHover
-        onClick={(e) => e.stopPropagation()}
-      >
-        <CircleX onClick={() => setConfirmDelete(true)}/>
-      </SidebarMenuAction>
+      {renaming ? (
+        <input
+          autoFocus
+          defaultValue={s.title}
+          aria-label={t("chat.rename")}
+          className="h-8 w-full rounded-lg bg-accent px-2 text-[0.8125rem] outline-none ring-1 ring-ring"
+          onClick={(e) => e.stopPropagation()}
+          onBlur={(e) => commitRename(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename(e.currentTarget.value);
+            else if (e.key === "Escape") setRenaming(false);
+          }}
+        />
+      ) : (
+        <SidebarMenuButton
+          isActive={active}
+          onClick={() => {
+            void openSession(s);
+            navigate("/");
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            void window.api.showSessionMenu().then((action) => {
+              if (action === "delete") setConfirmDelete(true);
+              else if (action === "rename") setRenaming(true);
+            });
+          }}
+          className="group/item rounded-lg"
+        >
+          <span className="truncate text-[0.8125rem]">
+            {s.title || t('chat.untitled')}
+          </span>
+        </SidebarMenuButton>
+      )}
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

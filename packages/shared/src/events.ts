@@ -13,8 +13,10 @@ export const SocketEvent = {
   ConfigUpdated: 'config:updated',
   SessionUpsert: 'session:upsert',
   SessionPatch: 'session:patch',
+  SessionDelete: 'session:delete',
   SessionPull: 'session:pull',
-  SessionRemote: 'session:remote'
+  SessionRemote: 'session:remote',
+  SessionRemoteDelete: 'session:remote-delete'
 } as const
 
 export type SocketEventName = (typeof SocketEvent)[keyof typeof SocketEvent]
@@ -40,6 +42,11 @@ export interface SessionPatchPayload {
   title?: string
 }
 
+/** Client → server: delete a session (and its messages) everywhere. */
+export interface SessionDeletePayload {
+  sessionId: string
+}
+
 /** Client → server: pull sessions changed since a watermark (all if omitted). */
 export interface SessionPullPayload {
   since?: number
@@ -48,17 +55,24 @@ export interface SessionPullPayload {
 /** Server → client: another device changed a session. */
 export type SessionRemotePayload = SessionWithMessages
 
+/** Server → client: another device deleted a session. */
+export interface SessionRemoteDeletePayload {
+  sessionId: string
+}
+
 /* ---------- typed socket.io maps ---------- */
 
 export interface ServerToClientEvents {
   'config:snapshot': (payload: ConfigSnapshot) => void
   'config:updated': (payload: ConfigUpdate) => void
   'session:remote': (payload: SessionRemotePayload) => void
+  'session:remote-delete': (payload: SessionRemoteDeletePayload) => void
 }
 
 export interface ClientToServerEvents {
   'session:upsert': (payload: SessionUpsertPayload, ack?: (ok: boolean) => void) => void
   'session:patch': (payload: SessionPatchPayload, ack?: (ok: boolean) => void) => void
+  'session:delete': (payload: SessionDeletePayload, ack?: (ok: boolean) => void) => void
   'session:pull': (
     payload: SessionPullPayload,
     ack?: (sessions: SessionWithMessages[]) => void

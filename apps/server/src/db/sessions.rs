@@ -179,6 +179,20 @@ pub async fn pull_sessions(
     Ok(out)
 }
 
+/// Delete a session (its messages cascade via the FK) for a user. Scoping the
+/// delete by `user_id` keeps one user from deleting another's session. Returns
+/// whether a row was actually removed (false for an already-gone id).
+pub async fn delete_session(pool: &PgPool, user_id: &str, session_id: &str) -> AppResult<bool> {
+    let uid = parse_uuid(user_id)?;
+    let sid = parse_uuid(session_id)?;
+    let res = sqlx::query("DELETE FROM sessions WHERE id = $1 AND user_id = $2")
+        .bind(sid)
+        .bind(uid)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 /// Fetch a single session with its messages.
 pub async fn fetch_session(
     pool: &PgPool,
