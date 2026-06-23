@@ -24,3 +24,58 @@ export function toolDisplayKey(name: string | undefined): string {
   if (!name) return 'tools.fallback'
   return BUILTIN_KEYS[name] ?? 'tools.fallback'
 }
+
+/**
+ * Map a tool name to a coarse *activity* bucket for the grouped summary line
+ * (e.g. "Read 3 files, ran 2 commands"). Distinct from `toolDisplayKey`: that
+ * labels one call as a verb phrase; this aggregates a run of calls into a
+ * count-pluralized clause. Returns an `activity.*` key stem; unknown / MCP tools
+ * fall into `other`. Keep aligned with BUILTIN_KEYS above.
+ */
+const ACTIVITY_BUCKETS: Record<string, string> = {
+  read: 'read',
+  write: 'write',
+  edit: 'edit',
+  bash: 'bash',
+  grep: 'grep',
+  find: 'find',
+  ls: 'ls'
+}
+
+/** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */
+export function toolBucket(name: string | undefined): string {
+  if (!name) return 'other'
+  return ACTIVITY_BUCKETS[name] ?? 'other'
+}
+
+/**
+ * The single most telling argument of a tool call, for the expanded tool row —
+ * the file a read/write/edit touched, the directory an ls listed, the pattern a
+ * grep/find searched, the command bash ran. Returns a trimmed string, or
+ * `undefined` when there's nothing worth showing (so the label stands alone).
+ *
+ * Called from both the live stream (`tool_execution_start.args`) and replay
+ * (a pi `toolCall` part's `arguments`), so a watched run and its reload show the
+ * same hint. Kept separate from `toolDisplayKey` because this is the raw value
+ * (a path / pattern / command), not a translated label.
+ */
+export function toolArgSummary(name: string | undefined, args: unknown): string | undefined {
+  if (!args || typeof args !== 'object') return undefined
+  const a = args as Record<string, unknown>
+  const str = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() ? v.trim() : undefined
+  switch (name) {
+    case 'read':
+    case 'write':
+    case 'edit':
+    case 'ls':
+      return str(a.path)
+    case 'bash':
+      return str(a.command)
+    case 'grep':
+    case 'find':
+      return str(a.pattern)
+    default:
+      return undefined
+  }
+}

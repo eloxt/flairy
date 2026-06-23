@@ -7,7 +7,7 @@ import type {
   PermissionMode,
   SessionMeta
 } from '@shared/ipc'
-import { toolDisplayKey } from '@/lib/tool-display'
+import { toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
 import i18n from '@/i18n'
 
 /** A rendered chat message in the UI (distinct from pi's internal messages). */
@@ -15,6 +15,13 @@ export interface UiMessage {
   id: string
   role: 'user' | 'assistant' | 'tool'
   text: string
+  /**
+   * For `assistant` messages: the model's reasoning ("thinking") for this turn,
+   * accumulated from `thinking_delta` events (live) or the persisted `thinking`
+   * content parts (replay). Shown in a collapsible block above the answer; kept
+   * separate from `text` so reasoning never folds into the answer body.
+   */
+  thinking?: string
   toolName?: string
   isError?: boolean
   streaming?: boolean
@@ -24,6 +31,27 @@ export interface UiMessage {
    * is a localized placeholder that would otherwise have to be string-matched).
    */
   running?: boolean
+  /**
+   * For `tool` messages: the call's most telling argument (file path, search
+   * pattern, command…) shown after the label in the expanded row. Derived by
+   * `toolArgSummary` from the same args on both the live stream and replay.
+   */
+  toolArg?: string
+  /**
+   * For `tool` messages: the id of the assistant turn that issued this call.
+   * Tool calls in the same turn (a parallel batch) share it, so the UI folds
+   * them into one group. Derived identically by the live stream (from the
+   * turn's `message_start`) and by replay (from the owning pi assistant
+   * message's id), keeping a watched session and its reload in sync.
+   */
+  batchId?: string
+  /**
+   * Index of the persisted pi message this bubble came from (in the session's
+   * messages[] array). All sub-bubbles of one assistant turn share it. Used by
+   * full-text search to jump to the matching turn — persisted pi messages carry
+   * no stable id, so the array position is the locator.
+   */
+  sourceIndex?: number
 }
 
 interface ChatState {
@@ -42,11 +70,28 @@ interface ChatState {
   pendingCwd: string | null
   /** Previously-used working directories, newest first; fills the directory menu. */
   recentDirs: string[]
+  /**
+   * A message index (in the open session's messages[]) that `MessageList` should
+   * scroll to once, set when jumping from a search hit; null otherwise. The list
+   * consumes it via `clearPendingScroll` after scrolling.
+   */
+  pendingScrollIndex: number | null
 
   init: () => () => void
   loadSessions: () => Promise<SessionMeta[]>
-  openSession: (meta: SessionMeta) => Promise<void>
-  newChat: () => Promise<void>
+  /**
+   * Open a session. Pass `msgIndex` (a search hit's target) to queue a scroll to
+   * that message turn; omit it for a plain open, which clears any stale target.
+   */
+  openSession: (meta: SessionMeta, msgIndex?: number) => Promise<void>
+  /** Clear the queued scroll target (called by MessageList after scrolling). */
+  clearPendingScroll: () => void
+  /**
+   * Return to the home screen. By default the working directory in effect
+   * (`selectCwd`) carries over so the next chat opens where this one left off;
+   * pass an explicit `cwd` to start elsewhere, or `null` to reset to home.
+   */
+  newChat: (cwd?: string | null) => Promise<void>
   send: (text: string, attachments?: Attachment[]) => Promise<void>
   abort: () => void
   respondApproval: (approvalId: string, approved: boolean, scope?: ApprovalScope) => void
@@ -58,6 +103,14 @@ interface ChatState {
   deleteSession: (sessionId: string) => Promise<void>
 }
 
+/**
+ * The working directory in effect right now: an open session's persisted cwd,
+ * otherwise the pending pick that the next session will inherit. Single source
+ * for "where are we?" — used as a `useChat` selector and to seed `newChat`.
+ */
+export const selectCwd = (s: ChatState): string | null =>
+  s.sessionId ? (s.sessions.find((m) => m.id === s.sessionId)?.cwd ?? s.pendingCwd) : s.pendingCwd
+
 export const useChat = create<ChatState>((set, get) => ({
   sessionId: null,
   sessions: [],
@@ -66,6 +119,7 @@ export const useChat = create<ChatState>((set, get) => ({
   approvalQueue: [],
   permissionMode: 'ask',
   pendingCwd: null,
+  pendingScrollIndex: null,
   recentDirs: [],
 
   /** Subscribe to the main-process event stream. Call once on mount. */
@@ -87,9 +141,18 @@ export const useChat = create<ChatState>((set, get) => ({
     // newest pulled session so a relogin lands straight on the user's history.
     const offSessions = window.api.onSessionsChanged(() => {
       void (async () => {
+        const hadSession = !!get().sessionId
         const sessions = await get().loadSessions()
         console.log('[sync] SessionsChanged → reloaded', sessions.length, 'session(s)')
-        if (!get().sessionId && sessions[0]) await get().openSession(sessions[0])
+        const current = get().sessionId
+        if (current && !sessions.some((x) => x.id === current)) {
+          // The open session was deleted elsewhere — drop back to the home
+          // screen rather than render a now-orphaned conversation.
+          set({ sessionId: null, messages: [], running: false })
+        } else if (!hadSession && sessions[0]) {
+          // Fresh pull with nothing open (e.g. relogin) — surface newest history.
+          await get().openSession(sessions[0])
+        }
       })()
     })
     return () => {
@@ -107,32 +170,40 @@ export const useChat = create<ChatState>((set, get) => ({
     return sessions
   },
 
-  openSession: async (meta) => {
+  openSession: async (meta, msgIndex) => {
+    liveBatchId = null
     const { messages } = await window.api.loadSession(meta.id)
     // Permission mode is per-session and in-memory; a freshly opened session
-    // starts at 'ask' (mirrors the main-process AgentService default).
+    // starts at 'ask' (mirrors the main-process AgentService default). Set the
+    // scroll target only for a search jump (msgIndex >= 0); a plain open clears
+    // any stale target so it can't fire on an unrelated session.
     set({
       sessionId: meta.id,
       messages: hydrateMessages(messages),
       running: false,
       permissionMode: 'ask',
-      pendingCwd: null
+      pendingCwd: null,
+      pendingScrollIndex: typeof msgIndex === 'number' && msgIndex >= 0 ? msgIndex : null
     })
   },
+
+  clearPendingScroll: () => set({ pendingScrollIndex: null }),
 
   /**
    * Return to the home screen (no active session, empty thread). We deliberately
    * do NOT create a session here — that happens lazily on the first `send`, so
    * clicking "New chat" repeatedly never litters the history with empty chats.
    */
-  newChat: async () => {
-    set({
+  newChat: async (cwd) => {
+    liveBatchId = null
+    set((s) => ({
       sessionId: null,
       messages: [],
       running: false,
       permissionMode: 'ask',
-      pendingCwd: null
-    })
+      // Inherit the directory in effect by default; an explicit arg overrides.
+      pendingCwd: cwd === undefined ? selectCwd(s) : cwd
+    }))
   },
 
   send: async (text, attachments) => {
@@ -258,6 +329,15 @@ export const useChat = create<ChatState>((set, get) => ({
   }
 }))
 
+/**
+ * The id of the assistant turn currently streaming. Set from each turn's
+ * `message_start` (and defensively from `message_end`), then stamped onto the
+ * tool calls that turn issues so a parallel batch shares one `batchId`. The loop
+ * is sequential per turn, so a single tracked id is unambiguous. Reset on
+ * session open / new chat so it never bleeds across sessions.
+ */
+let liveBatchId: string | null = null
+
 /** Fold a streamed agent event into UI message state. */
 function applyEvent(
   set: (fn: (s: ChatState) => Partial<ChatState>) => void,
@@ -271,21 +351,41 @@ function applyEvent(
     case 'agent_start':
       set(() => ({ running: true }))
       break
-    case 'message_update':
+    case 'message_start':
+      // New turn → new batch for the tool calls it's about to issue.
+      liveBatchId = e.messageId || crypto.randomUUID()
+      break
+    case 'message_update': {
+      // text deltas carry the visible body, thinking deltas the reasoning stream;
+      // both belong to the same streaming assistant bubble. A toolcall delta has
+      // neither and must not spawn a blank bubble.
+      const td = e.thinkingDelta ?? ''
+      if (!e.delta && !td) break
       set((s) => {
         const last = s.messages[s.messages.length - 1]
         if (last?.role === 'assistant' && last.streaming) {
-          const updated = { ...last, text: last.text + e.delta }
+          const updated = {
+            ...last,
+            text: e.delta ? last.text + e.delta : last.text,
+            thinking: td ? (last.thinking ?? '') + td : last.thinking
+          }
           return { messages: [...s.messages.slice(0, -1), updated] }
         }
         return {
           messages: [
             ...s.messages,
-            { id: e.messageId || crypto.randomUUID(), role: 'assistant', text: e.delta, streaming: true }
+            {
+              id: e.messageId || crypto.randomUUID(),
+              role: 'assistant',
+              text: e.delta ?? '',
+              thinking: td || undefined,
+              streaming: true
+            }
           ]
         }
       })
       break
+    }
     case 'message_end':
       // pi emits message_end for the user prompt too; only assistant turns echo.
       if (e.role !== 'assistant') {
@@ -294,20 +394,33 @@ function applyEvent(
         }))
         break
       }
+      // Defensive: ensure the batch id is set even if message_start was missed.
+      if (e.messageId) liveBatchId = e.messageId
       set((s) => {
         const last = s.messages[s.messages.length - 1]
-        // Finalize the streamed bubble with the authoritative full text…
+        // Finalize the streamed bubble with the authoritative full text +
+        // reasoning (deltas win; fall back to the end payload if they were empty).
         if (last?.role === 'assistant' && last.streaming) {
-          const finalized = { ...last, text: e.text || last.text, streaming: false }
+          const finalized = {
+            ...last,
+            text: e.text || last.text,
+            thinking: last.thinking || e.thinking || undefined,
+            streaming: false
+          }
           return { messages: [...s.messages.slice(0, -1), finalized] }
         }
         // …or build it now if deltas never produced a visible bubble
         // (non-streaming response, empty/garbled deltas).
-        if (e.text) {
+        if (e.text || e.thinking) {
           return {
             messages: [
               ...s.messages,
-              { id: e.messageId || crypto.randomUUID(), role: 'assistant', text: e.text }
+              {
+                id: e.messageId || crypto.randomUUID(),
+                role: 'assistant',
+                text: e.text ?? '',
+                thinking: e.thinking || undefined
+              }
             ]
           }
         }
@@ -323,7 +436,9 @@ function applyEvent(
             role: 'tool',
             toolName: e.name,
             text: i18n.t('chat.toolRunning', { tool: i18n.t(toolDisplayKey(e.name)) }),
-            running: true
+            running: true,
+            toolArg: toolArgSummary(e.name, e.args),
+            batchId: liveBatchId ?? e.toolCallId
           }
         ]
       }))
@@ -364,45 +479,111 @@ function summarizeResult(result: unknown): string {
  *   - user / assistant text -> a single bubble
  *   - each assistant toolCall -> a tool bubble keyed by the call id…
  *   - …whose text is filled in by the matching toolResult message
- * Thinking parts are dropped (they never reach the rendered body live either).
+ *   - a turn's `thinking` parts -> attached to its first assistant bubble (or a
+ *     standalone reasoning-only bubble for a tools-only turn), mirroring how the
+ *     live stream stamps reasoning onto the streaming bubble.
  */
 function hydrateMessages(raw: unknown[]): UiMessage[] {
   const out: UiMessage[] = []
   const toolBubbles = new Map<string, UiMessage>()
 
-  for (const item of raw) {
+  for (let i = 0; i < raw.length; i++) {
+    const item = raw[i]
     const m = item as {
       id?: string
       role?: string
       content?: unknown
       toolCallId?: string
       toolName?: string
+      isError?: boolean
     }
     switch (m.role) {
       case 'user': {
         const text = partsToText(m.content)
-        if (text) out.push({ id: m.id ?? crypto.randomUUID(), role: 'user', text })
+        if (text) out.push({ id: m.id ?? crypto.randomUUID(), role: 'user', text, sourceIndex: i })
         break
       }
       case 'assistant': {
+        // Walk the content parts in order, mirroring the live stream's bubble
+        // rule (applyEvent): consecutive text accumulates into one bubble, and a
+        // tool call breaks it — so text that sits *between* two tool calls keeps
+        // them in separate render groups. Front-loading all text then all tools
+        // would regroup the tools and make a replayed session look different
+        // from the one watched live.
+        // The message id is the batch id every tool call in this turn shares —
+        // the same value the live stream stamps from this turn's message_start —
+        // so a parallel batch folds into one group identically on replay.
         const parts = Array.isArray(m.content) ? m.content : []
-        const text = partsToText(parts)
-        if (text) out.push({ id: m.id ?? crypto.randomUUID(), role: 'assistant', text })
+        const batchId = m.id ?? crypto.randomUUID()
+        // The whole turn's reasoning, attached to the first assistant bubble below.
+        const turnThinking = parts
+          .filter((p) => isPart(p, 'thinking'))
+          .map((p) => String((p as { thinking?: unknown }).thinking ?? ''))
+          .join('')
+        const hasText = parts.some(
+          (p) => isPart(p, 'text') && String((p as { text?: unknown }).text ?? '').trim()
+        )
+        // Tools-only (or empty) turn with reasoning: emit a standalone reasoning
+        // bubble before the tool calls, matching the live thinking-only bubble.
+        if (turnThinking && !hasText) {
+          out.push({ id: batchId, role: 'assistant', text: '', thinking: turnThinking, sourceIndex: i })
+        }
+        let buf = ''
+        let textIdx = 0
+        const flushText = (): void => {
+          if (!buf) return
+          const id = textIdx === 0 ? batchId : `${batchId}-t${textIdx}`
+          out.push({
+            id,
+            role: 'assistant',
+            text: buf,
+            // Reasoning rides on the first text bubble of the turn.
+            thinking: textIdx === 0 ? turnThinking || undefined : undefined,
+            sourceIndex: i
+          })
+          textIdx++
+          buf = ''
+        }
         for (const p of parts) {
-          if (isPart(p, 'toolCall')) {
-            const call = p as { id: string; name: string }
-            const bubble: UiMessage = { id: call.id, role: 'tool', toolName: call.name, text: '' }
+          if (isPart(p, 'text')) {
+            buf += String((p as { text?: unknown }).text ?? '')
+          } else if (isPart(p, 'toolCall')) {
+            flushText()
+            const call = p as { id: string; name: string; arguments?: unknown }
+            const bubble: UiMessage = {
+              id: call.id,
+              role: 'tool',
+              toolName: call.name,
+              text: '',
+              toolArg: toolArgSummary(call.name, call.arguments),
+              batchId
+            }
             toolBubbles.set(call.id, bubble)
             out.push(bubble)
           }
         }
+        flushText()
         break
       }
       case 'toolResult': {
         const text = partsToText(m.content) || i18n.t('chat.toolDone')
         const existing = m.toolCallId ? toolBubbles.get(m.toolCallId) : undefined
-        if (existing) existing.text = text
-        else out.push({ id: m.toolCallId ?? crypto.randomUUID(), role: 'tool', toolName: m.toolName, text })
+        if (existing) {
+          existing.text = text
+          // Carry the persisted error flag so a failed call stays red on replay,
+          // mirroring the live stream's tool_execution_end (isError: e.isError).
+          existing.isError = Boolean(m.isError)
+        }
+        // An orphan result (no matching call) stands alone in its own batch.
+        else
+          out.push({
+            id: m.toolCallId ?? crypto.randomUUID(),
+            role: 'tool',
+            toolName: m.toolName,
+            text,
+            isError: Boolean(m.isError),
+            batchId: m.toolCallId ?? crypto.randomUUID()
+          })
         break
       }
     }

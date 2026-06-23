@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type { Attachment, PermissionMode } from "@shared/ipc";
 import { cn } from "@/lib/utils";
-import { useChat } from "@/store/chat-store";
+import { useChat, selectCwd } from "@/store/chat-store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -36,7 +36,7 @@ interface PendingAttachment {
 }
 
 /** Read an image File into the wire Attachment shape (raw base64, no prefix). */
-function readAsAttachment(file: File): Promise<PendingAttachment> {
+function readAsAttachment(file: File, fallbackName?: string): Promise<PendingAttachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -45,7 +45,7 @@ function readAsAttachment(file: File): Promise<PendingAttachment> {
       const data = result.slice(result.indexOf(",") + 1);
       resolve({
         attachment: { type: "image", data, mimeType: file.type },
-        name: file.name,
+        name: file.name || fallbackName || "image",
         size: file.size,
       });
     };
@@ -90,22 +90,16 @@ export function Composer(): React.JSX.Element {
     send,
     abort,
     running,
-    sessions,
-    sessionId,
     permissionMode,
     setPermissionMode,
     setWorkingDirectory,
-    pendingCwd,
     recentDirs,
     loadRecentDirs,
     chooseWorkingDirectory,
   } = useChat();
 
-  // With a session open, show its persisted cwd; on the home screen, show the
-  // pending pick (if any) that the next session will inherit.
-  const cwd = sessionId
-    ? sessions.find((s) => s.id === sessionId)?.cwd
-    : (pendingCwd ?? undefined);
+  // The directory in effect (open session's, or the pending pick on home).
+  const cwd = useChat(selectCwd) ?? undefined;
 
   // Publish the composer's live height so the message list can reserve matching
   // bottom space and never let content hide behind the floating composer.
@@ -148,7 +142,29 @@ export function Composer(): React.JSX.Element {
     e.target.value = "";
     if (files.length === 0) return;
     // Await every read before adding chips so submit can't race ahead.
-    const next = await Promise.all(files.map(readAsAttachment));
+    const next = await Promise.all(files.map((f) => readAsAttachment(f)));
+    setAttachments((a) => [...a, ...next]);
+  };
+
+  // Pull image files out of a clipboard paste and add them as attachments.
+  const onPaste = async (
+    e: React.ClipboardEvent<HTMLTextAreaElement>,
+  ): Promise<void> => {
+    const images = Array.from(e.clipboardData.files).filter((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (images.length === 0) return;
+    // Keep the pasted image out of the text box (it would insert nothing useful).
+    e.preventDefault();
+    // Clipboard images come without a filename; synthesize one per image.
+    const next = await Promise.all(
+      images.map((f, i) =>
+        readAsAttachment(
+          f,
+          `pasted-image-${i + 1}.${f.type.split("/")[1] || "png"}`,
+        ),
+      ),
+    );
     setAttachments((a) => [...a, ...next]);
   };
 
@@ -211,6 +227,7 @@ export function Composer(): React.JSX.Element {
                   submit();
                 }
               }}
+              onPaste={(e) => void onPaste(e)}
               placeholder={t('composer.placeholder')}
               rows={1}
               className="block max-h-50 w-full resize-none bg-transparent px-4 py-3.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
