@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# electron-builder needs to create the GitHub Release and upload assets
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Installs all workspaces; desktop's postinstall runs electron-rebuild
+      # to rebuild better-sqlite3 against the Electron ABI for this platform.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # @flairy/desktop imports @flairy/shared's dist output, so build it first.
+      - name: Build shared package
+        run: pnpm --filter @flairy/shared build
+
+      # electron-vite build (main/preload/renderer) is invoked by the
+      # package script before electron-builder runs.
+      - name: Build & publish ${{ matrix.platform }}
+        run: pnpm --filter @flairy/desktop exec electron-builder --${{ matrix.platform }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No signing certificate is configured yet — skip auto code-signing
+          # so the build doesn't fail looking for an identity in the keychain.
+          # Remove this and add CSC_LINK / CSC_KEY_PASSWORD (+ Apple notarization
+          # secrets) once you have certificates.
+          CSC_IDENTITY_AUTO_DISCOVERY: false

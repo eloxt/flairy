@@ -9,6 +9,11 @@
   "build": {
     "appId": "com.eloxt.flairy",
     "productName": "Flairy",
+    "publish": {
+      "provider": "github",
+      "owner": "eloxt",
+      "repo": "flairy"
+    },
     "mac": {
       "target": [
         {

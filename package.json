@@ -9,7 +9,8 @@
     "build:shared": "pnpm --filter @flairy/shared build",
     "dev": "pnpm --filter @flairy/desktop dev",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm --filter @flairy/shared build && pnpm --filter @flairy/desktop build"
+    "build": "pnpm --filter @flairy/shared build && pnpm --filter @flairy/desktop build",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
