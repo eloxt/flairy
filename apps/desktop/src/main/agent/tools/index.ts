@@ -6,6 +6,7 @@ import { createBashTool } from './bash'
 import { createGrepTool } from './grep'
 import { createFindTool } from './find'
 import { createLsTool } from './ls'
+import { skillsRoot } from '../skill-materializer'
 
 export { createReadTool, createWriteTool, createEditTool, createBashTool, createGrepTool, createFindTool, createLsTool }
 
@@ -37,13 +38,19 @@ export function isReadOnlyTool(name: string): boolean {
  * tools inside a real sandbox (Docker) rather than trusting these checks alone.
  */
 export function createTools(cwd: string): AgentTool<any>[] {
+  // The materialized skills directory lives outside the session cwd (under
+  // userData). Expose it to the read-only tools as an extra allowed root so the
+  // agent can open SKILL.md (and a skill's scripts/assets) for progressive
+  // disclosure, regardless of which working directory the session uses. Mutating
+  // tools (write/edit/bash) stay confined to cwd.
+  const extraReadRoots = [skillsRoot()]
   return [
-    createReadTool(cwd),
+    createReadTool(cwd, extraReadRoots),
     createWriteTool(cwd),
     createEditTool(cwd),
     createBashTool(cwd),
-    createGrepTool(cwd),
-    createFindTool(cwd),
-    createLsTool(cwd)
+    createGrepTool(cwd, extraReadRoots),
+    createFindTool(cwd, extraReadRoots),
+    createLsTool(cwd, extraReadRoots)
   ]
 }

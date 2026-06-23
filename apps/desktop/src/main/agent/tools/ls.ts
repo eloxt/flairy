@@ -2,7 +2,7 @@ import { readdir as fsReaddir, stat as fsStat } from 'node:fs/promises'
 import nodePath from 'node:path'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { pathExists, resolveToCwd } from './paths'
+import { pathExists, resolveWithinRoots } from './paths'
 import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from './truncate'
 
 /**
@@ -12,7 +12,7 @@ import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from './truncate'
 
 const DEFAULT_LIMIT = 500
 
-export function createLsTool(cwd: string): AgentTool<any> {
+export function createLsTool(cwd: string, extraRoots: string[] = []): AgentTool<any> {
   return {
     name: 'ls',
     label: 'ls',
@@ -24,7 +24,7 @@ export function createLsTool(cwd: string): AgentTool<any> {
     executionMode: 'parallel',
     execute: async (_id, { path, limit }: any, signal) => {
       if (signal?.aborted) throw new Error('Operation aborted')
-      const dirPath = resolveToCwd(path || '.', cwd)
+      const dirPath = resolveWithinRoots(path || '.', cwd, extraRoots)
       const effectiveLimit = limit ?? DEFAULT_LIMIT
 
       if (!(await pathExists(dirPath))) {

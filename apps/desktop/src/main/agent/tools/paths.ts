@@ -20,6 +20,12 @@ export function expandPath(filePath: string): string {
   return filePath
 }
 
+/** True when `abs` is `root` itself or nested anywhere beneath it. */
+function isWithin(abs: string, root: string): boolean {
+  const rel = relative(root, abs)
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+}
+
 /**
  * Resolve a path relative to `cwd` and enforce that it stays inside `cwd`.
  * Throws if the resolved path escapes the working directory.
@@ -27,11 +33,27 @@ export function expandPath(filePath: string): string {
 export function resolveToCwd(filePath: string, cwd: string): string {
   const expanded = expandPath(filePath)
   const abs = isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded)
-  const rel = relative(cwd, abs)
-  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+  if (!isWithin(abs, cwd)) {
     throw new Error(`Path escapes the working directory: ${filePath}`)
   }
   return abs
+}
+
+/**
+ * Like `resolveToCwd`, but additionally permits paths that fall inside any of
+ * `extraRoots` (read-only roots outside the session cwd, e.g. the materialized
+ * skills directory). Relative paths still resolve against `cwd`; absolute paths
+ * are accepted as long as they land in `cwd` OR one of the extra roots. Used by
+ * the read-only tools (read/grep/find/ls) so the agent can open skill files for
+ * progressive disclosure regardless of which working directory the session uses.
+ */
+export function resolveWithinRoots(filePath: string, cwd: string, extraRoots: string[] = []): string {
+  const expanded = expandPath(filePath)
+  const abs = isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded)
+  if (isWithin(abs, cwd) || extraRoots.some((root) => isWithin(abs, root))) {
+    return abs
+  }
+  throw new Error(`Path escapes the working directory: ${filePath}`)
 }
 
 export async function pathExists(filePath: string): Promise<boolean> {

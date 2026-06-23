@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { resolveToCwd } from './paths'
+import { resolveWithinRoots } from './paths'
 import { resolveBinary } from './binaries'
 import {
   DEFAULT_MAX_BYTES,
@@ -26,7 +26,7 @@ import {
 
 const DEFAULT_LIMIT = 100
 
-export function createGrepTool(cwd: string): AgentTool<any> {
+export function createGrepTool(cwd: string, extraRoots: string[] = []): AgentTool<any> {
   return {
     name: 'grep',
     label: 'grep',
@@ -66,7 +66,7 @@ export function createGrepTool(cwd: string): AgentTool<any> {
 
         void (async () => {
           try {
-            const searchPath = resolveToCwd(searchDir || '.', cwd)
+            const searchPath = resolveWithinRoots(searchDir || '.', cwd, extraRoots)
             let isDirectory: boolean
             try {
               isDirectory = (await fsStat(searchPath)).isDirectory()

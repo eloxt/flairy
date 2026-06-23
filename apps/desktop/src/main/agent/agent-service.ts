@@ -16,7 +16,7 @@ import {
 import { createTools, isReadOnlyTool } from "./tools";
 import type { McpManager } from "./mcp";
 import { approvals } from "./approvals";
-import { readSkillFragments } from "./skill-materializer";
+import { listMaterializedSkills, skillsRoot } from "./skill-materializer";
 import { saveMessages, getSession, updateSessionTitle } from "../store/db";
 import type { ServerClient } from "../sync/server-client";
 
@@ -265,8 +265,7 @@ export class AgentService {
     this.titleGenerated = true; // guard re-entry even if this throws
     const config = this.server.getConfig();
     const meta = getSession(this.sessionId);
-    // Only title a fresh, still-default session.
-    if (!config || !meta || meta.title !== "New session") return;
+    if (!config || !meta) return;
     const sysPrompt = findTitlePrompt(config);
     if (!sysPrompt) return; // strictly server-driven: no prompt → no title
     const llm = config.llm.tool ?? config.llm.main;
@@ -379,11 +378,16 @@ export class AgentService {
 }
 
 /**
- * Concatenate the base prompt with every enabled skill's materialized SKILL.md
- * body. The config snapshot only carries lightweight `SkillSummary` rows (no
- * body), so we read the composed bodies straight from the materialized SKILL.md
- * files on disk (via the manifest). A skill present in the snapshot but not yet
- * materialized (e.g. its fetch failed/offline) is simply skipped.
+ * Assemble the agent system prompt: the configured base prompt followed by a
+ * `<skills_instructions>` block that ADVERTISES the available skills (name +
+ * description + on-disk path) rather than inlining their bodies.
+ *
+ * The config snapshot only carries lightweight `SkillSummary` rows (no body),
+ * and skills can be large — so instead of pasting every SKILL.md into the
+ * prompt, we follow progressive disclosure: list each materialized skill and let
+ * the model `read` the SKILL.md on demand when a task matches. The skills dir is
+ * exposed to the read-only tools as an extra root (see tools/index.ts), so the
+ * `r0`-aliased paths below are readable regardless of the session cwd.
  */
 function buildSystemPrompt(config: ConfigSnapshot): string {
   // Server-configured prompts (already ordered) form the base; fall back to the
@@ -396,14 +400,45 @@ function buildSystemPrompt(config: ConfigSnapshot): string {
   const base =
     agentPrompts.length > 0 ? agentPrompts.join("\n\n") : BASE_SYSTEM_PROMPT;
 
-  const enabledIds = new Set(
-    config.skills.filter((s) => s.enabled).map((s) => s.id),
+  const skillsBlock = buildSkillsInstructions(config);
+  return [base, skillsBlock].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Build the `<skills_instructions>` block, or "" when no skill is available.
+ * Cross-references the snapshot (for each enabled skill's description) with the
+ * skills actually materialized on disk (so we never advertise a path the agent
+ * can't read). Skill bodies are NOT included — only name, description, and the
+ * `r0`-aliased SKILL.md path the agent reads on demand.
+ */
+function buildSkillsInstructions(config: ConfigSnapshot): string {
+  const descById = new Map(
+    config.skills.filter((s) => s.enabled).map((s) => [s.id, s.description]),
   );
-  const fragments = readSkillFragments()
-    .filter((s) => s.enabled && enabledIds.has(s.id))
-    .map((s) => s.body.trim())
-    .filter(Boolean);
-  return [base, ...fragments].join("\n\n");
+  const available = listMaterializedSkills().filter((s) => descById.has(s.id));
+  if (available.length === 0) return "";
+
+  const entries = available
+    .map((s) => {
+      const desc = (descById.get(s.id) ?? "").replace(/\s+/g, " ").trim();
+      return `- ${s.name}: ${desc} (file: r0/${s.name}/SKILL.md)`;
+    })
+    .join("\n");
+
+  return `<skills_instructions>
+## Skills
+A skill is a set of instructions to follow that is stored in a \`SKILL.md\` file. Below is the list of skills available this session. Each entry has a name, a description, and a short path that expands into an absolute path using the skill root below.
+### Skill root
+- \`r0\` = \`${skillsRoot()}\`
+### Available skills
+${entries}
+### How to use skills
+- Trigger: if the user names a skill, or the task clearly matches a skill's description above, use that skill for that turn. If several apply, pick the minimal set that covers the request.
+- Progressive disclosure: after deciding to use a skill, expand its \`r0\` short path into an absolute path and \`read\` the whole \`SKILL.md\` before taking task actions. Do not act on a skill you have not read.
+- Relative paths inside a \`SKILL.md\` (e.g. \`scripts/foo.py\`, \`references/\`, \`assets/\`) resolve against that skill's own directory. Prefer running or reusing a skill's scripts/assets over rewriting them.
+- Context hygiene: only read the skill files relevant to the current task; don't load unrelated references.
+- Fallback: if a skill can't be applied cleanly (missing files, unclear instructions), say so briefly and continue with the best alternative.
+</skills_instructions>`;
 }
 
 /**

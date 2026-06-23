@@ -3,7 +3,7 @@ import { access, readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { resolveToCwd } from './paths'
+import { resolveWithinRoots } from './paths'
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from './truncate'
 
 /**
@@ -25,7 +25,7 @@ const IMAGE_MIME: Record<string, string> = {
 }
 const MAX_INLINE_IMAGE_BYTES = 3 * 1024 * 1024
 
-export function createReadTool(cwd: string): AgentTool<any> {
+export function createReadTool(cwd: string, extraRoots: string[] = []): AgentTool<any> {
   return {
     name: 'read',
     label: 'read',
@@ -38,7 +38,7 @@ export function createReadTool(cwd: string): AgentTool<any> {
     executionMode: 'parallel',
     execute: async (_id, { path, offset, limit }: any, signal) => {
       if (signal?.aborted) throw new Error('Operation aborted')
-      const absolutePath = resolveToCwd(path, cwd)
+      const absolutePath = resolveWithinRoots(path, cwd, extraRoots)
       await access(absolutePath, constants.R_OK)
 
       const mimeType = IMAGE_MIME[extname(absolutePath).toLowerCase()]

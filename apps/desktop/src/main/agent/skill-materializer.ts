@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { join, dirname } from 'node:path'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import type { SkillConfig, SkillFile, SkillSummary } from '@flairy/shared'
 
 /**
@@ -32,7 +32,7 @@ interface ManifestEntry {
 }
 
 /** Root directory holding every materialized skill, one subdir per skill name. */
-function skillsRoot(): string {
+export function skillsRoot(): string {
   return join(app.getPath('userData'), 'skills')
 }
 
@@ -122,27 +122,17 @@ export async function materializeSkills(
 }
 
 /**
- * Read the materialized skills' SKILL.md bodies straight from disk for system
- * prompt assembly. Synchronous so `buildSystemPrompt` can stay sync; the
- * frontmatter is stripped so only the skill body is returned.
+ * List the skills that are ENABLED and actually materialized on disk (their
+ * SKILL.md exists). Used to build the `<skills_instructions>` block in the
+ * system prompt: progressive disclosure means we only advertise a skill's
+ * name/path and let the agent read the body on demand via the read tool, so a
+ * skill present in the snapshot but not yet fetched (e.g. offline) is omitted.
+ * Synchronous so `buildSystemPrompt` can stay sync.
  */
-export function readSkillFragments(): Array<{ id: string; enabled: boolean; body: string }> {
-  return readManifest().map((entry) => {
-    if (!entry.enabled) return { id: entry.id, enabled: false, body: '' }
-    let body = ''
-    try {
-      const md = readFileSync(join(skillDir(entry.name), 'SKILL.md'), 'utf8')
-      body = stripFrontmatter(md)
-    } catch {
-      // Not materialized / unreadable (e.g. fetch failed offline) → skip it.
-    }
-    return { id: entry.id, enabled: true, body }
-  })
-}
-
-/** Strip a leading `---`-delimited YAML frontmatter block, returning the body. */
-function stripFrontmatter(md: string): string {
-  return md.replace(/^---\n[\s\S]*?\n---\n?/, '').trim()
+export function listMaterializedSkills(): Array<{ id: string; name: string }> {
+  return readManifest()
+    .filter((entry) => entry.enabled && existsSync(join(skillDir(entry.name), 'SKILL.md')))
+    .map((entry) => ({ id: entry.id, name: entry.name }))
 }
 
 async function rmDir(dir: string): Promise<void> {

@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline'
 import path from 'node:path'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { pathExists, resolveToCwd } from './paths'
+import { pathExists, resolveWithinRoots } from './paths'
 import { resolveBinary } from './binaries'
 import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from './truncate'
 
@@ -25,7 +25,7 @@ function toPosixPath(value: string): string {
   return value.split(path.sep).join('/')
 }
 
-export function createFindTool(cwd: string): AgentTool<any> {
+export function createFindTool(cwd: string, extraRoots: string[] = []): AgentTool<any> {
   return {
     name: 'find',
     label: 'find',
@@ -62,7 +62,7 @@ export function createFindTool(cwd: string): AgentTool<any> {
 
         void (async () => {
           try {
-            const searchPath = resolveToCwd(searchDir || '.', cwd)
+            const searchPath = resolveWithinRoots(searchDir || '.', cwd, extraRoots)
             const effectiveLimit = limit ?? DEFAULT_LIMIT
 
             if (!(await pathExists(searchPath))) {
