@@ -8,6 +8,10 @@
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
+    // The renderer is bundled by Vite; use Bundler resolution (matches
+    // tsconfig.node.json) so deps with an `exports` map (e.g. react-router v8)
+    // resolve. The electron-toolkit base sets the classic "node" resolver.
+    "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/renderer/src/*"],

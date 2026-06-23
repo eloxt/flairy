@@ -270,7 +270,9 @@ export function registerIpcHandlers(
   // Delete a session locally. Tear the live service down fully (dispose, not
   // abort) so a late terminal event can't re-persist messages, settle any
   // pending approval for it, drop its permission posture, then remove the rows.
-  // Local-only: no server delete event exists yet (follow-up).
+  // Also tell the server to delete it (and propagate to the user's other
+  // devices) so a restart/reconnect doesn't pull it back. No-op if offline; an
+  // unsynced session never existed server-side, so a pull can't resurrect it.
   ipcMain.handle(IPC.SessionDelete, (_e, args: DeleteSessionArgs) => {
     services.get(args.sessionId)?.dispose()
     services.delete(args.sessionId)
@@ -279,7 +281,6 @@ export function registerIpcHandlers(
     server.sendSessionDelete({ sessionId: args.sessionId })
     return deleteSession(args.sessionId)
   })
-
 
   // Pop the OS-native right-click menu for a session row and resolve with the
   // chosen action (or null if dismissed). The renderer performs the action so

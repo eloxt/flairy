@@ -132,6 +132,9 @@ export interface DeleteSessionArgs {
   sessionId: string
 }
 
+/** Item the user picked from a session row's native right-click menu. */
+export type SessionMenuAction = 'rename' | 'delete'
+
 export interface SessionMeta {
   id: string
   title: string
@@ -139,8 +142,6 @@ export interface SessionMeta {
   createdAt: number
   updatedAt: number
 }
-/** Item the user picked from a session row's native right-click menu. */
-export type SessionMenuAction = 'rename' | 'delete'
 
 export interface SearchMessagesArgs {
   query: string
