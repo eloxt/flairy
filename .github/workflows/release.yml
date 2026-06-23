@@ -45,9 +45,12 @@ jobs:
       - name: Build shared package
         run: pnpm --filter @flairy/shared build
 
-      # electron-vite build (main/preload/renderer) is invoked by the
-      # package script before electron-builder runs.
-      - name: Build & publish ${{ matrix.platform }}
+      # Compile main/preload/renderer into out/ — electron-builder packages
+      # this directory, so it must exist before electron-builder runs.
+      - name: Build desktop (electron-vite)
+        run: pnpm --filter @flairy/desktop build
+
+      - name: Package & publish ${{ matrix.platform }}
         run: pnpm --filter @flairy/desktop exec electron-builder --${{ matrix.platform }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
