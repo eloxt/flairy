@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { existsSync } from 'node:fs'
 import { app } from 'electron'
 
 /**
@@ -47,4 +48,23 @@ export function resolveBinary(name: 'rg' | 'fd'): string {
 
   const exe = process.platform === 'win32' ? `${name}.exe` : name
   return path.join(getBundledBinDir(), exe)
+}
+
+/**
+ * Resolve the bundled POSIX shell on Windows.
+ *
+ * We ship the Unicode build of busybox-w32 (`busybox.exe`), a single ~700KB exe
+ * providing an `ash` POSIX shell plus built-in coreutils applets (ls, grep, sed,
+ * …) via standalone-shell mode. This lets the agent's bash-style commands run on
+ * Windows without the user installing Git Bash, matching Flairy's zero-config
+ * goal. The Unicode build is required so CJK paths/output survive (the plain
+ * build uses the legacy OEM code page).
+ *
+ * Returns undefined off Windows, or when the binary is missing (unsupported
+ * arch / dev machine without it), so callers fall back to cmd.exe.
+ */
+export function resolveBundledShell(): string | undefined {
+  if (process.platform !== 'win32') return undefined
+  const p = path.join(getBundledBinDir(), 'busybox.exe')
+  return existsSync(p) ? p : undefined
 }

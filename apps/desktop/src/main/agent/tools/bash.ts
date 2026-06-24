@@ -75,13 +75,14 @@ export function createBashTool(cwd: string): AgentTool<any> {
         scheduleUpdate()
       }
 
-      const { shell, args } = getShellConfig()
-      const child = spawn(shell, [...args, command], {
+      const { shell, args, windowsVerbatimArguments } = getShellConfig(command)
+      const child = spawn(shell, args, {
         cwd,
         detached: process.platform !== 'win32',
         env: getShellEnv(),
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true
+        windowsHide: true,
+        windowsVerbatimArguments
       })
 
       let timedOut = false

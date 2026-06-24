@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { getBundledBinDir } from './binaries'
+import { getBundledBinDir, resolveBundledShell } from './binaries'
 
 /**
  * Minimal shell helpers for the bash tool. pi-coding-agent keeps these in
@@ -20,11 +20,47 @@ export function getShellEnv(): NodeJS.ProcessEnv {
   return env
 }
 
-export function getShellConfig(shellPath?: string): { shell: string; args: string[] } {
+export interface ShellInvocation {
+  shell: string
+  args: string[]
+  /**
+   * Windows only: pass the command line to CreateProcess verbatim instead of
+   * letting Node re-quote it. Always undefined off Windows.
+   */
+  windowsVerbatimArguments?: boolean
+}
+
+/**
+ * Build the spawn invocation for running `command` through the platform shell.
+ *
+ * The agent emits POSIX/bash-style commands, so we run them on a real POSIX
+ * shell on every platform:
+ *   - Unix: bash (or $SHELL), `-c command`.
+ *   - Windows: the bundled busybox-w32 `ash` (see `resolveBundledShell`), which
+ *     understands bash syntax and ships coreutils applets — no Git Bash install
+ *     needed. Node's default argument escaping is correct here because busybox
+ *     parses its command line with the same MSVC backslash-quote convention Node
+ *     escapes for, and the Unicode build preserves CJK via wide CreateProcessW.
+ *
+ * If no bundled shell is present (dev machine without it / unsupported arch) we
+ * degrade to cmd.exe. cmd does NOT understand Node's `\"` escaping, so for that
+ * path we wrap the command in one quote pair that cmd's `/s` flag strips cleanly
+ * and hand the line over verbatim, letting cmd parse with its own quoting rules.
+ */
+export function getShellConfig(command: string, shellPath?: string): ShellInvocation {
   if (process.platform === 'win32') {
-    return { shell: shellPath || process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c'] }
+    if (shellPath) return { shell: shellPath, args: ['-c', command] }
+
+    const busybox = resolveBundledShell()
+    if (busybox) return { shell: busybox, args: ['ash', '-c', command] }
+
+    return {
+      shell: process.env.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', `"${command}"`],
+      windowsVerbatimArguments: true
+    }
   }
-  return { shell: shellPath || process.env.SHELL || '/bin/bash', args: ['-c'] }
+  return { shell: shellPath || process.env.SHELL || '/bin/bash', args: ['-c', command] }
 }
 
 /** Kill a process and (on POSIX) its whole detached process group. */
