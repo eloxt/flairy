@@ -90,13 +90,11 @@ export class AgentService {
   constructor(opts: {
     sessionId: string;
     cwd: string;
-    win: BrowserWindow;
     server: ServerClient;
     mcp: McpManager;
     messages?: unknown[];
   }) {
-    const { sessionId, cwd, win, server, mcp } = opts;
-    this.win = win;
+    const { sessionId, cwd, server, mcp } = opts;
     this.sessionId = sessionId;
     this.server = server;
     this.mcp = mcp;
@@ -153,7 +151,7 @@ export class AgentService {
         if (isReadOnlyTool(name)) return undefined;
         if (this.sessionAllowed.has(name)) return undefined;
 
-        const decision = await approvals.request(win, {
+        const decision = await approvals.request({
           sessionId,
           toolName: name,
           args,
@@ -183,9 +181,14 @@ export class AgentService {
       if (event.type === "message_update" && inner?.type === "error") {
         const msg =
           inner.error?.errorMessage ?? `LLM stream ${inner.reason ?? "error"}`;
+        this.running = false;
         this.send(sessionId, { type: "error", message: msg });
         return;
       }
+      // Keep the run-state flag in lockstep with the lifecycle events the
+      // renderer also keys off, so isRunning() matches what the UI shows.
+      if (event.type === "agent_start") this.running = true;
+      if (event.type === "agent_end") this.running = false;
       this.send(sessionId, normalizeEvent(event));
       // Persist on turn boundaries so a crash doesn't lose history.
       if (event.type === "turn_end" || event.type === "agent_end") {
@@ -203,15 +206,25 @@ export class AgentService {
   private buildTools(cwd: string): AgentTool<any>[] {
     return [
       ...createTools(cwd),
-      createAskTool(this.win, this.sessionId),
+      createAskTool(this.sessionId),
       ...this.mcp.getTools(),
     ];
   }
 
   private send(sessionId: string, event: AgentStreamEvent): void {
-    if (!this.win.isDestroyed()) {
-      this.win.webContents.send(IPC.AgentEvent, { sessionId, event });
-    }
+    // Resolve the live main window at send time — never a captured reference —
+    // so events still reach the renderer after a close→reopen on macOS.
+    getMainWindow()?.webContents.send(IPC.AgentEvent, { sessionId, event });
+  }
+
+  /** The agent's current in-memory message set (may be ahead of the last persist). */
+  getLiveMessages(): unknown[] {
+    return this.agent.state.messages;
+  }
+
+  /** Whether a turn is currently running (for the sidebar + restored view). */
+  isRunning(): boolean {
+    return this.running;
   }
 
   /** Snapshot messages to SQLite and mirror them to the server. */
@@ -268,9 +281,13 @@ export class AgentService {
     if (isFirst && !this.titleGenerated && text.trim()) {
       void this.maybeGenerateTitle(text);
     }
+    // Mark running up front so a session reopened before the first event still
+    // reports as running; agent_start/agent_end keep it accurate thereafter.
+    this.running = true;
     try {
       await this.agent.prompt(text, attachments as any);
     } catch (err) {
+      this.running = false;
       // A rejected run (bad credential, provider/baseUrl, network) would
       // otherwise vanish silently — surface it as a visible error event.
       this.send(this.sessionId, {
@@ -333,12 +350,10 @@ export class AgentService {
 
   /** Notify the renderer so the sidebar reflects the new title live. */
   private emitTitle(title: string): void {
-    if (!this.win.isDestroyed()) {
-      this.win.webContents.send(IPC.SessionTitleUpdated, {
-        sessionId: this.sessionId,
-        title,
-      });
-    }
+    getMainWindow()?.webContents.send(IPC.SessionTitleUpdated, {
+      sessionId: this.sessionId,
+      title,
+    });
   }
 
   /**
@@ -389,6 +404,7 @@ export class AgentService {
   }
 
   abort(): void {
+    this.running = false;
     this.agent.abort();
     // Aborting the run won't settle a blocked `ask` Promise on its own, so
     // cancel any open question for this session — otherwise the turn hangs.
@@ -402,6 +418,7 @@ export class AgentService {
    */
   dispose(): void {
     this.disposed = true;
+    this.running = false;
     this.agent.abort();
     // Settle any question still open for this session so its blocked Promise
     // resolves and no registry entries leak.
