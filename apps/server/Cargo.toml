@@ -22,3 +22,12 @@ base64 = "0.22"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
+
+# Embed the built admin SPA (apps/admin/dist) into the binary for single-file
+# distribution. Optional + off by default so a plain `cargo build` doesn't
+# require the frontend to be built first; release CI enables `embed-admin`.
+rust-embed = { version = "8", optional = true }
+mime_guess = { version = "2", optional = true }
+
+[features]
+embed-admin = ["dep:rust-embed", "dep:mime_guess"]

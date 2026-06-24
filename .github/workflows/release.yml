@@ -59,3 +59,64 @@ jobs:
           # Remove this and add CSC_LINK / CSC_KEY_PASSWORD (+ Apple notarization
           # secrets) once you have certificates.
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+  # Build the admin SPA, embed it into the Rust server binary, and publish a
+  # single self-contained linux/amd64 executable to the same GitHub Release.
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # @flairy/admin imports @flairy/shared's dist output, so build it first.
+      - name: Build shared package
+        run: pnpm --filter @flairy/shared build
+
+      # Empty VITE_SERVER_URL makes the admin call /api relative to its own
+      # origin — correct when served from the embedding server binary.
+      - name: Build admin SPA
+        run: pnpm --filter @flairy/admin build
+        env:
+          VITE_SERVER_URL: ''
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/server
+
+      # `embed-admin` bakes apps/admin/dist into the binary.
+      - name: Build server (embed admin)
+        run: cargo build --release --features embed-admin --target x86_64-unknown-linux-gnu
+        working-directory: apps/server
+
+      - name: Stage binary
+        run: |
+          mkdir -p dist
+          cp apps/server/target/x86_64-unknown-linux-gnu/release/flairy-server \
+            dist/flairy-server-linux-amd64
+
+      - name: Publish to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/flairy-server-linux-amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

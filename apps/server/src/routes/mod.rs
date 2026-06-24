@@ -19,7 +19,7 @@ use crate::models::auth::Claims;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let api = Router::new()
         .route("/api/health", get(health))
         .merge(auth::router())
         .merge(config::router())
@@ -27,8 +27,11 @@ pub fn router(state: AppState) -> Router {
         .merge(mcp::router())
         .merge(skill::router())
         .merge(system_prompt::router())
-        .merge(users::router())
-        .with_state(state)
+        .merge(users::router());
+
+    // With `embed-admin`, attaches a fallback that serves the bundled admin SPA;
+    // otherwise a no-op (API-only).
+    crate::static_assets::attach(api).with_state(state)
 }
 
 async fn health() -> StatusCode {

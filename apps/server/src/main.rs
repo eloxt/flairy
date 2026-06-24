@@ -7,6 +7,7 @@ mod models;
 mod routes;
 mod socket;
 mod state;
+mod static_assets;
 
 use socketioxide::SocketIo;
 use tower_http::cors::CorsLayer;
