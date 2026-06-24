@@ -1,4 +1,3 @@
-import { app } from "electron";
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel, streamSimple } from "@earendil-works/pi-ai";
 import {
@@ -24,6 +23,7 @@ import { questions } from "./questions";
 import { listMaterializedSkills, skillsRoot } from "./skill-materializer";
 import { saveMessages, getSession, updateSessionTitle } from "../store/db";
 import { getMainWindow } from "../windows";
+import { getLanguage } from "../locale";
 import type { ServerClient } from "../sync/server-client";
 
 const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
@@ -464,11 +464,12 @@ function osName(): string {
 
 /**
  * The user's UI language as an endonym (e.g. `中文`, `English`), for prompt
- * injection so the agent replies in the user's language. Derived from Electron's
- * UI locale; falls back to the raw locale tag if it can't be resolved.
+ * injection so the agent replies in the user's language. Derived from the
+ * in-app interface language setting (not the OS locale), falling back to the
+ * raw locale tag if it can't be resolved.
  */
 function uiLanguage(): string {
-  const locale = app.getLocale() || "en";
+  const locale = getLanguage() || "en";
   const base = locale.split("-")[0];
   return new Intl.DisplayNames([locale], { type: "language" }).of(base) ?? locale;
 }
