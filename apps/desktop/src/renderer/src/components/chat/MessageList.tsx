@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Streamdown } from "streamdown";
-import { Terminal, CircleAlert, ChevronRight, Brain } from "lucide-react";
+import { Terminal, CircleAlert, ChevronRight, Sparkle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
 import { useChat } from "@/store/chat-store";
@@ -274,7 +274,11 @@ function AssistantRow({ m }: { m: UiMessage }): React.JSX.Element {
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
       {m.thinking?.trim() && (
-        <ReasoningBlock text={m.thinking} streaming={m.streaming && !hasText} />
+        <ReasoningBlock
+          text={m.thinking}
+          streaming={m.streaming && !hasText}
+          answered={hasText}
+        />
       )}
       {hasText && (
         <Streamdown
@@ -301,12 +305,21 @@ function AssistantRow({ m }: { m: UiMessage }): React.JSX.Element {
 function ReasoningBlock({
   text,
   streaming,
+  answered,
 }: {
   text: string;
   streaming?: boolean;
+  answered?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(Boolean(streaming));
+  const [open, setOpen] = useState(Boolean(streaming) && !answered);
+  // Auto-collapse once non-reasoning content (the answer) arrives — the false →
+  // true transition of `answered` — while still letting the user toggle it back.
+  const wasAnswered = useRef(Boolean(answered));
+  useEffect(() => {
+    if (!wasAnswered.current && answered) setOpen(false);
+    wasAnswered.current = Boolean(answered);
+  }, [answered]);
   return (
     <div className="mb-2">
       <button
@@ -315,7 +328,7 @@ function ReasoningBlock({
         aria-expanded={open}
         className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <Brain
+        <Sparkle
           className={cn("size-3.5 shrink-0", streaming && "animate-pulse")}
         />
         <span>{streaming ? t("chat.reasoningLive") : t("chat.reasoning")}</span>
