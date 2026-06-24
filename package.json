@@ -1,6 +1,6 @@
 {
   "name": "flairy",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Flairy — managed desktop AI agent (monorepo)",
   "author": "eloxt",
