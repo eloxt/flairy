@@ -73,6 +73,13 @@ const zhCN: typeof En = {
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
   },
+  onboarding: {
+    cwdTitle: '设置工作文件夹',
+    cwdBody: '选择 Flairy 可以读取和修改的文件夹 — 点击下方的文件夹按钮。',
+    permTitle: '选择 Flairy 的行事方式',
+    permBody: '让 Flairy 每一步都先询问，或给予完全访问 — 点击下方的盾牌按钮设置。',
+    dismiss: '知道了'
+  },
   approval: {
     allowThisAction: '允许执行此操作？',
     wantsTo: '助手想要{{tool}}',

@@ -10,6 +10,7 @@ import { useChat } from "@/store/chat-store";
 import type { UiMessage } from "@/store/chat-store";
 import { ApprovalCard } from "./ApprovalCard";
 import { QuestionCard } from "./QuestionCard";
+import { Onboarding } from "./Onboarding";
 import "streamdown/styles.css";
 import { code } from "@streamdown/code";
 import { mermaid } from "@streamdown/mermaid";
@@ -230,12 +231,16 @@ function ThinkingRow(): React.JSX.Element | null {
   );
 }
 
-/** First-run: a single quiet line. No hero, no ornament — just an invitation. */
+/**
+ * First-run: a single quiet line — just an invitation — followed on a fresh
+ * install by the {@link Onboarding} guide pointing at the composer's working-
+ * directory and permission controls.
+ */
 function EmptyState(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-y-auto px-6">
-      <div className="mx-auto max-w-md -translate-y-[8%] text-center">
+    <div className="absolute inset-0 flex items-center justify-center overflow-y-auto px-6 py-12">
+      <div className="mx-auto max-w-md text-center">
         <h1 className="animate-rise-in text-2xl font-medium tracking-tight text-foreground">
           {t("chat.emptyTitle")}
         </h1>
@@ -245,6 +250,7 @@ function EmptyState(): React.JSX.Element {
         >
           {t("chat.emptySubtitle")}
         </p>
+        <Onboarding />
       </div>
     </div>
   );

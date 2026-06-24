@@ -81,6 +81,15 @@ const en = {
     other_other: 'used {{count}} tools',
     separator: ', '
   },
+  onboarding: {
+    cwdTitle: 'Set your working folder',
+    cwdBody:
+      'Pick the folder Flairy may read and change — use the folder button below.',
+    permTitle: 'Choose how Flairy acts',
+    permBody:
+      'Have Flairy ask before each step, or give it full access — set it with the shield button below.',
+    dismiss: 'Got it'
+  },
   approval: {
     allowThisAction: 'Allow this action?',
     wantsTo: 'The assistant wants to {{tool}}',
