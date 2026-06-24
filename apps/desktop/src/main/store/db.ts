@@ -194,6 +194,11 @@ export function addRecentDirectory(path: string): void {
   pruneRecentDirectories()
 }
 
+/** Forget a recent directory (composer menu right-click → remove). No-op if absent. */
+export function removeRecentDirectory(path: string): void {
+  db.prepare('DELETE FROM recent_directories WHERE path = ?').run(normalizeDir(path))
+}
+
 /** Previously-used working directories, newest first (max RECENT_DIR_LIMIT). */
 export function listRecentDirectories(): string[] {
   return (

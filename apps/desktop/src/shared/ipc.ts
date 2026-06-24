@@ -30,6 +30,7 @@ export const IPC = {
   SessionCreate: 'session:create',
   SessionSetCwd: 'session:set-cwd',
   SessionListRecentDirs: 'session:list-recent-dirs',
+  SessionRemoveRecentDir: 'session:remove-recent-dir',
   SessionChooseDir: 'session:choose-dir',
   SessionRename: 'session:rename',
   SessionDelete: 'session:delete',
@@ -347,6 +348,8 @@ export interface FlairyApi {
   setWorkingDirectory(args: SetCwdArgs): Promise<SessionMeta | null>
   /** Previously-used working directories, newest first (max 10). */
   listRecentDirectories(): Promise<string[]>
+  /** Forget a recent directory. Returns the updated recents list, newest first. */
+  removeRecentDirectory(path: string): Promise<string[]>
   /**
    * Set an already-known path as the working directory (recents click — no
    * native dialog). Bumps recents. Returns the updated meta when `sessionId` is

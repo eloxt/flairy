@@ -96,6 +96,7 @@ export function Composer(): React.JSX.Element {
     recentDirs,
     loadRecentDirs,
     chooseWorkingDirectory,
+    removeRecentDir,
   } = useChat();
 
   // The directory in effect (open session's, or the pending pick on home).
@@ -283,8 +284,14 @@ export function Composer(): React.JSX.Element {
                         {recentDirs.map((dir) => (
                           <DropdownMenuItem
                             key={dir}
-                            title={dir}
+                            title={t('composer.recentDirTitle', { path: dir })}
                             onClick={() => void chooseWorkingDirectory(dir)}
+                            onContextMenu={(e) => {
+                              // Right-click forgets this recent directory. Keep
+                              // the menu open so the user can prune several.
+                              e.preventDefault();
+                              void removeRecentDir(dir);
+                            }}
                             className="items-start gap-2"
                           >
                             <Check

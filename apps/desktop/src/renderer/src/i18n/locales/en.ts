@@ -111,6 +111,7 @@ const en = {
     workingDirectoryTitle: 'Working directory: {{path}}',
     home: 'home',
     recent: 'Recent',
+    recentDirTitle: '{{path}}\nRight-click to remove from recents',
     addAnotherDirectory: 'Add another directory…',
     toolPermission: 'Tool permission',
     fullAccess: 'Full access',

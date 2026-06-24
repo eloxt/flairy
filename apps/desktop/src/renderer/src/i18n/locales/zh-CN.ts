@@ -101,6 +101,7 @@ const zhCN: typeof En = {
     workingDirectoryTitle: '工作目录：{{path}}',
     home: '主目录',
     recent: '最近',
+    recentDirTitle: '{{path}}\n右键从最近列表中移除',
     addAnotherDirectory: '添加其他目录…',
     toolPermission: '工具权限',
     fullAccess: '完全访问',

@@ -46,6 +46,7 @@ import {
   deleteSession,
   clearAllSessions,
   addRecentDirectory,
+  removeRecentDirectory,
   listRecentDirectories,
   upsertRemoteSession,
   searchMessages
@@ -256,6 +257,13 @@ export function registerIpcHandlers(
 
   // Previously-used working directories for the composer's directory menu.
   ipcMain.handle(IPC.SessionListRecentDirs, () => listRecentDirectories())
+
+  // Forget a recent directory (composer menu right-click). Recents are a local
+  // convenience list only — no session/server impact. Return the updated list.
+  ipcMain.handle(IPC.SessionRemoveRecentDir, (_e, path: string) => {
+    removeRecentDirectory(path)
+    return listRecentDirectories()
+  })
 
   // Set an already-known path as the working directory (recents click — no
   // native dialog). Always bump recents; persist + rebind only when there's a

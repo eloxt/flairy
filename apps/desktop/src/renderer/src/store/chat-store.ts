@@ -159,6 +159,7 @@ interface ChatState {
   setWorkingDirectory: () => Promise<void>
   loadRecentDirs: () => Promise<void>
   chooseWorkingDirectory: (path: string) => Promise<void>
+  removeRecentDir: (path: string) => Promise<void>
   renameSession: (sessionId: string, title: string) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
 }
@@ -440,6 +441,14 @@ export const useChat = create<ChatState>((set, get) => ({
       set({ pendingCwd: path })
     }
     await get().loadRecentDirs()
+  },
+
+  // Forget a recent directory (composer menu right-click). Local convenience
+  // list only — doesn't touch the current session's cwd. Use main's returned
+  // list as the source of truth instead of filtering optimistically.
+  removeRecentDir: async (path) => {
+    const dirs = await window.api.removeRecentDirectory(path)
+    set({ recentDirs: dirs })
   },
 
   renameSession: async (sessionId, title) => {
