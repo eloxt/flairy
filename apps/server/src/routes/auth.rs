@@ -23,10 +23,16 @@ async fn login(
 ) -> AppResult<Json<LoginResponse>> {
     let pool = state.pool()?;
     let found = db::find_user_by_email(pool, &req.email).await?;
-    let (user, hash) = found.ok_or(AppError::InvalidCredentials)?;
+    let (user, hash, activated) = found.ok_or(AppError::InvalidCredentials)?;
 
     if !auth::verify_password(&req.password, &hash)? {
         return Err(AppError::InvalidCredentials);
+    }
+
+    // Gate sign-in on activation. Checked after the password so we never reveal
+    // whether an email exists to someone who doesn't hold its password.
+    if !activated {
+        return Err(AppError::NotActivated);
     }
 
     let token = auth::issue_token(&user.id, &user.role, &state.jwt_secret)?;

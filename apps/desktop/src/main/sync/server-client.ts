@@ -19,8 +19,19 @@ import { getAuthToken } from '../store/secrets'
 import { saveCachedConfig, loadCachedConfig, clearCachedConfig } from '../store/config-cache'
 import { materializeSkills } from '../agent/skill-materializer'
 
-/** Where to reach the Flairy server. Overridable via env for dev/staging. */
-export const SERVER_URL = process.env.FLAIRY_SERVER_URL ?? 'http://localhost:8787'
+/**
+ * Where to reach the Flairy server.
+ *
+ * The default is baked in at build time: `electron-vite dev` (DEV=true) points
+ * at localhost, while a packaged production build targets the live server.
+ * `FLAIRY_SERVER_URL` still overrides both — useful for staging or pointing a
+ * dev build at a remote server.
+ */
+const DEFAULT_SERVER_URL = import.meta.env.DEV
+  ? 'http://localhost:8787'
+  : 'https://flairy.eloxt.cn'
+
+export const SERVER_URL = process.env.FLAIRY_SERVER_URL ?? DEFAULT_SERVER_URL
 
 type ConfigListener = (config: ConfigSnapshot) => void
 type SessionRemoteListener = (payload: SessionRemotePayload) => void

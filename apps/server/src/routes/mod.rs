@@ -7,6 +7,7 @@ mod llm;
 mod mcp;
 mod skill;
 mod system_prompt;
+mod users;
 
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
@@ -26,6 +27,7 @@ pub fn router(state: AppState) -> Router {
         .merge(mcp::router())
         .merge(skill::router())
         .merge(system_prompt::router())
+        .merge(users::router())
         .with_state(state)
 }
 

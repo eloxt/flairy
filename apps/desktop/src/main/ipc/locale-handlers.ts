@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { app, ipcMain, BrowserWindow } from 'electron'
 import { IPC, type AppLanguage } from '@shared/ipc'
 import { getLanguage, setLanguage } from '../locale'
 import { buildAppMenu } from '../menu'
@@ -13,6 +13,11 @@ export function registerLocaleHandlers(): void {
   // Synchronous: the renderer reads this before first paint.
   ipcMain.on(IPC.SettingsGetLanguage, (e) => {
     e.returnValue = getLanguage()
+  })
+
+  // Synchronous: the About tab reads the app version without an async round-trip.
+  ipcMain.on(IPC.AppGetVersion, (e) => {
+    e.returnValue = app.getVersion()
   })
 
   // Async set: persist first, then broadcast to every window and relabel the

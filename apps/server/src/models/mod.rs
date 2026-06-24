@@ -6,3 +6,4 @@ pub mod mcp;
 pub mod session;
 pub mod skill;
 pub mod system_prompt;
+pub mod user;

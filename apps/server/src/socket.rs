@@ -141,9 +141,30 @@ async fn on_connect(socket: SocketRef, Data(auth): Data<Option<SocketAuth>>, sta
         });
     }
 
-    // Handlers are registered; now do the awaiting work. Emit the initial config
-    // snapshot (global, same for every client). Any client event that arrived
-    // during this await already has a handler waiting.
+    // Handlers are registered; now do the awaiting work.
+
+    // Activation gate (defense-in-depth): a token issued before deactivation
+    // stays valid until expiry, so re-check the live state and drop the
+    // connection if the account was deactivated. Done AFTER handler registration
+    // to preserve the no-await-before-handlers invariant above.
+    if let Some(pool) = state.pool.as_ref() {
+        match db::users::is_activated(pool, &user_id).await {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(%user_id, "socket connect for deactivated account; disconnecting");
+                let _ = socket.disconnect();
+                return;
+            }
+            Err(e) => {
+                tracing::error!(%user_id, "activation check failed: {e}; disconnecting");
+                let _ = socket.disconnect();
+                return;
+            }
+        }
+    }
+
+    // Emit the initial config snapshot (global, same for every client). Any
+    // client event that arrived during this await already has a handler waiting.
     let snapshot = load_snapshot(&state).await;
     if let Err(e) = socket.emit(events::CONFIG_SNAPSHOT, &snapshot) {
         tracing::warn!("failed to emit config snapshot: {e}");

@@ -107,36 +107,29 @@ const en = {
   },
   settings: {
     title: 'Settings',
-    debug: 'Debug',
-    serverConfiguration: 'Server configuration',
-    serverConfigurationDescription:
-      'Read-only view of what the server delivered to this device. Secrets are masked.',
-    loading: 'Loading…',
-    noConfig: 'No configuration received from the server yet.',
-    overview: 'Overview',
-    configVersion: 'Config version',
-    mcpServers: 'MCP servers',
-    skills: 'Skills',
-    languageModels: 'Language models',
-    mainModel: 'Main model',
-    toolModel: 'Tool model',
-    notSet: 'Not set',
-    provider: 'Provider',
-    vendor: 'Vendor',
-    baseUrl: 'Base URL',
-    credential: 'Credential',
-    none: 'None.',
-    enabled: 'Enabled',
-    disabled: 'Disabled',
-    rawPayload: 'Raw payload',
-    showJson: 'Show JSON',
+    // Tabs
+    tabProfile: 'Profile',
+    tabInterface: 'Interface',
+    tabAbout: 'About',
+    // Profile tab
     account: 'Account',
+    name: 'Name',
+    email: 'Email',
     signedIn: 'Signed in',
     signOut: 'Sign out',
-    fileCount_one: '{{count}} file',
-    fileCount_other: '{{count}} files',
+    // Interface tab
     language: 'Language',
-    languageDescription: 'Choose the display language.'
+    languageDescription: 'Choose the display language.',
+    // About tab
+    about: 'About',
+    appTagline: 'Your AI assistant that just works.',
+    version: 'Version',
+    troubleshooting: 'Troubleshooting',
+    troubleshootingDescription:
+      "Technical details for support. You normally don't need to open this.",
+    showConfig: 'Configuration details',
+    loadingConfig: 'Loading…',
+    noConfig: 'No configuration received from the server yet.'
   },
   tools: {
     read: 'read a file',

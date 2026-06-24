@@ -41,6 +41,7 @@ export const IPC = {
   AuthStatus: 'auth:status',
   ConfigGet: 'config:get',
   WindowOpenSettings: 'window:open-settings',
+  AppGetVersion: 'app:get-version',
   SettingsGetLanguage: 'settings:get-language',
   SettingsSetLanguage: 'settings:set-language',
   // event streams (send)
@@ -311,6 +312,8 @@ export interface FlairyApi {
   getConfig(): Promise<RedactedConfigSnapshot | null>
   /** Open (or focus) the standalone Settings window. */
   openSettings(): Promise<void>
+  /** This app's version (from package.json), resolved synchronously by main. */
+  getAppVersion(): string
   /**
    * The language to render with on first paint, resolved synchronously by main
    * (saved setting, else system locale). Sync so i18n initializes before paint.

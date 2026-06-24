@@ -33,8 +33,16 @@ async function authPost(path: string, body: unknown, label: string): Promise<Log
   })
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`${label} failed (${res.status})${detail ? `: ${detail}` : ''}`)
+    // Prefer the server's `{ error }` detail (e.g. "your account is awaiting
+    // administrator approval") so the renderer can show a clean message rather
+    // than a raw JSON blob.
+    const detail = await res
+      .json()
+      .then((d: unknown) =>
+        d && typeof d === 'object' && 'error' in d ? String((d as { error: unknown }).error) : ''
+      )
+      .catch(() => '')
+    throw new Error(detail || `${label} failed (${res.status})`)
   }
 
   return (await res.json()) as LoginResponse

@@ -22,6 +22,9 @@ pub enum AppError {
     #[error("forbidden")]
     Forbidden,
 
+    #[error("your account is awaiting administrator approval")]
+    NotActivated,
+
     #[error("password hashing error")]
     PasswordHash,
 
@@ -46,6 +49,7 @@ impl IntoResponse for AppError {
             AppError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::Forbidden => StatusCode::FORBIDDEN,
+            AppError::NotActivated => StatusCode::FORBIDDEN,
             AppError::PasswordHash => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Token => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::NotFound => StatusCode::NOT_FOUND,

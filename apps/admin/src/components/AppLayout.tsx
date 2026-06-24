@@ -1,5 +1,13 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Bot, LayoutDashboard, LogOut, MessageSquare, Server, Sparkles } from 'lucide-react'
+import {
+  Bot,
+  LayoutDashboard,
+  LogOut,
+  MessageSquare,
+  Server,
+  Sparkles,
+  Users
+} from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -24,7 +32,8 @@ const NAV = [
   { to: '/llm', label: 'LLM', icon: Bot, end: false },
   { to: '/mcp', label: 'MCP Servers', icon: Server, end: false },
   { to: '/skills', label: 'Skills', icon: Sparkles, end: false },
-  { to: '/system-prompts', label: 'System Prompts', icon: MessageSquare, end: false }
+  { to: '/system-prompts', label: 'System Prompts', icon: MessageSquare, end: false },
+  { to: '/users', label: 'Users', icon: Users, end: false }
 ] as const
 
 export function AppLayout(): React.JSX.Element {

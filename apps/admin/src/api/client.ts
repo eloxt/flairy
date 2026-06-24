@@ -12,7 +12,10 @@ import type {
   SkillConfig,
   SkillInput,
   SystemPromptConfig,
-  SystemPromptInput
+  SystemPromptInput,
+  CreateUserRequest,
+  UpdateUserRequest,
+  UserSummary
 } from '@flairy/shared'
 import type {
   ListSkillsParams,
@@ -172,6 +175,24 @@ export function updateSystemPrompt(
 
 export function deleteSystemPrompt(id: string): Promise<void> {
   return request<void>(`/api/system-prompts/${id}`, { method: 'DELETE' })
+}
+
+/* ---------- Users (admin-only; not part of the config snapshot) ---------- */
+
+export function listUsers(): Promise<UserSummary[]> {
+  return request<UserSummary[]>('/api/users')
+}
+
+export function createUser(body: CreateUserRequest): Promise<UserSummary> {
+  return request<UserSummary>('/api/users', { method: 'POST', body })
+}
+
+export function updateUser(id: string, body: UpdateUserRequest): Promise<UserSummary> {
+  return request<UserSummary>(`/api/users/${id}`, { method: 'PUT', body })
+}
+
+export function deleteUser(id: string): Promise<void> {
+  return request<void>(`/api/users/${id}`, { method: 'DELETE' })
 }
 
 /* ---------- Skills ---------- */
