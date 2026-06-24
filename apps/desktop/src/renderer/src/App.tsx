@@ -7,6 +7,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { Composer } from "@/components/chat/Composer";
 import { SearchPage } from "@/components/search/SearchPage";
 import { AuthScreen } from "@/components/auth/AuthScreen";
+import { UpdateBadge } from "@/components/UpdateBadge";
 import {
   SidebarInset,
   SidebarProvider,
@@ -126,6 +127,7 @@ function ChatHeader(): React.JSX.Element {
           {title}
         </span>
       </div>
+      <UpdateBadge />
     </header>
   );
 }

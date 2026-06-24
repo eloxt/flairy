@@ -44,9 +44,12 @@ export const IPC = {
   ConfigGet: 'config:get',
   WindowOpenSettings: 'window:open-settings',
   AppGetVersion: 'app:get-version',
+  UpdateGetStatus: 'update:get-status',
+  UpdateOpenRelease: 'update:open-release',
   SettingsGetLanguage: 'settings:get-language',
   SettingsSetLanguage: 'settings:set-language',
   // event streams (send)
+  UpdateAvailable: 'update:available',
   AgentEvent: 'agent:event',
   ApprovalRequest: 'agent:approval-request',
   QuestionRequest: 'agent:question-request',
@@ -59,6 +62,19 @@ export const IPC = {
 
 /** UI language. The single source of truth for both renderer and main catalogs. */
 export type AppLanguage = 'en' | 'zh-CN'
+
+/**
+ * A newer release the main process found on GitHub. Surfaced as a header badge;
+ * `url` is the release page opened (externally) when the user clicks it.
+ */
+export interface UpdateInfo {
+  /** Latest version, normalized without a leading "v" (e.g. "0.2.0"). */
+  version: string
+  /** GitHub release page URL to open in the browser. */
+  url: string
+  /** Optional release title/name for display. */
+  notes?: string
+}
 
 /** A single attachment for multimodal prompts. */
 export interface Attachment {
@@ -365,6 +381,10 @@ export interface FlairyApi {
   openSettings(): Promise<void>
   /** This app's version (from package.json), resolved synchronously by main. */
   getAppVersion(): string
+  /** The newer release the app already knows about, or null if up to date. */
+  getUpdateStatus(): Promise<UpdateInfo | null>
+  /** Open the latest release page in the OS browser. */
+  openReleasePage(): Promise<void>
   /** The OS platform, so the renderer can adapt chrome (e.g. macOS traffic lights). */
   platform: NodeJS.Platform
   /**
@@ -388,4 +408,6 @@ export interface FlairyApi {
   onAuthChanged(cb: () => void): () => void
   /** Fires when the language changes (from any window); the renderer re-translates live. */
   onLanguageChanged(cb: (lng: AppLanguage) => void): () => void
+  /** Fires when the app detects a newer release is available. */
+  onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void
 }

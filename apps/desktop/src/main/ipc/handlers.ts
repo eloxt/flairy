@@ -52,6 +52,7 @@ import {
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
+import type { UpdateManager } from '../update/update-checker'
 import { redactConfig } from '../sync/config-redact'
 import { broadcast, getMainWindow, openSettingsWindow } from '../windows'
 
@@ -120,7 +121,11 @@ function getOrCreateService(
   return svc
 }
 
-export function registerIpcHandlers(server: ServerClient, mcp: McpManager): void {
+export function registerIpcHandlers(
+  server: ServerClient,
+  mcp: McpManager,
+  updates: UpdateManager
+): void {
   // Sessions changed on another device land in the local db so the UI sees them.
   server.onSessionRemote((payload) => {
     upsertRemoteSession(payload)
@@ -384,4 +389,11 @@ export function registerIpcHandlers(server: ServerClient, mcp: McpManager): void
 
   // Open the standalone Settings window (from the sidebar).
   ipcMain.handle(IPC.WindowOpenSettings, () => openSettingsWindow())
+
+  // A window that mounts after the update check ran reads the current status so
+  // its header badge reflects an already-known update (the broadcast it missed).
+  ipcMain.handle(IPC.UpdateGetStatus, () => updates.getStatus())
+
+  // User clicked the update badge: open the release page in the OS browser.
+  ipcMain.handle(IPC.UpdateOpenRelease, () => updates.openReleasePage())
 }

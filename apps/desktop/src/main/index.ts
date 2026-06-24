@@ -5,6 +5,7 @@ import { registerIpcHandlers } from "./ipc/handlers";
 import { registerLocaleHandlers } from "./ipc/locale-handlers";
 import { ServerClient } from "./sync/server-client";
 import { McpManager } from "./agent/mcp";
+import { UpdateManager } from "./update/update-checker";
 import { createMainWindow } from "./windows";
 import { buildAppMenu } from "./menu";
 
@@ -32,8 +33,11 @@ app.whenReady().then(() => {
   // config snapshot/delta. onConfig fires immediately if a cached config exists.
   const mcp = new McpManager();
   server.onConfig((config) => mcp.sync(config.mcpServers));
+  // Polls GitHub for a newer release and badges the header when one exists.
+  const updates = new UpdateManager();
   createMainWindow();
-  registerIpcHandlers(server, mcp);
+  registerIpcHandlers(server, mcp, updates);
+  updates.start();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

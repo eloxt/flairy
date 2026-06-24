@@ -7,7 +7,8 @@ import {
   type ApprovalRequestPayload,
   type QuestionRequestPayload,
   type RedactedConfigSnapshot,
-  type SessionTitleUpdatedPayload
+  type SessionTitleUpdatedPayload,
+  type UpdateInfo
 } from '@shared/ipc'
 
 /**
@@ -42,6 +43,8 @@ const api: FlairyApi = {
   getConfig: () => ipcRenderer.invoke(IPC.ConfigGet),
   openSettings: () => ipcRenderer.invoke(IPC.WindowOpenSettings),
   getAppVersion: () => ipcRenderer.sendSync(IPC.AppGetVersion) as string,
+  getUpdateStatus: () => ipcRenderer.invoke(IPC.UpdateGetStatus),
+  openReleasePage: () => ipcRenderer.invoke(IPC.UpdateOpenRelease),
   platform: process.platform,
   getInitialLanguage: () => ipcRenderer.sendSync(IPC.SettingsGetLanguage) as AppLanguage,
   setLanguage: (lng) => ipcRenderer.invoke(IPC.SettingsSetLanguage, lng),
@@ -85,6 +88,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, lng: AppLanguage): void => cb(lng)
     ipcRenderer.on(IPC.LanguageChanged, listener)
     return () => ipcRenderer.removeListener(IPC.LanguageChanged, listener)
+  },
+  onUpdateAvailable: (cb) => {
+    const listener = (_e: unknown, info: UpdateInfo): void => cb(info)
+    ipcRenderer.on(IPC.UpdateAvailable, listener)
+    return () => ipcRenderer.removeListener(IPC.UpdateAvailable, listener)
   }
 }
 

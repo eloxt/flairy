@@ -139,6 +139,10 @@ const en = {
     loadingConfig: 'Loading…',
     noConfig: 'No configuration received from the server yet.'
   },
+  update: {
+    available: 'Update available',
+    tooltip: 'Version {{version}} is available — click to download'
+  },
   tools: {
     read: 'read a file',
     write: 'write a file',

@@ -128,6 +128,10 @@ const zhCN: typeof En = {
     loadingConfig: '加载中…',
     noConfig: '尚未从服务器收到任何配置。'
   },
+  update: {
+    available: '有可用更新',
+    tooltip: '新版本 {{version}} 已发布 — 点击下载'
+  },
   tools: {
     read: '读取文件',
     write: '写入文件',
