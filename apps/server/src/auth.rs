@@ -1,7 +1,6 @@
 //! JWT issuance/validation and password hashing helpers.
 
-use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
+use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
@@ -38,19 +37,12 @@ pub fn validate_token(token: &str, secret: &str) -> AppResult<Claims> {
     Ok(data.claims)
 }
 
-/// Hash a plaintext password with Argon2.
+/// Hash a plaintext password with bcrypt.
 pub fn hash_password(password: &str) -> AppResult<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
-        .map(|h| h.to_string())
-        .map_err(|_| AppError::PasswordHash)
+    hash(password, DEFAULT_COST).map_err(|_| AppError::PasswordHash)
 }
 
-/// Verify a plaintext password against a stored Argon2 hash.
-pub fn verify_password(password: &str, hash: &str) -> AppResult<bool> {
-    let parsed = PasswordHash::new(hash).map_err(|_| AppError::PasswordHash)?;
-    Ok(Argon2::default()
-        .verify_password(password.as_bytes(), &parsed)
-        .is_ok())
+/// Verify a plaintext password against a stored bcrypt hash.
+pub fn verify_password(password: &str, hashed: &str) -> AppResult<bool> {
+    verify(password, hashed).map_err(|_| AppError::PasswordHash)
 }
