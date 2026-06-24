@@ -222,6 +222,10 @@ export function Composer(): React.JSX.Element {
                 autosize(e.currentTarget);
               }}
               onKeyDown={(e) => {
+                // Ignore Enter while a CJK IME is composing (it confirms the
+                // candidate text, not the message). keyCode 229 covers browsers
+                // that don't set isComposing on the Enter keydown.
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   submit();
