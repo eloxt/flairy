@@ -1,4 +1,6 @@
+import path from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
+import { getBundledBinDir } from './binaries'
 
 /**
  * Minimal shell helpers for the bash tool. pi-coding-agent keeps these in
@@ -8,7 +10,14 @@ import { spawn, type ChildProcess } from 'node:child_process'
  */
 
 export function getShellEnv(): NodeJS.ProcessEnv {
-  return { ...process.env }
+  const env = { ...process.env }
+  // Prepend the bundled bin dir so commands run via the bash tool can invoke
+  // shipped CLIs (rg, fd, …) out of the box. Prepending (not appending) means
+  // the bundled versions win over any the user happens to have installed,
+  // keeping behaviour reproducible regardless of the host environment.
+  const binDir = getBundledBinDir()
+  env.PATH = env.PATH ? `${binDir}${path.delimiter}${env.PATH}` : binDir
+  return env
 }
 
 export function getShellConfig(shellPath?: string): { shell: string; args: string[] } {

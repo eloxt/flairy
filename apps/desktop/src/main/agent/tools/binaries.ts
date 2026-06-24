@@ -24,16 +24,27 @@ const ENV_OVERRIDES: Record<string, string | undefined> = {
   fd: 'FLAIRY_FD_PATH'
 }
 
+/**
+ * Directory holding the bundled CLI binaries.
+ *
+ *   - Packaged app: `<process.resourcesPath>/bin`.
+ *   - Dev (electron-vite): `<appPath>/resources/bin/<platform>-<arch>`.
+ *
+ * Used both to resolve a specific tool's absolute path (see `resolveBinary`)
+ * and to prepend onto the bash tool's PATH so bundled tools are callable from
+ * free-form shell commands (see `getShellEnv`).
+ */
+export function getBundledBinDir(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'bin')
+  }
+  return path.join(app.getAppPath(), 'resources', 'bin', `${process.platform}-${process.arch}`)
+}
+
 export function resolveBinary(name: 'rg' | 'fd'): string {
   const override = process.env[ENV_OVERRIDES[name] ?? '']
   if (override) return override
 
   const exe = process.platform === 'win32' ? `${name}.exe` : name
-
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'bin', exe)
-  }
-
-  // Dev: binaries live in the repo's resources tree, split by platform/arch.
-  return path.join(app.getAppPath(), 'resources', 'bin', `${process.platform}-${process.arch}`, exe)
+  return path.join(getBundledBinDir(), exe)
 }
