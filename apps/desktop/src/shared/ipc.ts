@@ -25,6 +25,7 @@ export const IPC = {
   AgentSetPermissionMode: 'agent:set-permission-mode',
   SessionList: 'session:list',
   SessionLoad: 'session:load',
+  SessionLoadLive: 'session:load-live',
   SearchMessages: 'search:messages',
   SessionCreate: 'session:create',
   SessionSetCwd: 'session:set-cwd',
@@ -312,6 +313,14 @@ export interface FlairyApi {
   setPermissionMode(args: SetPermissionModeArgs): Promise<void>
   listSessions(): Promise<SessionMeta[]>
   loadSession(sessionId: string): Promise<{ meta: SessionMeta; messages: unknown[] }>
+  /**
+   * Open a session with its LIVE state: a running session's in-memory messages
+   * (ahead of the last persist) plus whether a turn is currently in flight. Falls
+   * back to the persisted snapshot for a session with no live agent service.
+   */
+  loadSessionLive(
+    sessionId: string
+  ): Promise<{ meta: SessionMeta; messages: unknown[]; running: boolean }>
   /** Full-text search over message content + session titles. */
   searchMessages(args: SearchMessagesArgs): Promise<SearchHit[]>
   createSession(args: CreateSessionArgs): Promise<SessionMeta>

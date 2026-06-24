@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Notification, type BrowserWindow } from 'electron'
 import { IPC, type QuestionAnswer, type QuestionRequestPayload } from '@shared/ipc'
 import { t } from '../locale'
+import { getMainWindow } from '../windows'
 
 /**
  * Bridges the agent's blocking `ask` tool to an async user reply in the renderer.
@@ -24,9 +25,14 @@ class QuestionRegistry {
   >()
 
   request(
-    win: BrowserWindow,
     payload: Omit<QuestionRequestPayload, 'questionId'>
   ): Promise<QuestionAnswer[] | null> {
+    // Resolve the live main window at request time so the card reaches the
+    // renderer even after a window close→reopen. With no window, settle as
+    // cancelled (null) — the `ask` tool maps that to a thrown cancellation.
+    const win = getMainWindow()
+    if (!win) return Promise.resolve(null)
+
     const questionId = randomUUID()
     return new Promise<QuestionAnswer[] | null>((resolve) => {
       this.pending.set(questionId, { resolve, sessionId: payload.sessionId })

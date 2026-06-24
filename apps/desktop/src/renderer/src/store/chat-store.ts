@@ -56,9 +56,63 @@ export interface UiMessage {
   sourceIndex?: number
 }
 
+/**
+ * The complete live state of ONE session, kept independently of which session is
+ * in the foreground. Every session the user has opened (or started) this app-run
+ * has a runtime in `runtimes`; the agent's stream is folded into the matching
+ * runtime regardless of what's on screen, so a background session keeps building
+ * its thread and switching back shows the true live state (not a stale DB read).
+ */
+export interface SessionRuntime {
+  messages: UiMessage[]
+  running: boolean
+  /**
+   * The assistant turn currently streaming in THIS session, used to stamp a
+   * shared `batchId` onto the turn's tool calls. Per-session (not a module
+   * global) so two concurrently-running sessions never cross-stamp batches.
+   */
+  liveBatchId: string | null
+  approvalQueue: ApprovalRequestPayload[]
+  questionQueue: QuestionRequestPayload[]
+  permissionMode: PermissionMode
+  /**
+   * True once seeded from the main process (live in-memory or persisted). Guards
+   * `openSession` from re-reading the DB over an already-live runtime, which is
+   * exactly what used to clobber an in-flight stream on switch-back.
+   */
+  hydrated: boolean
+}
+
+/** A blank runtime for a brand-new session (or the home screen before send). */
+function emptyRuntime(permissionMode: PermissionMode = 'ask'): SessionRuntime {
+  return {
+    messages: [],
+    running: false,
+    liveBatchId: null,
+    approvalQueue: [],
+    questionQueue: [],
+    permissionMode,
+    hydrated: true
+  }
+}
+
 interface ChatState {
   sessionId: string | null
   sessions: SessionMeta[]
+  /**
+   * Per-session live state, keyed by sessionId. Source of truth for messages /
+   * running / queues; the top-level `messages`/`running`/`approvalQueue`/
+   * `questionQueue`/`permissionMode` fields below are a denormalized MIRROR of the
+   * foreground session's runtime, kept so components read them without selecting
+   * through the map.
+   */
+  runtimes: Record<string, SessionRuntime>
+  /**
+   * Ids of sessions with a turn currently running. Updated only when a session's
+   * running flag flips (not on every token), so the sidebar's running indicators
+   * don't re-render on each streamed delta.
+   */
+  runningSessions: string[]
   messages: UiMessage[]
   running: boolean
   /** Pending approval requests, oldest first; the dialog shows the head. */
@@ -120,6 +174,8 @@ export const selectCwd = (s: ChatState): string | null =>
 export const useChat = create<ChatState>((set, get) => ({
   sessionId: null,
   sessions: [],
+  runtimes: {},
+  runningSessions: [],
   messages: [],
   running: false,
   approvalQueue: [],
@@ -132,13 +188,21 @@ export const useChat = create<ChatState>((set, get) => ({
   /** Subscribe to the main-process event stream. Call once on mount. */
   init: () => {
     const offEvent = window.api.onAgentEvent((env) => applyEvent(set, get, env))
+    // Route prompts to the OWNING session's runtime, not just the foreground one
+    // — a background session that hits the approval gate must still collect its
+    // prompt (else its turn hangs forever). The card renders when that session is
+    // in front (the foreground mirror); switching to it surfaces the prompt.
     const offApproval = window.api.onApprovalRequest((req) => {
-      if (req.sessionId === get().sessionId)
-        set((s) => ({ approvalQueue: [...s.approvalQueue, req] }))
+      updateRuntime(set, get, req.sessionId, (rt) => ({
+        ...rt,
+        approvalQueue: [...rt.approvalQueue, req]
+      }))
     })
     const offQuestion = window.api.onQuestionRequest((req) => {
-      if (req.sessionId === get().sessionId)
-        set((s) => ({ questionQueue: [...s.questionQueue, req] }))
+      updateRuntime(set, get, req.sessionId, (rt) => ({
+        ...rt,
+        questionQueue: [...rt.questionQueue, req]
+      }))
     })
     // Live-update the sidebar when a session title changes (auto-generated
     // locally or synced from another device).
@@ -158,8 +222,17 @@ export const useChat = create<ChatState>((set, get) => ({
         const current = get().sessionId
         if (current && !sessions.some((x) => x.id === current)) {
           // The open session was deleted elsewhere — drop back to the home
-          // screen rather than render a now-orphaned conversation.
-          set({ sessionId: null, messages: [], running: false })
+          // screen rather than render a now-orphaned conversation, and discard
+          // its runtime.
+          set((s) => {
+            const { [current]: _gone, ...runtimes } = s.runtimes
+            return {
+              sessionId: null,
+              runtimes,
+              runningSessions: s.runningSessions.filter((id) => id !== current),
+              ...mirror(null)
+            }
+          })
         } else if (!hadSession && sessions[0]) {
           // Fresh pull with nothing open (e.g. relogin) — surface newest history.
           await get().openSession(sessions[0])
@@ -183,20 +256,34 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   openSession: async (meta, msgIndex) => {
-    liveBatchId = null
-    const { messages } = await window.api.loadSession(meta.id)
-    // Permission mode is per-session and in-memory; a freshly opened session
-    // starts at 'ask' (mirrors the main-process AgentService default). Set the
-    // scroll target only for a search jump (msgIndex >= 0); a plain open clears
-    // any stale target so it can't fire on an unrelated session.
-    set({
-      sessionId: meta.id,
+    const scrollIndex = typeof msgIndex === 'number' && msgIndex >= 0 ? msgIndex : null
+    // Already live in this renderer (foreground earlier, or running in the
+    // background): just bring it to front from its runtime — DON'T reload, that
+    // would overwrite an in-flight stream with a stale persisted snapshot.
+    const existing = get().runtimes[meta.id]
+    if (existing?.hydrated) {
+      set({ sessionId: meta.id, pendingCwd: null, pendingScrollIndex: scrollIndex, ...mirror(existing) })
+      return
+    }
+    // Cold open: seed from the main process's LIVE state (in-memory messages +
+    // running flag for a session running in the background; persisted snapshot
+    // otherwise). Permission mode is per-session in-memory, defaulting to 'ask'.
+    const { messages, running } = await window.api.loadSessionLive(meta.id)
+    const rt: SessionRuntime = {
+      ...emptyRuntime(),
       messages: hydrateMessages(messages),
-      running: false,
-      permissionMode: 'ask',
+      running
+    }
+    set((s) => ({
+      sessionId: meta.id,
+      runtimes: { ...s.runtimes, [meta.id]: rt },
+      runningSessions: running
+        ? [...s.runningSessions.filter((id) => id !== meta.id), meta.id]
+        : s.runningSessions.filter((id) => id !== meta.id),
       pendingCwd: null,
-      pendingScrollIndex: typeof msgIndex === 'number' && msgIndex >= 0 ? msgIndex : null
-    })
+      pendingScrollIndex: scrollIndex,
+      ...mirror(rt)
+    }))
   },
 
   clearPendingScroll: () => set({ pendingScrollIndex: null }),
@@ -207,12 +294,12 @@ export const useChat = create<ChatState>((set, get) => ({
    * clicking "New chat" repeatedly never litters the history with empty chats.
    */
   newChat: async (cwd) => {
-    liveBatchId = null
     set((s) => ({
       sessionId: null,
-      messages: [],
-      running: false,
-      permissionMode: 'ask',
+      // Clear the foreground mirror to the home/empty state; background runtimes
+      // stay intact so any running session keeps streaming into its own runtime.
+      ...mirror(null),
+      pendingScrollIndex: null,
       // Inherit the directory in effect by default; an explicit arg overrides.
       pendingCwd: cwd === undefined ? selectCwd(s) : cwd
     }))
@@ -221,15 +308,23 @@ export const useChat = create<ChatState>((set, get) => ({
   send: async (text, attachments) => {
     if (!text.trim() && !attachments?.length) return
     // Lazily create the session on the first message. From the home screen there
-    // is no sessionId yet; spin one up and switch to it before sending.
+    // is no sessionId yet; spin one up (with a runtime, so events have somewhere
+    // to land) and switch to it before sending.
     let sessionId = get().sessionId
     if (!sessionId) {
       const meta = await window.api.createSession({ cwd: get().pendingCwd ?? '~' })
-      set((s) => ({ sessions: [meta, ...s.sessions], sessionId: meta.id, pendingCwd: null }))
-      sessionId = meta.id
-      // The new AgentService defaults to 'ask'; carry over a mode the user
-      // picked on the home screen before the session existed.
+      // Carry over the mode the user picked on the home screen (the mirror) into
+      // the new session's runtime; the main-process AgentService defaults to 'ask'.
       const mode = get().permissionMode
+      sessionId = meta.id
+      const rt = emptyRuntime(mode)
+      set((s) => ({
+        sessions: [meta, ...s.sessions],
+        sessionId: meta.id,
+        runtimes: { ...s.runtimes, [meta.id]: rt },
+        pendingCwd: null,
+        ...mirror(rt)
+      }))
       if (mode !== 'ask') window.api.setPermissionMode({ sessionId, mode })
     }
     // For an attachments-only send, show a lightweight indicator so the
@@ -237,17 +332,19 @@ export const useChat = create<ChatState>((set, get) => ({
     const bubbleText =
       text.trim() ||
       (attachments?.length ? i18n.t('chat.imageCount', { count: attachments.length }) : '')
-    set((s) => ({
+    updateRuntime(set, get, sessionId, (rt) => ({
+      ...rt,
       running: true,
-      messages: [...s.messages, { id: crypto.randomUUID(), role: 'user', text: bubbleText }]
+      messages: [...rt.messages, { id: crypto.randomUUID(), role: 'user', text: bubbleText }]
     }))
     try {
       await window.api.prompt({ sessionId, text, attachments })
     } catch (err) {
-      set((s) => ({
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
         running: false,
         messages: [
-          ...s.messages,
+          ...rt.messages,
           {
             id: crypto.randomUUID(),
             role: 'tool',
@@ -261,31 +358,54 @@ export const useChat = create<ChatState>((set, get) => ({
 
   abort: () => {
     const sessionId = get().sessionId
-    if (sessionId) window.api.abort({ sessionId })
-    set({ running: false })
+    if (!sessionId) return
+    window.api.abort({ sessionId })
+    // Main settles any open approval/question for the aborted session; clear the
+    // foreground session's queues + running flag to match.
+    updateRuntime(set, get, sessionId, (rt) => ({
+      ...rt,
+      running: false,
+      approvalQueue: [],
+      questionQueue: []
+    }))
   },
 
   respondApproval: (approvalId, approved, scope = 'once') => {
-    const req = get().approvalQueue.find((r) => r.approvalId === approvalId)
-    if (!req) return
+    // The approval may belong to a background session; find its owning runtime so
+    // dropping it stays correct regardless of which session is in front.
+    const owner = ownerOf(get().runtimes, (rt) =>
+      rt.approvalQueue.some((r) => r.approvalId === approvalId)
+    )
+    if (!owner) return
     window.api.respondApproval({ approvalId, approved, scope })
-    set((s) => ({ approvalQueue: s.approvalQueue.filter((r) => r.approvalId !== approvalId) }))
+    updateRuntime(set, get, owner, (rt) => ({
+      ...rt,
+      approvalQueue: rt.approvalQueue.filter((r) => r.approvalId !== approvalId)
+    }))
   },
 
   respondQuestion: (questionId, answers) => {
-    const req = get().questionQueue.find((r) => r.questionId === questionId)
-    if (!req) return
+    const owner = ownerOf(get().runtimes, (rt) =>
+      rt.questionQueue.some((r) => r.questionId === questionId)
+    )
+    if (!owner) return
     window.api.respondQuestion({ questionId, answers })
-    set((s) => ({ questionQueue: s.questionQueue.filter((r) => r.questionId !== questionId) }))
+    updateRuntime(set, get, owner, (rt) => ({
+      ...rt,
+      questionQueue: rt.questionQueue.filter((r) => r.questionId !== questionId)
+    }))
   },
 
   setPermissionMode: (mode) => {
-    // Always track the choice locally. On the home screen there's no session
-    // yet, so we just remember it; `send` applies it to the session that gets
-    // lazily created on the first message.
     const sessionId = get().sessionId
-    if (sessionId) window.api.setPermissionMode({ sessionId, mode })
-    set({ permissionMode: mode })
+    // On the home screen there's no session yet — just remember it in the mirror;
+    // `send` seeds the lazily-created session's runtime from it.
+    if (!sessionId) {
+      set({ permissionMode: mode })
+      return
+    }
+    window.api.setPermissionMode({ sessionId, mode })
+    updateRuntime(set, get, sessionId, (rt) => ({ ...rt, permissionMode: mode }))
   },
 
   setWorkingDirectory: async () => {
@@ -337,42 +457,107 @@ export const useChat = create<ChatState>((set, get) => ({
     await window.api.deleteSession({ sessionId })
     set((s) => {
       const current = s.sessionId === sessionId
+      const { [sessionId]: _gone, ...runtimes } = s.runtimes
       return {
         sessions: s.sessions.filter((m) => m.id !== sessionId),
+        runtimes,
+        runningSessions: s.runningSessions.filter((id) => id !== sessionId),
         // Deleting the open session drops us back to the home screen.
         sessionId: current ? null : s.sessionId,
-        messages: current ? [] : s.messages,
-        running: current ? false : s.running
+        ...(current ? mirror(null) : {})
       }
     })
   }
 }))
 
 /**
- * The id of the assistant turn currently streaming. Set from each turn's
- * `message_start` (and defensively from `message_end`), then stamped onto the
- * tool calls that turn issues so a parallel batch shares one `batchId`. The loop
- * is sequential per turn, so a single tracked id is unambiguous. Reset on
- * session open / new chat so it never bleeds across sessions.
+ * Mirror a runtime onto the top-level convenience fields (what components read).
+ * `null` yields the empty home-screen state. Keeping the foreground runtime
+ * denormalized here means components don't have to select through `runtimes`.
  */
-let liveBatchId: string | null = null
+function mirror(rt: SessionRuntime | null): {
+  messages: UiMessage[]
+  running: boolean
+  approvalQueue: ApprovalRequestPayload[]
+  questionQueue: QuestionRequestPayload[]
+  permissionMode: PermissionMode
+} {
+  return {
+    messages: rt?.messages ?? [],
+    running: rt?.running ?? false,
+    approvalQueue: rt?.approvalQueue ?? [],
+    questionQueue: rt?.questionQueue ?? [],
+    permissionMode: rt?.permissionMode ?? 'ask'
+  }
+}
 
-/** Fold a streamed agent event into UI message state. */
+/** The id of the first runtime matching `pred`, or undefined. */
+function ownerOf(
+  runtimes: Record<string, SessionRuntime>,
+  pred: (rt: SessionRuntime) => boolean
+): string | undefined {
+  for (const [id, rt] of Object.entries(runtimes)) if (pred(rt)) return id
+  return undefined
+}
+
+/**
+ * Apply `fn` to one session's runtime and write it back. Recomputes `runningSessions`
+ * only when that session's running flag flips, and — when the session is in the
+ * foreground — refreshes the top-level mirror so the on-screen view updates. A
+ * no-op if the session has no runtime (e.g. an event for a session not open here).
+ */
+function updateRuntime(
+  set: (fn: (s: ChatState) => Partial<ChatState>) => void,
+  get: () => ChatState,
+  sessionId: string,
+  fn: (rt: SessionRuntime) => SessionRuntime
+): void {
+  const cur = get().runtimes[sessionId]
+  if (!cur) return
+  const next = fn(cur)
+  set((s) => {
+    const runningChanged = cur.running !== next.running
+    const runningSessions = runningChanged
+      ? next.running
+        ? [...s.runningSessions.filter((id) => id !== sessionId), sessionId]
+        : s.runningSessions.filter((id) => id !== sessionId)
+      : s.runningSessions
+    return {
+      runtimes: { ...s.runtimes, [sessionId]: next },
+      runningSessions,
+      ...(s.sessionId === sessionId ? mirror(next) : {})
+    }
+  })
+}
+
+/**
+ * Fold a streamed agent event into the OWNING session's runtime — regardless of
+ * whether that session is in the foreground. This is what lets a background
+ * session keep building its thread; `updateRuntime` refreshes the on-screen
+ * mirror only when the event's session is the one in front. A no-op for a session
+ * with no runtime here (it was never opened/started in this renderer).
+ *
+ * The streaming-batch id lives on the runtime (`rt.liveBatchId`), so two sessions
+ * running at once never cross-stamp each other's tool batches.
+ */
 function applyEvent(
   set: (fn: (s: ChatState) => Partial<ChatState>) => void,
   get: () => ChatState,
   env: AgentEventEnvelope
 ): void {
-  if (env.sessionId !== get().sessionId) return
   const e = env.event
+  const sessionId = env.sessionId
 
   switch (e.type) {
     case 'agent_start':
-      set(() => ({ running: true }))
+      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: true }))
       break
     case 'message_start':
       // New turn → new batch for the tool calls it's about to issue.
-      liveBatchId = e.messageId || crypto.randomUUID()
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
+        liveBatchId: e.messageId || crypto.randomUUID()
+      }))
       break
     case 'message_update': {
       // text deltas carry the visible body, thinking deltas the reasoning stream;
@@ -380,19 +565,20 @@ function applyEvent(
       // neither and must not spawn a blank bubble.
       const td = e.thinkingDelta ?? ''
       if (!e.delta && !td) break
-      set((s) => {
-        const last = s.messages[s.messages.length - 1]
+      updateRuntime(set, get, sessionId, (rt) => {
+        const last = rt.messages[rt.messages.length - 1]
         if (last?.role === 'assistant' && last.streaming) {
           const updated = {
             ...last,
             text: e.delta ? last.text + e.delta : last.text,
             thinking: td ? (last.thinking ?? '') + td : last.thinking
           }
-          return { messages: [...s.messages.slice(0, -1), updated] }
+          return { ...rt, messages: [...rt.messages.slice(0, -1), updated] }
         }
         return {
+          ...rt,
           messages: [
-            ...s.messages,
+            ...rt.messages,
             {
               id: e.messageId || crypto.randomUUID(),
               role: 'assistant',
@@ -408,15 +594,16 @@ function applyEvent(
     case 'message_end':
       // pi emits message_end for the user prompt too; only assistant turns echo.
       if (e.role !== 'assistant') {
-        set((s) => ({
-          messages: s.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+        updateRuntime(set, get, sessionId, (rt) => ({
+          ...rt,
+          messages: rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
         }))
         break
       }
-      // Defensive: ensure the batch id is set even if message_start was missed.
-      if (e.messageId) liveBatchId = e.messageId
-      set((s) => {
-        const last = s.messages[s.messages.length - 1]
+      updateRuntime(set, get, sessionId, (rt) => {
+        // Defensive: ensure the batch id is set even if message_start was missed.
+        const liveBatchId = e.messageId || rt.liveBatchId
+        const last = rt.messages[rt.messages.length - 1]
         // Finalize the streamed bubble with the authoritative full text +
         // reasoning (deltas win; fall back to the end payload if they were empty).
         if (last?.role === 'assistant' && last.streaming) {
@@ -426,14 +613,16 @@ function applyEvent(
             thinking: last.thinking || e.thinking || undefined,
             streaming: false
           }
-          return { messages: [...s.messages.slice(0, -1), finalized] }
+          return { ...rt, liveBatchId, messages: [...rt.messages.slice(0, -1), finalized] }
         }
         // …or build it now if deltas never produced a visible bubble
         // (non-streaming response, empty/garbled deltas).
         if (e.text || e.thinking) {
           return {
+            ...rt,
+            liveBatchId,
             messages: [
-              ...s.messages,
+              ...rt.messages,
               {
                 id: e.messageId || crypto.randomUUID(),
                 role: 'assistant',
@@ -443,13 +632,18 @@ function applyEvent(
             ]
           }
         }
-        return { messages: s.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m)) }
+        return {
+          ...rt,
+          liveBatchId,
+          messages: rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+        }
       })
       break
     case 'tool_execution_start':
-      set((s) => ({
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
         messages: [
-          ...s.messages,
+          ...rt.messages,
           {
             id: e.toolCallId,
             role: 'tool',
@@ -457,14 +651,15 @@ function applyEvent(
             text: i18n.t('chat.toolRunning', { tool: i18n.t(toolDisplayKey(e.name)) }),
             running: true,
             toolArg: toolArgSummary(e.name, e.args),
-            batchId: liveBatchId ?? e.toolCallId
+            batchId: rt.liveBatchId ?? e.toolCallId
           }
         ]
       }))
       break
     case 'tool_execution_end':
-      set((s) => ({
-        messages: s.messages.map((m) =>
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
+        messages: rt.messages.map((m) =>
           m.id === e.toolCallId
             ? { ...m, text: summarizeResult(e.result), isError: e.isError, running: false }
             : m
@@ -472,13 +667,14 @@ function applyEvent(
       }))
       break
     case 'agent_end':
-      set(() => ({ running: false }))
+      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: false }))
       break
     case 'error':
-      set((s) => ({
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
         running: false,
         messages: [
-          ...s.messages,
+          ...rt.messages,
           { id: crypto.randomUUID(), role: 'tool', text: e.message, isError: true }
         ]
       }))

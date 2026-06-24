@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { Type } from 'typebox'
-import type { BrowserWindow } from 'electron'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { AskQuestion } from '@shared/ipc'
 import { questions as questionRegistry } from '../questions'
@@ -15,7 +14,7 @@ import { questions as questionRegistry } from '../questions'
  * (see ../questions). This tool is exempt from the approval gate in
  * agent-service.ts (asking the user is inherently safe).
  */
-export function createAskTool(win: BrowserWindow, sessionId: string): AgentTool<any> {
+export function createAskTool(sessionId: string): AgentTool<any> {
   return {
     name: 'ask',
     label: 'ask',
@@ -76,7 +75,7 @@ export function createAskTool(win: BrowserWindow, sessionId: string): AgentTool<
         }
       })
 
-      const answers = await questionRegistry.request(win, {
+      const answers = await questionRegistry.request({
         sessionId,
         questions: withIds,
         reason: 'Flairy needs your input'

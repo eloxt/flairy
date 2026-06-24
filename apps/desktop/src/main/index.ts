@@ -32,8 +32,8 @@ app.whenReady().then(() => {
   // config snapshot/delta. onConfig fires immediately if a cached config exists.
   const mcp = new McpManager();
   server.onConfig((config) => mcp.sync(config.mcpServers));
-  const win = createMainWindow();
-  registerIpcHandlers(win, server, mcp);
+  createMainWindow();
+  registerIpcHandlers(server, mcp);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

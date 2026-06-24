@@ -1,4 +1,4 @@
-import { ipcMain, dialog, Menu, type BrowserWindow } from 'electron'
+import { ipcMain, dialog, Menu } from 'electron'
 import {
   IPC,
   type PromptArgs,
@@ -53,7 +53,7 @@ import {
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
 import { redactConfig } from '../sync/config-redact'
-import { broadcast, openSettingsWindow } from '../windows'
+import { broadcast, getMainWindow, openSettingsWindow } from '../windows'
 
 /** Live agent services keyed by sessionId. */
 const services = new Map<string, AgentService>()
@@ -84,8 +84,13 @@ function establishSession(
 }
 
 /** Show the native folder picker; returns the chosen path or null if cancelled. */
-async function pickDirectory(win: BrowserWindow): Promise<string | null> {
-  const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+async function pickDirectory(): Promise<string | null> {
+  // Parent the dialog to the live main window (resolved now, never captured) so
+  // it still anchors correctly after a window close→reopen.
+  const win = getMainWindow()
+  const res = win
+    ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    : await dialog.showOpenDialog({ properties: ['openDirectory'] })
   const dir = res.filePaths[0]
   if (res.canceled || !dir) return null
   return dir
@@ -93,7 +98,6 @@ async function pickDirectory(win: BrowserWindow): Promise<string | null> {
 
 function getOrCreateService(
   sessionId: string,
-  win: BrowserWindow,
   server: ServerClient,
   mcp: McpManager
 ): AgentService {
@@ -104,7 +108,6 @@ function getOrCreateService(
     svc = new AgentService({
       sessionId,
       cwd: meta.cwd,
-      win,
       server,
       mcp,
       messages: loadMessages(sessionId)
@@ -117,11 +120,7 @@ function getOrCreateService(
   return svc
 }
 
-export function registerIpcHandlers(
-  win: BrowserWindow,
-  server: ServerClient,
-  mcp: McpManager
-): void {
+export function registerIpcHandlers(server: ServerClient, mcp: McpManager): void {
   // Sessions changed on another device land in the local db so the UI sees them.
   server.onSessionRemote((payload) => {
     upsertRemoteSession(payload)
@@ -174,12 +173,12 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.AgentPrompt, async (_e, args: PromptArgs) => {
     try {
-      await getOrCreateService(args.sessionId, win, server, mcp).prompt(args.text, args.attachments)
+      await getOrCreateService(args.sessionId, server, mcp).prompt(args.text, args.attachments)
     } catch (err) {
       // Creating the service can throw (e.g. no LLM config delivered yet). Push
       // it back as a visible error event instead of a swallowed invoke rejection.
       const message = err instanceof Error ? err.message : String(err)
-      win.webContents.send(IPC.AgentEvent, {
+      getMainWindow()?.webContents.send(IPC.AgentEvent, {
         sessionId: args.sessionId,
         event: { type: 'error', message }
       })
@@ -187,7 +186,7 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IPC.AgentSteer, (_e, args: SteerArgs) => {
-    getOrCreateService(args.sessionId, win, server, mcp).steer(args.text)
+    getOrCreateService(args.sessionId, server, mcp).steer(args.text)
   })
 
   ipcMain.handle(IPC.AgentAbort, (_e, args: AbortArgs) => {
@@ -218,6 +217,21 @@ export function registerIpcHandlers(
     return { meta, messages: loadMessages(sessionId) }
   })
 
+  // Open a session into the renderer with its LIVE state. A session running in
+  // the background hasn't persisted its in-flight turn (persist happens on turn
+  // boundaries), so prefer the agent's in-memory messages + running flag when a
+  // service exists; fall back to the persisted snapshot for a cold session.
+  ipcMain.handle(IPC.SessionLoadLive, (_e, sessionId: string) => {
+    const meta = getSession(sessionId)
+    if (!meta) throw new Error(`Unknown session: ${sessionId}`)
+    const svc = services.get(sessionId)
+    return {
+      meta,
+      messages: svc ? svc.getLiveMessages() : loadMessages(sessionId),
+      running: svc?.isRunning() ?? false
+    }
+  })
+
   ipcMain.handle(IPC.SearchMessages, (_e, args: SearchMessagesArgs) =>
     searchMessages(args.query, args.limit)
   )
@@ -227,7 +241,7 @@ export function registerIpcHandlers(
   // Pick a directory and set it as the session's cwd: persist it and rebind the
   // live agent's local tools. Returns the updated meta, or null if cancelled.
   ipcMain.handle(IPC.SessionSetCwd, async (_e, args: SetCwdArgs) => {
-    const dir = await pickDirectory(win)
+    const dir = await pickDirectory()
     if (!dir) return null
     addRecentDirectory(dir)
     const meta = updateSessionCwd(args.sessionId, dir)
@@ -311,8 +325,9 @@ export function registerIpcHandlers(
         }
       ])
       // `callback` fires once the menu closes — after any item's click handler —
-      // so `action` reflects the selection (or stays null on dismissal).
-      menu.popup({ window: win, callback: () => resolve(action) })
+      // so `action` reflects the selection (or stays null on dismissal). Anchor
+      // to the live main window, resolved now rather than captured.
+      menu.popup({ window: getMainWindow() ?? undefined, callback: () => resolve(action) })
     })
   })
 
@@ -320,7 +335,7 @@ export function registerIpcHandlers(
   // records it in recents); the renderer stashes it for the session created on
   // the first message.
   ipcMain.handle(IPC.DialogPickDirectory, async () => {
-    const dir = await pickDirectory(win)
+    const dir = await pickDirectory()
     if (dir) addRecentDirectory(dir)
     return dir
   })

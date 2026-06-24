@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useChat } from "@/store/chat-store";
 import type { SessionMeta } from "@shared/ipc";
-import { Plus, Search, Settings } from "lucide-react";
+import { LoaderCircle, Plus, Search, Settings } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -118,6 +118,9 @@ function SessionRow({
 }): React.JSX.Element {
   const { t } = useTranslation();
   const { openSession, deleteSession, renameSession } = useChat();
+  // Subscribe to just this row's running flag (a primitive) so the indicator
+  // toggles without re-rendering the whole sidebar on every streamed token.
+  const running = useChat((st) => st.runningSessions.includes(s.id));
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -159,9 +162,14 @@ function SessionRow({
           }}
           className="group/item rounded-lg"
         >
-          <span className="truncate text-[0.8125rem]">
+          <span className="min-w-0 flex-1 truncate text-[0.8125rem]">
             {s.title || t('chat.untitled')}
           </span>
+          {running && (
+            <span className="ml-auto flex shrink-0" aria-label={t('chat.running')} title={t('chat.running')}>
+              <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />
+            </span>
+          )}
         </SidebarMenuButton>
       )}
 

@@ -50,6 +50,7 @@ const en = {
     toolRunning: 'Running {{tool}}…',
     toolDone: 'done',
     working: 'Working…',
+    running: 'Running',
     reasoning: 'Reasoning',
     reasoningLive: 'Reasoning…'
   },

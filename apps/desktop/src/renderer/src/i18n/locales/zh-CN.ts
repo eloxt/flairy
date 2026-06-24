@@ -48,6 +48,7 @@ const zhCN: typeof En = {
     toolRunning: '正在{{tool}}…',
     toolDone: '完成',
     working: '处理中…',
+    running: '运行中',
     reasoning: '思考过程',
     reasoningLive: '正在思考…'
   },

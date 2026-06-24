@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Notification, type BrowserWindow } from 'electron'
 import { IPC, type ApprovalRequestPayload, type ApprovalScope } from '@shared/ipc'
 import { t } from '../locale'
+import { getMainWindow } from '../windows'
 
 /** A settled approval decision: whether to run, and how long to remember it. */
 export interface ApprovalDecision {
@@ -33,13 +34,16 @@ class ApprovalRegistry {
   >()
   private inFlight = new Map<string, Promise<ApprovalDecision>>()
 
-  request(
-    win: BrowserWindow,
-    payload: Omit<ApprovalRequestPayload, 'approvalId'>
-  ): Promise<ApprovalDecision> {
+  request(payload: Omit<ApprovalRequestPayload, 'approvalId'>): Promise<ApprovalDecision> {
     const key = `${payload.sessionId}:${payload.toolName}`
     const existing = this.inFlight.get(key)
     if (existing) return existing
+
+    // Resolve the live main window at request time (not a captured reference) so
+    // the prompt reaches the renderer even after a window close→reopen. With no
+    // window there's nobody to ask — deny rather than hang the tool call.
+    const win = getMainWindow()
+    if (!win) return Promise.resolve(DENIED)
 
     const approvalId = randomUUID()
     const decision = new Promise<ApprovalDecision>((resolve) => {
