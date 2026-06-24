@@ -1,4 +1,4 @@
-import { app, type BrowserWindow } from "electron";
+import { app } from "electron";
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel, streamSimple } from "@earendil-works/pi-ai";
 import {
@@ -23,6 +23,7 @@ import { approvals } from "./approvals";
 import { questions } from "./questions";
 import { listMaterializedSkills, skillsRoot } from "./skill-materializer";
 import { saveMessages, getSession, updateSessionTitle } from "../store/db";
+import { getMainWindow } from "../windows";
 import type { ServerClient } from "../sync/server-client";
 
 const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
@@ -38,7 +39,6 @@ const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
  */
 export class AgentService {
   private agent: Agent;
-  private win: BrowserWindow;
   private sessionId: string;
   private server: ServerClient;
   /** Shared MCP connections; source of the remote tools merged into the agent. */
@@ -74,6 +74,12 @@ export class AgentService {
    * restart — matching the "never persisted" semantics of session approvals.
    */
   private permissionMode: PermissionMode = "ask";
+  /**
+   * Whether a turn is currently in flight. Tracked so a session reopened while it
+   * runs in the background can report its live running state (see isRunning),
+   * driving both the sidebar indicator and the renderer's restored view.
+   */
+  private running = false;
   /**
    * Resolved model for the server-assigned `tool` role, or undefined when no tool
    * model is assigned. Delivered + resolved but NOT yet wired into the loop — a

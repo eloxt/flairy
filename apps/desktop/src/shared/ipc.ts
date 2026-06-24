@@ -356,6 +356,8 @@ export interface FlairyApi {
   openSettings(): Promise<void>
   /** This app's version (from package.json), resolved synchronously by main. */
   getAppVersion(): string
+  /** The OS platform, so the renderer can adapt chrome (e.g. macOS traffic lights). */
+  platform: NodeJS.Platform
   /**
    * The language to render with on first paint, resolved synchronously by main
    * (saved setting, else system locale). Sync so i18n initializes before paint.

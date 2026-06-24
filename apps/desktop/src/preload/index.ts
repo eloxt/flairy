@@ -41,6 +41,7 @@ const api: FlairyApi = {
   getConfig: () => ipcRenderer.invoke(IPC.ConfigGet),
   openSettings: () => ipcRenderer.invoke(IPC.WindowOpenSettings),
   getAppVersion: () => ipcRenderer.sendSync(IPC.AppGetVersion) as string,
+  platform: process.platform,
   getInitialLanguage: () => ipcRenderer.sendSync(IPC.SettingsGetLanguage) as AppLanguage,
   setLanguage: (lng) => ipcRenderer.invoke(IPC.SettingsSetLanguage, lng),
 

@@ -16,6 +16,21 @@ const RENDERER_DIR = join(import.meta.dirname, '../renderer')
 /** Single reused Settings window, if open. */
 let settingsWindow: BrowserWindow | null = null
 
+/**
+ * The current main window. Tracked at module scope (not captured by callers) so
+ * everything that pushes to the renderer — agent events, approval/question
+ * prompts, dialogs — resolves the LIVE window at send time. On macOS the main
+ * window can be closed and recreated via the dock (see app `activate`); a
+ * captured reference would then be a destroyed object and every send would throw
+ * "Object has been destroyed". Always go through getMainWindow().
+ */
+let mainWindow: BrowserWindow | null = null
+
+/** The live main window, or null if none is currently open (or it's destroyed). */
+export function getMainWindow(): BrowserWindow | null {
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+}
+
 // contextIsolation is the real renderer<->main boundary. sandbox is false
 // because with "type": "module" the preload is ESM, and Electron's sandbox
 // requires a CommonJS preload. nodeIntegration stays off.
@@ -58,8 +73,15 @@ export function createMainWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+  // Track the live main window so renderer-bound sends always resolve the current
+  // one, even after a close→reopen on macOS. Clear the ref only if THIS window is
+  // the one being destroyed (a later recreate overwrites it again).
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
   openLinksExternally(win)
   loadRenderer(win)
+  mainWindow = win
   return win
 }
 

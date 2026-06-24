@@ -102,6 +102,8 @@ function ChatView(): React.JSX.Element {
 function ChatHeader(): React.JSX.Element {
   const { state, isMobile } = useSidebar();
   const collapsed = state === "collapsed";
+  // Only macOS has traffic lights to clear; Windows/Linux need no left inset.
+  const isMac = window.api.platform === "darwin";
 
   // Show the active session's title; fall back to the product name on the home
   // screen (no session) or for an untitled session.
@@ -115,7 +117,7 @@ function ChatHeader(): React.JSX.Element {
       className={cn(
         "app-drag flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-4",
         !isMobile ? "transition-[padding] duration-200 ease-linear" : "",
-        collapsed || isMobile ? "pl-20" : "pl-3",
+        isMac && (collapsed || isMobile) ? "pl-20" : "pl-3",
       )}
     >
       <SidebarTrigger className="app-no-drag -ml-0.5 text-muted-foreground hover:text-foreground" />
