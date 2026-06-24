@@ -53,9 +53,39 @@ export interface LlmProviderInput {
 }
 
 /**
+ * How the client talks to a provider's HTTP API — a pi-ai `Api`. Needed so the
+ * client can run models pi-ai's built-in registry does not know. The universal
+ * `openai-completions` covers most third-party / OpenAI-compatible gateways.
+ * Mirrors the `llm_model_api_check` constraint in the DB.
+ */
+export type ModelApi =
+  | 'openai-completions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'google-generative-ai'
+
+/**
+ * Per-token price of a model (USD). Informational only — the client uses it to
+ * estimate usage cost; it never gates a request. Mirrors `ModelCost` in
+ * `apps/server/src/models/llm.rs`.
+ */
+export interface ModelCost {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
+
+/**
  * A model entry under a provider. The catalog holds many; which one is used for
  * which scenario is decided by role assignments (see {@link LlmRole}), not a flag
  * on the model itself.
+ *
+ * The `api` / `contextWindow` / `maxTokens` / `cost` fields let the client run
+ * models pi-ai's built-in registry does not know (custom / third-party /
+ * OpenAI-compatible endpoints, e.g. provider `openai` + model `glm-5.2`). When
+ * omitted, the client falls back to pi-ai's registry for known models, or to its
+ * own defaults.
  */
 export interface LlmModelConfig {
   id: string
@@ -70,6 +100,14 @@ export interface LlmModelConfig {
    * provider/client default (no explicit level forced). See {@link ThinkingLevel}.
    */
   thinkingLevel?: ThinkingLevel
+  /** Provider API the client uses. Omitted → derived from the provider vendor. */
+  api?: ModelApi
+  /** Context window in tokens. Omitted → client default. */
+  contextWindow?: number
+  /** Max output tokens per turn. Omitted → client default. */
+  maxTokens?: number
+  /** Per-token price. Omitted → treated as zero. */
+  cost?: ModelCost
 }
 
 /** Create/update payload for a model (no server-owned fields). */
@@ -78,6 +116,10 @@ export interface LlmModelInput {
   name: string
   model: string
   thinkingLevel?: ThinkingLevel
+  api?: ModelApi
+  contextWindow?: number
+  maxTokens?: number
+  cost?: ModelCost
 }
 
 /**

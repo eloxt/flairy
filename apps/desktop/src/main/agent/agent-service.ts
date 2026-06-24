@@ -556,25 +556,74 @@ function sanitizeTitle(raw: string): string {
   return collapsed.slice(0, 60).trim();
 }
 
+type PiModel = NonNullable<ReturnType<typeof getModel>>;
+
+/** Default pi-ai `Api` per provider vendor when the server doesn't specify one. */
+const DEFAULT_API: Record<string, string> = {
+  // `openai-completions` is the universal OpenAI-compatible API most third-party
+  // gateways speak; real OpenAI's Responses API is opted into via model.api.
+  openai: "openai-completions",
+  anthropic: "anthropic-messages",
+  google: "google-generative-ai",
+};
+
 /**
  * Resolve a pi-ai Model from the active LLM's provider vendor + model id.
  *
- * getModel is typed over a known provider/model union, but our config carries
- * dynamic strings, so we cast at the boundary. The provider's baseUrl, if
- * supplied, overrides the model's default endpoint (e.g. a gateway/proxy).
+ * pi-ai's `getModel` is a *static registry lookup* — it returns `undefined` for
+ * any (provider, model) pair not baked into its generated catalog (e.g.
+ * provider `openai` + model `glm-5.2`). So:
+ *
+ *   1. Known model → use the registry entry (accurate cost / context window /
+ *      thinking-level map), overriding only baseUrl when the provider sets one.
+ *   2. Unknown model → construct a Model from the server-pushed runtime params
+ *      (api / contextWindow / maxTokens / cost), falling back to defaults for
+ *      anything the admin left blank. This is what makes custom / third-party /
+ *      OpenAI-compatible models work.
+ *
+ * getModel is typed over a known provider/model union, so we cast at the boundary.
  */
-function buildModel(llm: ActiveLlm): ReturnType<typeof getModel> {
-  const provider = llm.provider.provider;
-  const baseUrl = llm.provider.baseUrl;
-  const resolved = getModel(
+function buildModel(llm: ActiveLlm): PiModel {
+  const { provider, baseUrl } = llm.provider;
+  const m = llm.model;
+
+  const known = getModel(
     provider as Parameters<typeof getModel>[0],
-    llm.model.model as never,
+    m.model as never,
   );
-  if (baseUrl) {
+  if (known) {
     // Model.baseUrl is a plain settable field on the resolved model object.
-    return { ...resolved, baseUrl };
+    return baseUrl ? { ...known, baseUrl } : known;
   }
-  return resolved;
+
+  // Unknown to pi-ai's registry → hand-build from the pushed config. A custom
+  // model with no baseUrl can't reach an endpoint, so surface that clearly
+  // rather than letting pi fail deep in the request.
+  if (!baseUrl) {
+    throw new Error(
+      `Model "${m.model}" is not built into pi-ai and its provider has no base URL. ` +
+        `Set a base URL on the provider (and an API type on the model) in the admin console.`,
+    );
+  }
+  const api = (m.api ?? DEFAULT_API[provider] ?? "openai-completions") as PiModel["api"];
+  return {
+    id: m.model,
+    name: m.name || m.model,
+    api,
+    provider: provider as PiModel["provider"],
+    baseUrl,
+    // pi gates thinking on `reasoning`; mirror the configured effort.
+    reasoning: m.thinkingLevel != null && m.thinkingLevel !== "off",
+    input: ["text"],
+    cost: {
+      input: m.cost?.input ?? 0,
+      output: m.cost?.output ?? 0,
+      cacheRead: m.cost?.cacheRead ?? 0,
+      cacheWrite: m.cost?.cacheWrite ?? 0,
+    },
+    contextWindow: m.contextWindow ?? 128_000,
+    maxTokens: m.maxTokens ?? 8_192,
+  };
 }
 
 /** Map a pi-agent-core message to the wire SyncMessage shape. */

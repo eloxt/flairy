@@ -133,8 +133,24 @@ pub struct LlmProviderInput {
     pub base_url: Option<String>,
 }
 
+/// Per-token price of a model (USD). Informational only — the client uses it to
+/// estimate usage cost; it never gates a request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCost {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+
 /// A model entry under a provider (catalog row). Which one is used for which
 /// scenario is decided by role assignments, not a flag on the model itself.
+///
+/// The `api` / `context_window` / `max_tokens` / `cost` fields let the client run
+/// models pi-ai's built-in registry does not know (custom / third-party / OpenAI-
+/// compatible endpoints). When `None`, the client falls back to pi-ai's registry
+/// for known models, or to its own defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmModelConfig {
@@ -149,6 +165,19 @@ pub struct LlmModelConfig {
     /// no explicit level forced (client/provider default decides).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
+    /// How the client talks to the provider (pi-ai `Api`), e.g.
+    /// "openai-completions". `None` → client derives it from the provider vendor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    /// Context window in tokens. `None` → client default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<i32>,
+    /// Max output tokens per turn. `None` → client default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<i32>,
+    /// Per-token price. `None` → treated as zero by the client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<ModelCost>,
 }
 
 /// Create/update payload for a model (no server-owned fields).
@@ -160,6 +189,14 @@ pub struct LlmModelInput {
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<ModelCost>,
 }
 
 /// The active LLM delivered to clients: the active model joined with its provider.

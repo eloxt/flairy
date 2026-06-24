@@ -9,7 +9,7 @@ use super::{config::bump_version, parse_uuid};
 use crate::error::{AppError, AppResult};
 use crate::models::llm::{
     ActiveLlm, LlmModelConfig, LlmModelInput, LlmProvider, LlmProviderConfig, LlmProviderInput,
-    LlmRole, LlmRoleAssignment, RoleModels, ThinkingLevel,
+    LlmRole, LlmRoleAssignment, ModelCost, RoleModels, ThinkingLevel,
 };
 
 /// Parse the nullable `thinking_level` TEXT column into the enum. An unknown
@@ -17,6 +17,26 @@ use crate::models::llm::{
 /// `None` rather than failing the whole read.
 fn parse_thinking_level(raw: Option<String>) -> Option<ThinkingLevel> {
     raw.as_deref().and_then(ThinkingLevel::from_str)
+}
+
+/// Assemble the four nullable `cost_*` columns into a [`ModelCost`]. Returns
+/// `None` only when every column is NULL (the model carries no price); a partial
+/// row coalesces missing components to 0.0.
+fn build_cost(
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+) -> Option<ModelCost> {
+    if input.is_none() && output.is_none() && cache_read.is_none() && cache_write.is_none() {
+        return None;
+    }
+    Some(ModelCost {
+        input: input.unwrap_or(0.0),
+        output: output.unwrap_or(0.0),
+        cache_read: cache_read.unwrap_or(0.0),
+        cache_write: cache_write.unwrap_or(0.0),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -138,11 +158,25 @@ fn map_model(row: &PgRow) -> LlmModelConfig {
         name: row.get("name"),
         model: row.get("model"),
         thinking_level: parse_thinking_level(row.get("thinking_level")),
+        api: row.get("api"),
+        context_window: row.get("context_window"),
+        max_tokens: row.get("max_tokens"),
+        cost: build_cost(
+            row.get("cost_input"),
+            row.get("cost_output"),
+            row.get("cost_cache_read"),
+            row.get("cost_cache_write"),
+        ),
     }
 }
 
-const MODEL_SELECT: &str =
-    "SELECT id, provider_id, name, model, thinking_level FROM llm_models";
+const MODEL_SELECT: &str = "SELECT id, provider_id, name, model, thinking_level, api, \
+     context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write \
+     FROM llm_models";
+
+/// The column list every model write returns, kept in sync with [`map_model`].
+const MODEL_RETURNING: &str = "id, provider_id, name, model, thinking_level, api, \
+     context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write";
 
 /// All models across every provider, oldest first.
 pub async fn list_models(pool: &PgPool) -> AppResult<Vec<LlmModelConfig>> {
@@ -174,16 +208,25 @@ pub async fn create_model(
         return Err(AppError::NotFound);
     }
 
-    let row = sqlx::query(
-        "INSERT INTO llm_models (id, provider_id, name, model, thinking_level)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, provider_id, name, model, thinking_level",
-    )
+    let row = sqlx::query(&format!(
+        "INSERT INTO llm_models
+            (id, provider_id, name, model, thinking_level, api, context_window,
+             max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING {MODEL_RETURNING}"
+    ))
     .bind(id)
     .bind(provider_uid)
     .bind(&input.name)
     .bind(&input.model)
     .bind(input.thinking_level.map(ThinkingLevel::as_str))
+    .bind(&input.api)
+    .bind(input.context_window)
+    .bind(input.max_tokens)
+    .bind(input.cost.as_ref().map(|c| c.input))
+    .bind(input.cost.as_ref().map(|c| c.output))
+    .bind(input.cost.as_ref().map(|c| c.cache_read))
+    .bind(input.cost.as_ref().map(|c| c.cache_write))
     .fetch_one(&mut *tx)
     .await?;
 
@@ -225,17 +268,26 @@ pub async fn update_model(
         return Err(AppError::NotFound);
     }
 
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE llm_models
-         SET provider_id = $2, name = $3, model = $4, thinking_level = $5, updated_at = now()
+         SET provider_id = $2, name = $3, model = $4, thinking_level = $5, api = $6,
+             context_window = $7, max_tokens = $8, cost_input = $9, cost_output = $10,
+             cost_cache_read = $11, cost_cache_write = $12, updated_at = now()
          WHERE id = $1
-         RETURNING id, provider_id, name, model, thinking_level",
-    )
+         RETURNING {MODEL_RETURNING}"
+    ))
     .bind(uid)
     .bind(provider_uid)
     .bind(&input.name)
     .bind(&input.model)
     .bind(input.thinking_level.map(ThinkingLevel::as_str))
+    .bind(&input.api)
+    .bind(input.context_window)
+    .bind(input.max_tokens)
+    .bind(input.cost.as_ref().map(|c| c.input))
+    .bind(input.cost.as_ref().map(|c| c.output))
+    .bind(input.cost.as_ref().map(|c| c.cache_read))
+    .bind(input.cost.as_ref().map(|c| c.cache_write))
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -294,6 +346,15 @@ fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
             name: row.get("m_name"),
             model: row.get("m_model"),
             thinking_level: parse_thinking_level(row.get("m_thinking_level")),
+            api: row.get("m_api"),
+            context_window: row.get("m_context_window"),
+            max_tokens: row.get("m_max_tokens"),
+            cost: build_cost(
+                row.get("m_cost_input"),
+                row.get("m_cost_output"),
+                row.get("m_cost_cache_read"),
+                row.get("m_cost_cache_write"),
+            ),
         },
     })
 }
@@ -308,6 +369,13 @@ pub async fn role_models(pool: &PgPool) -> AppResult<RoleModels> {
             m.name           AS m_name,
             m.model          AS m_model,
             m.thinking_level AS m_thinking_level,
+            m.api              AS m_api,
+            m.context_window   AS m_context_window,
+            m.max_tokens       AS m_max_tokens,
+            m.cost_input       AS m_cost_input,
+            m.cost_output      AS m_cost_output,
+            m.cost_cache_read  AS m_cost_cache_read,
+            m.cost_cache_write AS m_cost_cache_write,
             p.id          AS p_id,
             p.name        AS p_name,
             p.provider    AS p_provider,

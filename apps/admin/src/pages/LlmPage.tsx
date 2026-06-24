@@ -7,6 +7,7 @@ import type {
   LlmProviderConfig,
   LlmProviderInput,
   LlmRole,
+  ModelApi,
   ThinkingLevel,
 } from "@flairy/shared";
 import { useConfig } from "@/hooks/useConfig";
@@ -66,6 +67,17 @@ const THINKING_LEVELS: ThinkingLevel[] = [
  * through this token and map it back to `undefined` on save.
  */
 const THINKING_DEFAULT = "__default__";
+
+/** Provider API options offered per model. */
+const MODEL_APIS: ModelApi[] = [
+  "openai-completions",
+  "openai-responses",
+  "anthropic-messages",
+  "google-generative-ai",
+];
+
+/** Sentinel Select value for "derive the API from the provider vendor". */
+const API_AUTO = "__auto__";
 
 const ROLES: {
   role: LlmRole;
@@ -142,6 +154,21 @@ interface ModelForm {
   model: string;
   /** Empty string = no explicit level (provider/client default). */
   thinkingLevel: ThinkingLevel | "";
+  /** Empty string = derive the API from the provider vendor. */
+  api: ModelApi | "";
+  // Runtime params are kept as raw strings so the inputs can be cleared; empty
+  // means "omit" and the client falls back to pi-ai's registry / its defaults.
+  contextWindow: string;
+  maxTokens: string;
+  costInput: string;
+  costOutput: string;
+  costCacheRead: string;
+  costCacheWrite: string;
+}
+
+/** Number → input string, with `undefined` becoming "". */
+function numStr(n: number | undefined): string {
+  return n == null ? "" : String(n);
 }
 
 function modelToForm(m: LlmModelConfig): ModelForm {
@@ -151,6 +178,13 @@ function modelToForm(m: LlmModelConfig): ModelForm {
     name: m.name,
     model: m.model,
     thinkingLevel: m.thinkingLevel ?? "",
+    api: m.api ?? "",
+    contextWindow: numStr(m.contextWindow),
+    maxTokens: numStr(m.maxTokens),
+    costInput: numStr(m.cost?.input),
+    costOutput: numStr(m.cost?.output),
+    costCacheRead: numStr(m.cost?.cacheRead),
+    costCacheWrite: numStr(m.cost?.cacheWrite),
   };
 }
 
@@ -161,15 +195,54 @@ function emptyModelForm(defaultProviderId: string): ModelForm {
     name: "",
     model: "",
     thinkingLevel: "",
+    api: "",
+    contextWindow: "",
+    maxTokens: "",
+    costInput: "",
+    costOutput: "",
+    costCacheRead: "",
+    costCacheWrite: "",
   };
 }
 
+/** Parse a numeric form field; blank or non-finite → `undefined` (omit). */
+function parseNum(raw: string): number | undefined {
+  const t = raw.trim();
+  if (t === "") return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function modelFormToInput(form: ModelForm): LlmModelInput {
+  // A cost is sent only when at least one component is given; missing
+  // components default to 0 so the object stays well-formed.
+  const costParts = [
+    form.costInput,
+    form.costOutput,
+    form.costCacheRead,
+    form.costCacheWrite,
+  ].map(parseNum);
+  const cost = costParts.some((n) => n !== undefined)
+    ? {
+        input: costParts[0] ?? 0,
+        output: costParts[1] ?? 0,
+        cacheRead: costParts[2] ?? 0,
+        cacheWrite: costParts[3] ?? 0,
+      }
+    : undefined;
+
+  const contextWindow = parseNum(form.contextWindow);
+  const maxTokens = parseNum(form.maxTokens);
+
   return {
     providerId: form.providerId,
     name: form.name.trim(),
     model: form.model.trim(),
     ...(form.thinkingLevel ? { thinkingLevel: form.thinkingLevel } : {}),
+    ...(form.api ? { api: form.api } : {}),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(cost ? { cost } : {}),
   };
 }
 
@@ -683,6 +756,95 @@ function ModelEditor({
           How hard the model thinks before answering. Delivered to every client
           and applied to the agent loop. “Provider default” forces no level.
           “xhigh” is honored only by select models.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="model-api">Provider API</Label>
+        <Select
+          value={form.api || API_AUTO}
+          onValueChange={(v) =>
+            patch({ api: v === API_AUTO ? "" : (v as ModelApi) })
+          }
+        >
+          <SelectTrigger id="model-api">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={API_AUTO}>Auto (by vendor)</SelectItem>
+            {MODEL_APIS.map((a) => (
+              <SelectItem key={a} value={a}>
+                {a}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          How the client talks to the provider. Leave on “Auto” for the vendor’s
+          native API; pick <code>openai-completions</code> for custom or
+          third-party OpenAI-compatible endpoints. Required for models pi-ai
+          doesn’t know built-in (e.g. <code>glm-5.2</code>).
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="model-context">Context window</Label>
+          <Input
+            id="model-context"
+            inputMode="numeric"
+            placeholder="200000"
+            value={form.contextWindow}
+            onChange={(e) => patch({ contextWindow: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="model-max-tokens">Max output tokens</Label>
+          <Input
+            id="model-max-tokens"
+            inputMode="numeric"
+            placeholder="8192"
+            value={form.maxTokens}
+            onChange={(e) => patch({ maxTokens: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Price (USD per token, optional)</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            aria-label="Input price"
+            inputMode="decimal"
+            placeholder="input"
+            value={form.costInput}
+            onChange={(e) => patch({ costInput: e.target.value })}
+          />
+          <Input
+            aria-label="Output price"
+            inputMode="decimal"
+            placeholder="output"
+            value={form.costOutput}
+            onChange={(e) => patch({ costOutput: e.target.value })}
+          />
+          <Input
+            aria-label="Cache read price"
+            inputMode="decimal"
+            placeholder="cache read"
+            value={form.costCacheRead}
+            onChange={(e) => patch({ costCacheRead: e.target.value })}
+          />
+          <Input
+            aria-label="Cache write price"
+            inputMode="decimal"
+            placeholder="cache write"
+            value={form.costCacheWrite}
+            onChange={(e) => patch({ costCacheWrite: e.target.value })}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Used only to estimate usage cost on the client. Left blank for models
+          pi-ai already knows; set it for custom models. Defaults to zero.
         </p>
       </div>
 
