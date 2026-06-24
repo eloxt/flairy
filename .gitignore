@@ -3,6 +3,7 @@ out
 dist
 .DS_Store
 *.log
+*.tsbuildinfo
 .env
 .env.*
 flairy.db
