@@ -1,12 +1,14 @@
-import type { BrowserWindow } from "electron";
+import { app, type BrowserWindow } from "electron";
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel, streamSimple } from "@earendil-works/pi-ai";
 import {
+  MAIN_PROMPT_NAME,
   TITLE_GENERATION_PROMPT_NAME,
   type ActiveLlm,
   type ConfigSnapshot,
   type SyncMessage,
 } from "@flairy/shared";
+import { platform } from "node:os";
 import {
   IPC,
   type AgentStreamEvent,
@@ -114,7 +116,7 @@ export class AgentService {
       // embedded in the model object or sent to the renderer.
       getApiKey: () => server.getConfig()?.llm.main?.provider.credential,
       initialState: {
-        systemPrompt: buildSystemPrompt(config),
+        systemPrompt: buildSystemPrompt(config, cwd),
         model: buildModel(mainLlm),
         // Reasoning effort is server-driven per model. Only set it when delivered
         // so an unset value leaves pi's own default in place. pi maps this uniform
@@ -283,7 +285,7 @@ export class AgentService {
     const config = this.server.getConfig();
     const meta = getSession(this.sessionId);
     if (!config || !meta) return;
-    const sysPrompt = findTitlePrompt(config);
+    const sysPrompt = findPromptBody(config, TITLE_GENERATION_PROMPT_NAME);
     if (!sysPrompt) return; // strictly server-driven: no prompt → no title
     const llm = config.llm.tool ?? config.llm.main;
     if (!llm) return;
@@ -371,10 +373,13 @@ export class AgentService {
    * Rebind the working directory: rebuild the local tools against `cwd` and swap
    * them onto the live agent, preserving the MCP tools. Assigning `state.tools`
    * is the sanctioned pi-agent-core injection point (copy-on-assign semantics).
+   * Also refresh the system prompt so its injected `{{cwd}}` stays accurate.
    */
   setCwd(cwd: string): void {
     this.cwd = cwd;
     this.agent.state.tools = this.buildTools(cwd);
+    const config = this.server.getConfig();
+    if (config) this.agent.state.systemPrompt = buildSystemPrompt(config, cwd);
   }
 
   abort(): void {
@@ -412,19 +417,57 @@ export class AgentService {
  * exposed to the read-only tools as an extra root (see tools/index.ts), so the
  * `r0`-aliased paths below are readable regardless of the session cwd.
  */
-function buildSystemPrompt(config: ConfigSnapshot): string {
-  // Server-configured prompts (already ordered) form the base; fall back to the
-  // built-in default when none are configured. The reserved title-generation
-  // prompt is excluded — it's consumed separately and must not leak in here.
-  const agentPrompts = config.systemPrompts
-    .filter((p) => p.enabled && !isTitlePrompt(p))
-    .map((p) => p.body.trim())
-    .filter(Boolean);
-  const base =
-    agentPrompts.length > 0 ? agentPrompts.join("\n\n") : BASE_SYSTEM_PROMPT;
+function buildSystemPrompt(config: ConfigSnapshot, cwd: string): string {
+  // The reserved `main` prompt is the agent's base prompt; fall back to the
+  // built-in default when it's absent or disabled. Runtime context (OS, date,
+  // skills, language, cwd) is injected via placeholder substitution.
+  const base = findPromptBody(config, MAIN_PROMPT_NAME) ?? BASE_SYSTEM_PROMPT;
+  return injectContext(base, config, cwd);
+}
 
-  const skillsBlock = buildSkillsInstructions(config);
-  return [base, skillsBlock].filter(Boolean).join("\n\n");
+/** Human-readable name for the current OS, for prompt injection. */
+function osName(): string {
+  switch (platform()) {
+    case "darwin":
+      return "macOS";
+    case "win32":
+      return "Windows";
+    case "linux":
+      return "Linux";
+    default:
+      return platform();
+  }
+}
+
+/**
+ * The user's UI language as an endonym (e.g. `中文`, `English`), for prompt
+ * injection so the agent replies in the user's language. Derived from Electron's
+ * UI locale; falls back to the raw locale tag if it can't be resolved.
+ */
+function uiLanguage(): string {
+  const locale = app.getLocale() || "en";
+  const base = locale.split("-")[0];
+  return new Intl.DisplayNames([locale], { type: "language" }).of(base) ?? locale;
+}
+
+/**
+ * Substitute runtime context placeholders in a prompt body. Admins write
+ * `{{os}}` / `{{date}}` / `{{skill}}` / `{{language}}` / `{{cwd}}` in the prompt;
+ * unknown placeholders are left untouched.
+ */
+function injectContext(
+  prompt: string,
+  config: ConfigSnapshot,
+  cwd: string,
+): string {
+  const values: Record<string, string> = {
+    os: osName(),
+    date: new Date().toISOString().slice(0, 10),
+    skill: buildSkillsInstructions(config),
+    language: uiLanguage(),
+    cwd,
+  };
+  return prompt.replace(/\{\{(\w+)\}\}/g, (match, key) => values[key] ?? match);
 }
 
 /**
@@ -465,18 +508,16 @@ ${entries}
 }
 
 /**
- * Single predicate matching the reserved title-generation prompt by name
- * (trimmed, case-insensitive). Shared by find + exclude so they never drift: a
- * mismatch must fail both, otherwise the prompt would leak into the agent prompt.
+ * The trimmed body of the enabled prompt with the given reserved `name` (matched
+ * trimmed + case-insensitive), or undefined if none. Used for both the agent's
+ * `main` prompt and the `title_generation` prompt.
  */
-function isTitlePrompt(p: ConfigSnapshot["systemPrompts"][number]): boolean {
-  return p.name.trim().toLowerCase() === TITLE_GENERATION_PROMPT_NAME;
-}
-
-/** The enabled title-generation prompt body, or undefined if none configured. */
-function findTitlePrompt(config: ConfigSnapshot): string | undefined {
+function findPromptBody(
+  config: ConfigSnapshot,
+  name: string,
+): string | undefined {
   const body = config.systemPrompts
-    .find((p) => p.enabled && isTitlePrompt(p))
+    .find((p) => p.enabled && p.name.trim().toLowerCase() === name)
     ?.body.trim();
   return body || undefined;
 }

@@ -259,6 +259,12 @@ export interface SystemPromptInput {
 }
 
 /**
+ * Reserved {@link SystemPromptConfig.name} the client uses as the agent's own
+ * system prompt (matched case-insensitively, trimmed). Other prompts are ignored.
+ */
+export const MAIN_PROMPT_NAME = 'main'
+
+/**
  * Reserved {@link SystemPromptConfig.name} the client treats specially: its body
  * is used as the system prompt for automatic session-title generation (matched
  * case-insensitively, trimmed) rather than folded into the agent's own prompt.
