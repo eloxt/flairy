@@ -21,6 +21,7 @@ import {
     SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useChat } from "@/store/chat-store";
+import { cn } from "@/lib/utils";
 import type { SessionMeta } from "@shared/ipc";
 import { LoaderCircle, Plus, Search, Settings } from "lucide-react";
 import { useState } from "react";
@@ -36,10 +37,12 @@ export function AppSidebar(): React.JSX.Element {
   const { sessions, sessionId, newChat } = useChat();
   const navigate = useNavigate();
   const onSearch = useLocation().pathname === "/search";
+  // Only macOS has traffic lights to clear; Windows/Linux need no top inset.
+  const isMac = window.api.platform === "darwin";
 
   return (
     <Sidebar className="border-r border-sidebar-border">
-      <SidebarHeader className="app-drag gap-2 px-3 pt-11 pb-2">
+      <SidebarHeader className={cn("app-drag gap-2 px-3 pb-2", isMac ? "pt-11" : "pt-2")}>
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
             <SidebarMenuButton
