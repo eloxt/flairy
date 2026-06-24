@@ -16,7 +16,8 @@ const BUILTIN_KEYS: Record<string, string> = {
   bash: 'tools.bash',
   grep: 'tools.grep',
   find: 'tools.find',
-  ls: 'tools.ls'
+  ls: 'tools.ls',
+  ask: 'tools.ask'
 }
 
 /** Resolve the i18n key for a tool name's user-facing label. */
@@ -39,7 +40,8 @@ const ACTIVITY_BUCKETS: Record<string, string> = {
   bash: 'bash',
   grep: 'grep',
   find: 'find',
-  ls: 'ls'
+  ls: 'ls',
+  ask: 'ask'
 }
 
 /** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */

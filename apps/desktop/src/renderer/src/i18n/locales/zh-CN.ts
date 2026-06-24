@@ -66,6 +66,8 @@ const zhCN: typeof En = {
     find_other: '查找了 {{count}} 次文件',
     ls_one: '列出了 {{count}} 个目录',
     ls_other: '列出了 {{count}} 个目录',
+    ask_one: '问了你 {{count}} 个问题',
+    ask_other: '问了你 {{count}} 个问题',
     other_one: '使用了 {{count}} 个工具',
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
@@ -77,6 +79,11 @@ const zhCN: typeof En = {
     deny: '拒绝',
     allowOnce: '允许一次',
     allowSession: '本次会话允许'
+  },
+  question: {
+    title: '想问你一下',
+    other: '输入你自己的答案…',
+    submit: '提交'
   },
   composer: {
     placeholder: '让 Flairy 帮你做点什么…',
@@ -128,6 +135,7 @@ const zhCN: typeof En = {
     grep: '搜索文件内容',
     find: '查找文件',
     ls: '列出文件',
+    ask: '问你一个问题',
     fallback: '工具'
   }
 }

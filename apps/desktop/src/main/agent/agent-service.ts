@@ -14,8 +14,11 @@ import {
   type PermissionMode,
 } from "@shared/ipc";
 import { createTools, isReadOnlyTool } from "./tools";
+import { createAskTool } from "./tools/ask";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
 import { approvals } from "./approvals";
+import { questions } from "./questions";
 import { listMaterializedSkills, skillsRoot } from "./skill-materializer";
 import { saveMessages, getSession, updateSessionTitle } from "../store/db";
 import type { ServerClient } from "../sync/server-client";
@@ -120,7 +123,7 @@ export class AgentService {
         ...(mainLlm.model.thinkingLevel
           ? { thinkingLevel: mainLlm.model.thinkingLevel }
           : {}),
-        tools: [...createTools(cwd), ...mcp.getTools()],
+        tools: this.buildTools(cwd),
         messages: (opts.messages ?? []) as AgentMessage[],
       },
       // Only forward roles the LLM should see.
@@ -134,6 +137,9 @@ export class AgentService {
       // this session.
       beforeToolCall: async ({ toolCall, args }: any) => {
         const name = toolCall.name as string;
+        // `ask` only collects the user's own choice — there is nothing to approve,
+        // and gating it would deadlock (the user is already being prompted).
+        if (name === "ask") return undefined;
         // "Full access" auto-approves everything, including mutating/MCP tools.
         if (this.permissionMode === "full") return undefined;
         if (isReadOnlyTool(name)) return undefined;
@@ -158,10 +164,7 @@ export class AgentService {
     // config. Re-merge the live tool set onto the running agent whenever it
     // changes (assigning state.tools is pi's sanctioned injection point).
     this.mcpUnsub = this.mcp.onToolsChanged(() => {
-      this.agent.state.tools = [
-        ...createTools(this.cwd),
-        ...this.mcp.getTools(),
-      ];
+      this.agent.state.tools = this.buildTools(this.cwd);
     });
 
     // Forward every pi event to the renderer, tagged with sessionId.
@@ -181,6 +184,20 @@ export class AgentService {
         void this.persist();
       }
     });
+  }
+
+  /**
+   * Assemble the agent's tool set: the local coding tools, the `ask` tool (which
+   * needs `win` + `sessionId` to round-trip a question to the renderer), and the
+   * live MCP tools. Used at all three injection points (constructor, MCP
+   * tool-change rebuild, setCwd rebuild) so `ask` is always present.
+   */
+  private buildTools(cwd: string): AgentTool<any>[] {
+    return [
+      ...createTools(cwd),
+      createAskTool(this.win, this.sessionId),
+      ...this.mcp.getTools(),
+    ];
   }
 
   private send(sessionId: string, event: AgentStreamEvent): void {
@@ -357,11 +374,14 @@ export class AgentService {
    */
   setCwd(cwd: string): void {
     this.cwd = cwd;
-    this.agent.state.tools = [...createTools(cwd), ...this.mcp.getTools()];
+    this.agent.state.tools = this.buildTools(cwd);
   }
 
   abort(): void {
     this.agent.abort();
+    // Aborting the run won't settle a blocked `ask` Promise on its own, so
+    // cancel any open question for this session — otherwise the turn hangs.
+    questions.rejectSession(this.sessionId);
   }
 
   /**
@@ -372,6 +392,9 @@ export class AgentService {
   dispose(): void {
     this.disposed = true;
     this.agent.abort();
+    // Settle any question still open for this session so its blocked Promise
+    // resolves and no registry entries leak.
+    questions.rejectSession(this.sessionId);
     this.unsubscribe?.();
     this.mcpUnsub?.();
   }
@@ -463,7 +486,7 @@ function sanitizeTitle(raw: string): string {
   const collapsed = raw
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^["'“”]+|["'“”]+$/g, "")
+    .replace(/^["'""]+|["'""]+$/g, "")
     .trim();
   return collapsed.slice(0, 60).trim();
 }

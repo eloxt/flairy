@@ -74,6 +74,8 @@ const en = {
     find_other: 'searched files {{count}}×',
     ls_one: 'listed 1 folder',
     ls_other: 'listed {{count}} folders',
+    ask_one: 'asked you 1 question',
+    ask_other: 'asked you {{count}} questions',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -85,6 +87,11 @@ const en = {
     deny: 'Deny',
     allowOnce: 'Allow once',
     allowSession: 'Allow for this session'
+  },
+  question: {
+    title: 'A quick question',
+    other: 'Type your own answer…',
+    submit: 'Submit'
   },
   composer: {
     placeholder: 'Ask Flairy to do something…',
@@ -139,6 +146,7 @@ const en = {
     grep: 'search file contents',
     find: 'find files',
     ls: 'list files',
+    ask: 'ask you a question',
     fallback: 'use a tool'
   }
 }

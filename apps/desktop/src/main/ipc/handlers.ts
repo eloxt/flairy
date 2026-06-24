@@ -5,6 +5,7 @@ import {
   type SteerArgs,
   type AbortArgs,
   type ApprovalResponseArgs,
+  type QuestionResponseArgs,
   type SetPermissionModeArgs,
   type PermissionMode,
   type CreateSessionArgs,
@@ -24,6 +25,7 @@ import { t } from '../locale'
 import { AgentService } from '../agent/agent-service'
 import type { McpManager } from '../agent/mcp'
 import { approvals } from '../agent/approvals'
+import { questions } from '../agent/questions'
 import {
   setSecret,
   hasSecret,
@@ -139,6 +141,7 @@ export function registerIpcHandlers(
     services.delete(sessionId)
     permissionModes.delete(sessionId)
     approvals.rejectSession(sessionId)
+    questions.rejectSession(sessionId)
     deleteSession(sessionId)
     broadcast(IPC.SessionsChanged)
   })
@@ -193,6 +196,10 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.AgentApprovalResponse, (_e, args: ApprovalResponseArgs) => {
     approvals.resolve(args.approvalId, { approved: args.approved, scope: args.scope })
+  })
+
+  ipcMain.handle(IPC.AgentQuestionResponse, (_e, args: QuestionResponseArgs) => {
+    questions.resolve(args.questionId, args.answers)
   })
 
   // Set the tool-approval posture for a session. Store it so it survives service
@@ -278,6 +285,7 @@ export function registerIpcHandlers(
     services.delete(args.sessionId)
     permissionModes.delete(args.sessionId)
     approvals.rejectSession(args.sessionId)
+    questions.rejectSession(args.sessionId)
     server.sendSessionDelete({ sessionId: args.sessionId })
     return deleteSession(args.sessionId)
   })

@@ -21,6 +21,7 @@ export const IPC = {
   AgentSteer: 'agent:steer',
   AgentAbort: 'agent:abort',
   AgentApprovalResponse: 'agent:approval-response',
+  AgentQuestionResponse: 'agent:question-response',
   AgentSetPermissionMode: 'agent:set-permission-mode',
   SessionList: 'session:list',
   SessionLoad: 'session:load',
@@ -47,6 +48,7 @@ export const IPC = {
   // event streams (send)
   AgentEvent: 'agent:event',
   ApprovalRequest: 'agent:approval-request',
+  QuestionRequest: 'agent:question-request',
   ConfigChanged: 'config:changed',
   AuthChanged: 'auth:changed',
   SessionTitleUpdated: 'session:title-updated',
@@ -152,7 +154,7 @@ export interface SearchMessagesArgs {
 /**
  * One full-text search hit. `msgIndex` is the position in the session's persisted
  * messages[] array (the jump target), or -1 for a session-title match. `snippet`
- * wraps matched spans in control chars ( … ) for the renderer to highlight.
+ * wraps matched spans in control chars ( … ) for the renderer to highlight.
  */
 export interface SearchHit {
   sessionId: string
@@ -254,6 +256,44 @@ export interface ApprovalRequestPayload {
   reason: string
 }
 
+/** One question in an `ask` tool call. */
+export interface AskQuestion {
+  /** Stable id within the call, used to key the answer back. */
+  id: string
+  /** Plain-language question text shown to the user. */
+  question: string
+  /** Short chip/label (optional), mirrors AskUserQuestion's `header`. */
+  header?: string
+  /** Selectable options. */
+  options: { label: string; description?: string }[]
+  /** Allow ticking more than one option. */
+  multiSelect?: boolean
+}
+
+export interface QuestionRequestPayload {
+  /** Round-trip id for the whole call. */
+  questionId: string
+  sessionId: string
+  questions: AskQuestion[]
+  /** Notification body, e.g. "Flairy needs your input". */
+  reason: string
+}
+
+/** Per-question answer: chosen option labels and/or the free-text "other". */
+export interface QuestionAnswer {
+  id: string
+  /** Option labels the user ticked. */
+  selected: string[]
+  /** Free-text "other", if provided. */
+  custom?: string
+}
+
+export interface QuestionResponseArgs {
+  questionId: string
+  /** null when cancelled (session abort/close). */
+  answers: QuestionAnswer[] | null
+}
+
 /** main -> renderer: a session's title changed (auto-generated or synced). */
 export interface SessionTitleUpdatedPayload {
   sessionId: string
@@ -266,6 +306,8 @@ export interface FlairyApi {
   steer(args: SteerArgs): Promise<void>
   abort(args: AbortArgs): Promise<void>
   respondApproval(args: ApprovalResponseArgs): Promise<void>
+  /** Submit the user's answers to an `ask` tool call (null when cancelled). */
+  respondQuestion(args: QuestionResponseArgs): Promise<void>
   /** Set the tool-approval posture for a session (in-memory, per-session). */
   setPermissionMode(args: SetPermissionModeArgs): Promise<void>
   listSessions(): Promise<SessionMeta[]>
@@ -323,6 +365,8 @@ export interface FlairyApi {
   setLanguage(lng: AppLanguage): Promise<void>
   onAgentEvent(cb: (env: AgentEventEnvelope) => void): () => void
   onApprovalRequest(cb: (req: ApprovalRequestPayload) => void): () => void
+  /** Fires when the agent asks the user one or more multiple-choice questions. */
+  onQuestionRequest(cb: (req: QuestionRequestPayload) => void): () => void
   /** Fires whenever the server delivers new config (snapshot or delta). */
   onConfigChanged(cb: (config: RedactedConfigSnapshot) => void): () => void
   /** Fires when a session's title changes (auto-generated locally or synced from another device). */

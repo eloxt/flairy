@@ -8,6 +8,7 @@
  */
 export const en = {
   notificationTitle: 'Flairy needs your confirmation',
+  questionNotificationTitle: 'Flairy has a question for you',
   defaultSessionTitle: 'New session',
   'menu.file': 'File',
   'menu.edit': 'Edit',

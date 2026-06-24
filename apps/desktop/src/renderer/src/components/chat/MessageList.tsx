@@ -9,6 +9,7 @@ import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
 import { useChat } from "@/store/chat-store";
 import type { UiMessage } from "@/store/chat-store";
 import { ApprovalCard } from "./ApprovalCard";
+import { QuestionCard } from "./QuestionCard";
 import "streamdown/styles.css";
 import { code } from "@streamdown/code";
 import { mermaid } from "@streamdown/mermaid";
@@ -67,6 +68,7 @@ export function MessageList({
   messages: UiMessage[];
 }): React.JSX.Element {
   const approvalCount = useChat((s) => s.approvalQueue.length);
+  const questionCount = useChat((s) => s.questionQueue.length);
   const pendingScrollIndex = useChat((s) => s.pendingScrollIndex);
   const clearPendingScroll = useChat((s) => s.clearPendingScroll);
   const running = useChat((s) => s.running);
@@ -121,9 +123,10 @@ export function MessageList({
     return () => clearTimeout(id);
   }, [highlightKey]);
 
-  // Pending approvals render inline in the footer, so keep the list mounted
-  // whenever there's a message OR an approval to show.
-  if (messages.length === 0 && approvalCount === 0) return <EmptyState />;
+  // Pending approvals and questions render inline in the footer, so keep the
+  // list mounted whenever there's a message, an approval, OR a question to show.
+  if (messages.length === 0 && approvalCount === 0 && questionCount === 0)
+    return <EmptyState />;
 
   return (
     <Virtuoso
@@ -182,11 +185,15 @@ const Spacer = (): React.JSX.Element => <div className="h-6" />;
  */
 const ApprovalFooter = (): React.JSX.Element => {
   const approvalQueue = useChat((s) => s.approvalQueue);
+  const questionQueue = useChat((s) => s.questionQueue);
   return (
     <>
       <ThinkingRow />
       {approvalQueue.map((req) => (
         <ApprovalCard key={req.approvalId} payload={req} />
+      ))}
+      {questionQueue.map((req) => (
+        <QuestionCard key={req.questionId} payload={req} />
       ))}
       <div style={{ height: "var(--composer-h, 9rem)" }} />
     </>

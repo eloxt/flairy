@@ -5,6 +5,8 @@ import type {
   ApprovalScope,
   Attachment,
   PermissionMode,
+  QuestionAnswer,
+  QuestionRequestPayload,
   SessionMeta
 } from '@shared/ipc'
 import { toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
@@ -61,6 +63,8 @@ interface ChatState {
   running: boolean
   /** Pending approval requests, oldest first; the dialog shows the head. */
   approvalQueue: ApprovalRequestPayload[]
+  /** Pending `ask` questions for the open session, oldest first; each renders a card. */
+  questionQueue: QuestionRequestPayload[]
   /** Tool-approval posture for the open session (in-memory, resets to 'ask'). */
   permissionMode: PermissionMode
   /**
@@ -95,6 +99,8 @@ interface ChatState {
   send: (text: string, attachments?: Attachment[]) => Promise<void>
   abort: () => void
   respondApproval: (approvalId: string, approved: boolean, scope?: ApprovalScope) => void
+  /** Submit the user's answers for an `ask` question and drop it from the queue. */
+  respondQuestion: (questionId: string, answers: QuestionAnswer[]) => void
   setPermissionMode: (mode: PermissionMode) => void
   setWorkingDirectory: () => Promise<void>
   loadRecentDirs: () => Promise<void>
@@ -117,6 +123,7 @@ export const useChat = create<ChatState>((set, get) => ({
   messages: [],
   running: false,
   approvalQueue: [],
+  questionQueue: [],
   permissionMode: 'ask',
   pendingCwd: null,
   pendingScrollIndex: null,
@@ -128,6 +135,10 @@ export const useChat = create<ChatState>((set, get) => ({
     const offApproval = window.api.onApprovalRequest((req) => {
       if (req.sessionId === get().sessionId)
         set((s) => ({ approvalQueue: [...s.approvalQueue, req] }))
+    })
+    const offQuestion = window.api.onQuestionRequest((req) => {
+      if (req.sessionId === get().sessionId)
+        set((s) => ({ questionQueue: [...s.questionQueue, req] }))
     })
     // Live-update the sidebar when a session title changes (auto-generated
     // locally or synced from another device).
@@ -158,6 +169,7 @@ export const useChat = create<ChatState>((set, get) => ({
     return () => {
       offEvent()
       offApproval()
+      offQuestion()
       offTitle()
       offSessions()
     }
@@ -258,6 +270,13 @@ export const useChat = create<ChatState>((set, get) => ({
     if (!req) return
     window.api.respondApproval({ approvalId, approved, scope })
     set((s) => ({ approvalQueue: s.approvalQueue.filter((r) => r.approvalId !== approvalId) }))
+  },
+
+  respondQuestion: (questionId, answers) => {
+    const req = get().questionQueue.find((r) => r.questionId === questionId)
+    if (!req) return
+    window.api.respondQuestion({ questionId, answers })
+    set((s) => ({ questionQueue: s.questionQueue.filter((r) => r.questionId !== questionId) }))
   },
 
   setPermissionMode: (mode) => {

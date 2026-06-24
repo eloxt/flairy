@@ -3,6 +3,7 @@ import type { MainCatalog } from './en'
 /** Main-process (native) Simplified Chinese strings — mirrors `./en`'s shape. */
 export const zhCN: MainCatalog = {
   notificationTitle: 'Flairy 需要你的确认',
+  questionNotificationTitle: 'Flairy 有个问题想问你',
   defaultSessionTitle: '新对话',
   'menu.file': '文件',
   'menu.edit': '编辑',

@@ -5,6 +5,7 @@ import {
   type FlairyApi,
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
+  type QuestionRequestPayload,
   type RedactedConfigSnapshot,
   type SessionTitleUpdatedPayload
 } from '@shared/ipc'
@@ -18,6 +19,7 @@ const api: FlairyApi = {
   steer: (args) => ipcRenderer.invoke(IPC.AgentSteer, args),
   abort: (args) => ipcRenderer.invoke(IPC.AgentAbort, args),
   respondApproval: (args) => ipcRenderer.invoke(IPC.AgentApprovalResponse, args),
+  respondQuestion: (args) => ipcRenderer.invoke(IPC.AgentQuestionResponse, args),
   setPermissionMode: (args) => ipcRenderer.invoke(IPC.AgentSetPermissionMode, args),
   listSessions: () => ipcRenderer.invoke(IPC.SessionList),
   loadSession: (sessionId) => ipcRenderer.invoke(IPC.SessionLoad, sessionId),
@@ -51,6 +53,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, req: ApprovalRequestPayload): void => cb(req)
     ipcRenderer.on(IPC.ApprovalRequest, listener)
     return () => ipcRenderer.removeListener(IPC.ApprovalRequest, listener)
+  },
+  onQuestionRequest: (cb) => {
+    const listener = (_e: unknown, req: QuestionRequestPayload): void => cb(req)
+    ipcRenderer.on(IPC.QuestionRequest, listener)
+    return () => ipcRenderer.removeListener(IPC.QuestionRequest, listener)
   },
   onConfigChanged: (cb) => {
     const listener = (_e: unknown, config: RedactedConfigSnapshot): void => cb(config)
