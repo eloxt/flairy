@@ -13,6 +13,7 @@ use crate::db;
 use crate::models::auth::SocketAuth;
 use crate::models::config::ConfigSnapshot;
 use crate::models::events;
+use crate::models::memory::{MemoryPullPayload, MemoryRemotePayload, MemoryUpsertPayload};
 use crate::models::session::{
     SessionDeletePayload, SessionPatchPayload, SessionPullPayload, SessionRemoteDeletePayload,
     SessionUpsertPayload, SessionWithMessages,
@@ -125,6 +126,40 @@ async fn on_connect(socket: SocketRef, Data(auth): Data<Option<SocketAuth>>, sta
                 async move {
                     let sessions = handle_pull(&state, &uid, payload).await;
                     let _ = ack.send(&sessions);
+                }
+            },
+        );
+    }
+
+    // ---- memory:upsert ----
+    {
+        let state = state.clone();
+        let uid = user_id.clone();
+        socket.on(
+            events::MEMORY_UPSERT,
+            move |s: SocketRef, Data(payload): Data<MemoryUpsertPayload>, ack: AckSender| {
+                let state = state.clone();
+                let uid = uid.clone();
+                async move {
+                    let ok = handle_memory_upsert(&state, &uid, &s, payload).await;
+                    let _ = ack.send(&ok);
+                }
+            },
+        );
+    }
+
+    // ---- memory:pull ----
+    {
+        let state = state.clone();
+        let uid = user_id.clone();
+        socket.on(
+            events::MEMORY_PULL,
+            move |Data(payload): Data<MemoryPullPayload>, ack: AckSender| {
+                let state = state.clone();
+                let uid = uid.clone();
+                async move {
+                    let memories = handle_memory_pull(&state, &uid, payload).await;
+                    let _ = ack.send(&memories);
                 }
             },
         );
@@ -308,6 +343,68 @@ async fn handle_pull(
             tracing::warn!("session:pull failed: {e}");
             Vec::new()
         }
+    }
+}
+
+async fn handle_memory_upsert(
+    state: &AppState,
+    user_id: &str,
+    socket: &SocketRef,
+    payload: MemoryUpsertPayload,
+) -> bool {
+    tracing::debug!(
+        event = events::MEMORY_UPSERT,
+        %user_id,
+        memories = payload.memories.len(),
+        "recv socket event"
+    );
+    let Some(pool) = &state.pool else {
+        tracing::warn!("memory:upsert with no DB");
+        return false;
+    };
+    if let Err(e) = db::upsert_memories(pool, user_id, &payload.memories).await {
+        tracing::warn!("memory:upsert failed: {e}");
+        return false;
+    }
+    broadcast_memory_remote(
+        socket,
+        user_id,
+        MemoryRemotePayload {
+            memories: payload.memories,
+        },
+    )
+    .await;
+    true
+}
+
+async fn handle_memory_pull(
+    state: &AppState,
+    user_id: &str,
+    payload: MemoryPullPayload,
+) -> Vec<crate::models::memory::Memory> {
+    tracing::debug!(
+        event = events::MEMORY_PULL,
+        %user_id,
+        since = ?payload.since,
+        "recv socket event"
+    );
+    let Some(pool) = &state.pool else {
+        return Vec::new();
+    };
+    match db::pull_memories(pool, user_id, payload.since).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("memory:pull failed: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// Emit `memory:remote` to the user's other devices (not the sender).
+async fn broadcast_memory_remote(socket: &SocketRef, user_id: &str, payload: MemoryRemotePayload) {
+    let room = user_room(user_id);
+    if let Err(e) = socket.to(room).emit(events::MEMORY_REMOTE, &payload).await {
+        tracing::warn!("memory:remote broadcast failed: {e}");
     }
 }
 

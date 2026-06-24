@@ -4,6 +4,10 @@ import {
   type ClientToServerEvents,
   type ConfigSnapshot,
   type ConfigUpdate,
+  type Memory,
+  type MemoryPullPayload,
+  type MemoryRemotePayload,
+  type MemoryUpsertPayload,
   type ServerToClientEvents,
   type SessionDeletePayload,
   type SessionPatchPayload,
@@ -37,6 +41,8 @@ type ConfigListener = (config: ConfigSnapshot) => void
 type SessionRemoteListener = (payload: SessionRemotePayload) => void
 type SessionRemoteDeleteListener = (payload: SessionRemoteDeletePayload) => void
 type SessionsPulledListener = (sessions: SessionWithMessages[]) => void
+type MemoryRemoteListener = (memories: Memory[]) => void
+type MemoriesPulledListener = (memories: Memory[]) => void
 
 /**
  * Thin wrapper around a typed socket.io connection to the Flairy server.
@@ -60,6 +66,8 @@ export class ServerClient {
   private sessionRemoteListeners = new Set<SessionRemoteListener>()
   private sessionRemoteDeleteListeners = new Set<SessionRemoteDeleteListener>()
   private sessionsPulledListeners = new Set<SessionsPulledListener>()
+  private memoryRemoteListeners = new Set<MemoryRemoteListener>()
+  private memoriesPulledListeners = new Set<MemoriesPulledListener>()
   /** JWT used for the active socket; reused for REST skill materialization. */
   private token: string | undefined
 
@@ -113,12 +121,17 @@ export class ServerClient {
       for (const cb of this.sessionRemoteDeleteListeners) cb(payload)
     })
 
+    socket.on(SocketEvent.MemoryRemote, (payload: MemoryRemotePayload) => {
+      for (const cb of this.memoryRemoteListeners) cb(payload.memories)
+    })
+
     // Pull the user's sessions on every (re)connect — including the first one
     // after sign-in — so a fresh device (or a relogin) gets its history back.
     // socket.io fires `connect` on the initial handshake and on every reconnect.
     socket.on('connect', () => {
-      console.log('[sync] socket connected; pulling sessions')
+      console.log('[sync] socket connected; pulling sessions + memories')
       this.pullSessions()
+      this.pullMemories()
     })
 
     socket.on('connect_error', (err) => {
@@ -154,6 +167,20 @@ export class ServerClient {
     this.socket.emit(SocketEvent.SessionPull, payload, (sessions) => {
       console.log('[sync] session:pull ack —', sessions?.length ?? 'no', 'sessions')
       for (const cb of this.sessionsPulledListeners) cb(sessions)
+    })
+  }
+
+  /**
+   * Pull the user's memories on (re)connect so a fresh/stale device gets them
+   * back. The reply carries tombstones (soft-deleted entries) too, so deletions
+   * made elsewhere land locally. No-op if offline. Pulls everything (no `since`).
+   */
+  private pullMemories(): void {
+    const payload: MemoryPullPayload = {}
+    if (!this.socket) return
+    this.socket.emit(SocketEvent.MemoryPull, payload, (memories) => {
+      console.log('[sync] memory:pull ack —', memories?.length ?? 'no', 'memories')
+      for (const cb of this.memoriesPulledListeners) cb(memories)
     })
   }
 
@@ -202,6 +229,23 @@ export class ServerClient {
   onSessionsPulled(cb: SessionsPulledListener): () => void {
     this.sessionsPulledListeners.add(cb)
     return () => this.sessionsPulledListeners.delete(cb)
+  }
+
+  /** Subscribe to memories changed on the user's other devices. */
+  onMemoryRemote(cb: MemoryRemoteListener): () => void {
+    this.memoryRemoteListeners.add(cb)
+    return () => this.memoryRemoteListeners.delete(cb)
+  }
+
+  /** Subscribe to the bulk memory list pulled from the server on (re)connect. */
+  onMemoriesPulled(cb: MemoriesPulledListener): () => void {
+    this.memoriesPulledListeners.add(cb)
+    return () => this.memoriesPulledListeners.delete(cb)
+  }
+
+  /** Mirror a memory upsert/tombstone batch to the server. No-op if offline. */
+  sendMemoryUpsert(payload: MemoryUpsertPayload): void {
+    this.socket?.emit(SocketEvent.MemoryUpsert, payload)
   }
 
   /** Push a full session (create/replace) to the server. No-op if offline. */

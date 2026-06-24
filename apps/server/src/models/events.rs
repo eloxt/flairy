@@ -12,3 +12,6 @@ pub const SESSION_DELETE: &str = "session:delete";
 pub const SESSION_PULL: &str = "session:pull";
 pub const SESSION_REMOTE: &str = "session:remote";
 pub const SESSION_REMOTE_DELETE: &str = "session:remote-delete";
+pub const MEMORY_UPSERT: &str = "memory:upsert";
+pub const MEMORY_PULL: &str = "memory:pull";
+pub const MEMORY_REMOTE: &str = "memory:remote";

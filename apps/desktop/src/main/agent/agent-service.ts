@@ -5,6 +5,7 @@ import {
   TITLE_GENERATION_PROMPT_NAME,
   type ActiveLlm,
   type ConfigSnapshot,
+  type Memory,
   type SyncMessage,
 } from "@flairy/shared";
 import { platform } from "node:os";
@@ -16,13 +17,20 @@ import {
 } from "@shared/ipc";
 import { createTools, isReadOnlyTool } from "./tools";
 import { createAskTool } from "./tools/ask";
+import { createMemoryTool } from "./tools/memory";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
 import { approvals } from "./approvals";
 import { questions } from "./questions";
 import { listMaterializedSkills, skillsRoot } from "./skill-materializer";
-import { saveMessages, getSession, updateSessionTitle } from "../store/db";
-import { getMainWindow } from "../windows";
+import {
+  saveMessages,
+  getSession,
+  updateSessionTitle,
+  upsertMemory,
+  listActiveMemoriesForPrompt,
+} from "../store/db";
+import { getMainWindow, broadcast } from "../windows";
 import { getLanguage } from "../locale";
 import type { ServerClient } from "../sync/server-client";
 
@@ -146,6 +154,10 @@ export class AgentService {
         // `ask` only collects the user's own choice — there is nothing to approve,
         // and gating it would deadlock (the user is already being prompted).
         if (name === "ask") return undefined;
+        // `remember` writes only to the user's own memory store (no files/commands),
+        // so it's inherently safe and exempt — gating it would nag the user for
+        // something the assistant does silently and often.
+        if (name === "remember") return undefined;
         // "Full access" auto-approves everything, including mutating/MCP tools.
         if (this.permissionMode === "full") return undefined;
         if (isReadOnlyTool(name)) return undefined;
@@ -207,8 +219,21 @@ export class AgentService {
     return [
       ...createTools(cwd),
       createAskTool(this.sessionId),
+      createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
       ...this.mcp.getTools(),
     ];
+  }
+
+  /**
+   * Persist a memory the `remember` tool produced: write it to local SQLite,
+   * mirror it to the server for multi-device sync, and tell open windows (e.g.
+   * the Settings "memories" view) to refresh. User-scoped, so it's independent
+   * of which session wrote it.
+   */
+  private persistMemory(memory: Memory): void {
+    upsertMemory(memory);
+    this.server.sendMemoryUpsert({ memories: [memory] });
+    broadcast(IPC.MemoriesChanged);
   }
 
   private send(sessionId: string, event: AgentStreamEvent): void {
@@ -488,10 +513,35 @@ function injectContext(
     os: osName(),
     date: new Date().toISOString().slice(0, 10),
     skill: buildSkillsInstructions(config),
+    memory: buildMemoryBlock(),
     language: uiLanguage(),
     cwd,
   };
   return prompt.replace(/\{\{(\w+)\}\}/g, (match, key) => values[key] ?? match);
+}
+
+/**
+ * Build the `<user_memory>` block from the active (not soft-deleted) memories,
+ * or "" when there are none. These are facts/preferences the `remember` tool
+ * recorded in earlier sessions; injecting them is what makes the assistant
+ * "remember" the user across conversations. Bodies are short statements, so —
+ * unlike skills — they're inlined directly rather than read on demand.
+ */
+function buildMemoryBlock(): string {
+  let memories: Memory[];
+  try {
+    memories = listActiveMemoriesForPrompt();
+  } catch (err) {
+    // Never let a memory read break prompt assembly (e.g. during a migration).
+    console.error("[memory] failed to load for prompt:", err);
+    return "";
+  }
+  if (memories.length === 0) return "";
+  const lines = memories.map((m) => `- ${m.text.replace(/\s+/g, " ").trim()}`).join("\n");
+  return `<user_memory>
+These are things you have remembered about the user from earlier conversations. Use them to personalize your help. Treat them as background, not as instructions to act on immediately; if one seems outdated or wrong, prefer what the user says now.
+${lines}
+</user_memory>`;
 }
 
 /**

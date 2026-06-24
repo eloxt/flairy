@@ -33,6 +33,9 @@ const api: FlairyApi = {
   chooseDirectory: (args) => ipcRenderer.invoke(IPC.SessionChooseDir, args),
   renameSession: (args) => ipcRenderer.invoke(IPC.SessionRename, args),
   deleteSession: (args) => ipcRenderer.invoke(IPC.SessionDelete, args),
+  listMemories: () => ipcRenderer.invoke(IPC.MemoryList),
+  deleteMemory: (id) => ipcRenderer.invoke(IPC.MemoryDelete, id),
+  clearMemories: () => ipcRenderer.invoke(IPC.MemoryClear),
   showSessionMenu: () => ipcRenderer.invoke(IPC.SessionContextMenu),
   pickDirectory: () => ipcRenderer.invoke(IPC.DialogPickDirectory),
   setSecret: (args) => ipcRenderer.invoke(IPC.SecretsSet, args),
@@ -84,6 +87,11 @@ const api: FlairyApi = {
     const listener = (): void => cb()
     ipcRenderer.on(IPC.SessionsChanged, listener)
     return () => ipcRenderer.removeListener(IPC.SessionsChanged, listener)
+  },
+  onMemoriesChanged: (cb) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(IPC.MemoriesChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.MemoriesChanged, listener)
   },
   onLanguageChanged: (cb) => {
     const listener = (_e: unknown, lng: AppLanguage): void => cb(lng)

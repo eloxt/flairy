@@ -116,6 +116,7 @@ const zhCN: typeof En = {
     // 标签页
     tabProfile: '个人信息',
     tabInterface: '界面',
+    tabMemory: '记忆',
     tabAbout: '关于',
     // 个人信息
     account: '账户',
@@ -126,6 +127,14 @@ const zhCN: typeof En = {
     // 界面
     language: '语言',
     languageDescription: '选择显示语言。',
+    // 记忆
+    memory: 'Flairy 记住的内容',
+    memoryDescription: 'Flairy 会在对话中记住关于你的有用信息，这样你不必重复说明。你可以在这里删除其中任意一条。',
+    memoryEmpty: 'Flairy 还没有记住关于你的任何内容。',
+    memoryForget: '删除',
+    memoryClearAll: '清空全部',
+    memoryClearConfirm: '确认清空全部',
+    cancel: '取消',
     // 关于
     about: '关于',
     appTagline: '开箱即用的 AI 助手。',

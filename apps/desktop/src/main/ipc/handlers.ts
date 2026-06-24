@@ -49,7 +49,11 @@ import {
   removeRecentDirectory,
   listRecentDirectories,
   upsertRemoteSession,
-  searchMessages
+  searchMessages,
+  listMemories,
+  softDeleteMemory,
+  upsertRemoteMemories,
+  clearAllMemories
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
@@ -164,6 +168,23 @@ export function registerIpcHandlers(
       }
     }
     if (sessions.length > 0) broadcast(IPC.SessionsChanged)
+  })
+
+  // Memories changed on another device land in the local store; tell every
+  // window so an open Settings "memories" view refreshes. Carries tombstones, so
+  // a remote deletion soft-deletes locally too.
+  server.onMemoryRemote((memories) => {
+    upsertRemoteMemories(memories)
+    broadcast(IPC.MemoriesChanged)
+  })
+
+  // Memories pulled in bulk on (re)connect: persist locally (incl. tombstones)
+  // and refresh any open view. This brings a user's memories back on a fresh
+  // device and converges deletions made while offline.
+  server.onMemoriesPulled((memories) => {
+    if (memories.length === 0) return
+    upsertRemoteMemories(memories)
+    broadcast(IPC.MemoriesChanged)
   })
 
   // Push redacted config to the renderer whenever the server delivers a new
@@ -344,6 +365,34 @@ export function registerIpcHandlers(
     })
   })
 
+  // The user's remembered facts/preferences (active, newest first).
+  ipcMain.handle(IPC.MemoryList, () => listMemories())
+
+  // Forget one memory: soft-delete locally, mirror the tombstone to the server
+  // (so it propagates to other devices and a pull can't resurrect it), tell every
+  // window, and return the updated list. No-op for an unknown/already-gone id.
+  ipcMain.handle(IPC.MemoryDelete, (_e, id: string) => {
+    const tombstone = softDeleteMemory(id)
+    if (tombstone) {
+      server.sendMemoryUpsert({ memories: [tombstone] })
+      broadcast(IPC.MemoriesChanged)
+    }
+    return listMemories()
+  })
+
+  // Forget everything: soft-delete every active memory, mirror the tombstones in
+  // one batch, refresh, and return the now-empty list.
+  ipcMain.handle(IPC.MemoryClear, () => {
+    const tombstones = listMemories()
+      .map((m) => softDeleteMemory(m.id))
+      .filter((m): m is NonNullable<typeof m> => Boolean(m))
+    if (tombstones.length > 0) {
+      server.sendMemoryUpsert({ memories: tombstones })
+      broadcast(IPC.MemoriesChanged)
+    }
+    return listMemories()
+  })
+
   // Pick a directory with no session yet (home screen). Returns the path (and
   // records it in recents); the renderer stashes it for the session created on
   // the first message.
@@ -383,6 +432,10 @@ export function registerIpcHandlers(
     services.clear()
     permissionModes.clear()
     clearAllSessions()
+    // Wipe locally-cached memories too so one account's memories can't leak to
+    // the next account signed in on this machine; a relogin repopulates them via
+    // memory:pull (the server keeps them).
+    clearAllMemories()
     clearAuth()
     broadcast(IPC.AuthChanged)
   })

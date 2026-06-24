@@ -11,4 +11,5 @@
 export * from './auth.js'
 export * from './config.js'
 export * from './session.js'
+export * from './memory.js'
 export * from './events.js'

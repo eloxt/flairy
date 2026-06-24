@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { SessionRemotePayload } from '@flairy/shared'
+import type { Memory, SessionRemotePayload } from '@flairy/shared'
 import type { SessionMeta, CreateSessionArgs, SearchHit } from '@shared/ipc'
 import { t } from '../locale'
 
@@ -56,6 +56,20 @@ export function initDb(): void {
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+    -- Long-term agent memory (user-scoped). Written by the remember tool,
+    -- injected into the system prompt, and mirrored to the server for multi-device
+    -- sync. Deletes are SOFT (deletedAt set) so a deletion propagates via
+    -- memory:pull instead of being resurrected. Mirrors the server memories
+    -- table and the @flairy/shared Memory contract.
+    CREATE TABLE IF NOT EXISTS memories (
+      id        TEXT PRIMARY KEY,
+      type      TEXT NOT NULL,
+      text      TEXT NOT NULL,
+      source    TEXT,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL,
+      deletedAt INTEGER
     );
   `)
   // Skills are no longer cached in SQLite — they're materialized straight to
@@ -317,6 +331,118 @@ export function upsertRemoteSession(payload: SessionRemotePayload): void {
     reindexTitle(session.id, session.title)
     reindexMessages(session.id, raw)
   })()
+}
+
+/* ---------- Long-term agent memory ---------- */
+
+/** Map a DB row to the wire Memory shape (NULL deletedAt → null). */
+function mapMemoryRow(r: {
+  id: string
+  type: string
+  text: string
+  source: string | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}): Memory {
+  return {
+    id: r.id,
+    type: r.type as Memory['type'],
+    text: r.text,
+    source: r.source ?? undefined,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    deletedAt: r.deletedAt
+  }
+}
+
+/**
+ * Active (not soft-deleted) memories, newest first. Used by the management UI.
+ */
+export function listMemories(): Memory[] {
+  const rows = db
+    .prepare(
+      'SELECT id, type, text, source, createdAt, updatedAt, deletedAt FROM memories WHERE deletedAt IS NULL ORDER BY updatedAt DESC'
+    )
+    .all() as Parameters<typeof mapMemoryRow>[0][]
+  return rows.map(mapMemoryRow)
+}
+
+/**
+ * Active memories oldest-first, for system-prompt injection (stable order so the
+ * prompt doesn't churn between turns). Capped so the prompt can't grow unbounded.
+ */
+export function listActiveMemoriesForPrompt(limit = 200): Memory[] {
+  const rows = db
+    .prepare(
+      'SELECT id, type, text, source, createdAt, updatedAt, deletedAt FROM memories WHERE deletedAt IS NULL ORDER BY createdAt ASC LIMIT ?'
+    )
+    .all(limit) as Parameters<typeof mapMemoryRow>[0][]
+  return rows.map(mapMemoryRow)
+}
+
+/**
+ * Insert or update a single memory (last-writer-wins on updatedAt, so a stale
+ * write can't clobber a fresher one). Returns the stored row.
+ */
+export function upsertMemory(memory: Memory): Memory {
+  db.prepare(
+    `INSERT INTO memories (id, type, text, source, createdAt, updatedAt, deletedAt)
+     VALUES (@id, @type, @text, @source, @createdAt, @updatedAt, @deletedAt)
+     ON CONFLICT(id) DO UPDATE SET
+       type = excluded.type,
+       text = excluded.text,
+       source = excluded.source,
+       updatedAt = excluded.updatedAt,
+       deletedAt = excluded.deletedAt
+     WHERE memories.updatedAt <= excluded.updatedAt`
+  ).run({
+    id: memory.id,
+    type: memory.type,
+    text: memory.text,
+    source: memory.source ?? null,
+    createdAt: memory.createdAt,
+    updatedAt: memory.updatedAt,
+    deletedAt: memory.deletedAt ?? null
+  })
+  return memory
+}
+
+/**
+ * Soft-delete a memory (set deletedAt = now, bump updatedAt). Returns the
+ * updated row so the caller can mirror the tombstone to the server, or undefined
+ * if the id is unknown. No-op if already deleted.
+ */
+export function softDeleteMemory(id: string): Memory | undefined {
+  const now = Date.now()
+  db.prepare(
+    'UPDATE memories SET deletedAt = ?, updatedAt = ? WHERE id = ? AND deletedAt IS NULL'
+  ).run(now, now, id)
+  const row = db
+    .prepare(
+      'SELECT id, type, text, source, createdAt, updatedAt, deletedAt FROM memories WHERE id = ?'
+    )
+    .get(id) as Parameters<typeof mapMemoryRow>[0] | undefined
+  return row ? mapMemoryRow(row) : undefined
+}
+
+/**
+ * Apply a batch of memories pushed/pulled from the server (last-writer-wins per
+ * id). Carries tombstones (deletedAt set) so remote deletions land locally.
+ */
+export function upsertRemoteMemories(memories: Memory[]): void {
+  db.transaction(() => {
+    for (const m of memories) upsertMemory(m)
+  })()
+}
+
+/**
+ * Wipe all locally-cached memories (sign-out), mirroring clearAllSessions: the
+ * server is the source of truth and a relogin repopulates via memory:pull, so
+ * clearing here stops one account's memories leaking to the next on this machine.
+ */
+export function clearAllMemories(): void {
+  db.prepare('DELETE FROM memories').run()
 }
 
 /* ---------- Full-text search ---------- */

@@ -9,10 +9,13 @@
 
 import type {
   McpServerConfig,
+  Memory,
   RoleModels,
   SkillSummary,
   SystemPromptConfig
 } from '@flairy/shared'
+
+export type { Memory } from '@flairy/shared'
 
 /** Channel name constants — never hardcode strings elsewhere. */
 export const IPC = {
@@ -35,6 +38,9 @@ export const IPC = {
   SessionRename: 'session:rename',
   SessionDelete: 'session:delete',
   SessionContextMenu: 'session:context-menu',
+  MemoryList: 'memory:list',
+  MemoryDelete: 'memory:delete',
+  MemoryClear: 'memory:clear',
   DialogPickDirectory: 'dialog:pick-directory',
   SecretsSet: 'secrets:set',
   SecretsHas: 'secrets:has',
@@ -58,6 +64,7 @@ export const IPC = {
   AuthChanged: 'auth:changed',
   SessionTitleUpdated: 'session:title-updated',
   SessionsChanged: 'session:changed',
+  MemoriesChanged: 'memory:changed',
   LanguageChanged: 'settings:language-changed'
 } as const
 
@@ -360,6 +367,12 @@ export interface FlairyApi {
   renameSession(args: RenameSessionArgs): Promise<SessionMeta | null>
   /** Delete a session and its messages locally. Returns true if a row was removed. */
   deleteSession(args: DeleteSessionArgs): Promise<boolean>
+  /** The user's remembered facts/preferences (active, newest first). */
+  listMemories(): Promise<Memory[]>
+  /** Forget a single memory (soft-delete + sync). Returns the updated list. */
+  deleteMemory(id: string): Promise<Memory[]>
+  /** Forget everything the assistant remembers (soft-delete all + sync). Returns []. */
+  clearMemories(): Promise<Memory[]>
   /**
    * Pop up the native (OS) right-click menu for a session row. Resolves with the
    * chosen action, or null if the menu was dismissed without a selection. The
@@ -407,6 +420,8 @@ export interface FlairyApi {
   onSessionTitleUpdated(cb: (payload: SessionTitleUpdatedPayload) => void): () => void
   /** Fires when the local session list changes wholesale (e.g. pulled from the server on login). */
   onSessionsChanged(cb: () => void): () => void
+  /** Fires when the user's memories change (written by the agent, synced, or edited). */
+  onMemoriesChanged(cb: () => void): () => void
   /** Fires when the signed-in session changes (login/register/logout), across windows. */
   onAuthChanged(cb: () => void): () => void
   /** Fires when the language changes (from any window); the renderer re-translates live. */

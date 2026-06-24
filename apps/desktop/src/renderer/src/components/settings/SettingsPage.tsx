@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AppLanguage, RedactedConfigSnapshot } from '@shared/ipc'
+import type { AppLanguage, Memory, RedactedConfigSnapshot } from '@shared/ipc'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
 
-type Tab = 'profile' | 'interface' | 'about'
+type Tab = 'profile' | 'interface' | 'memory' | 'about'
 
 /**
- * End-user settings, split into three tabs:
+ * End-user settings, split into tabs:
  *   - Profile   — signed-in identity + sign out
  *   - Interface — display language
+ *   - Memory    — what the assistant remembers about the user (view/forget)
  *   - About     — app name/version, with the raw server config tucked behind a
  *                 collapsible for support/troubleshooting (no jargon up front).
  */
@@ -20,6 +21,7 @@ export function SettingsPage(): React.JSX.Element {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'profile', label: t('settings.tabProfile') },
     { id: 'interface', label: t('settings.tabInterface') },
+    { id: 'memory', label: t('settings.tabMemory') },
     { id: 'about', label: t('settings.tabAbout') }
   ]
 
@@ -45,6 +47,7 @@ export function SettingsPage(): React.JSX.Element {
 
         {tab === 'profile' && <ProfileTab />}
         {tab === 'interface' && <InterfaceTab />}
+        {tab === 'memory' && <MemoryTab />}
         {tab === 'about' && <AboutTab />}
       </div>
     </div>
@@ -107,6 +110,91 @@ function InterfaceTab(): React.JSX.Element {
             </Button>
           ))}
         </div>
+      </Section>
+    </div>
+  )
+}
+
+/**
+ * What the assistant remembers about the user. Memories are written
+ * automatically by the assistant during conversations; here the user can review
+ * them and forget any (or all). Live-refreshes via onMemoriesChanged so a memory
+ * the assistant just wrote (or one synced from another device) appears at once.
+ */
+function MemoryTab(): React.JSX.Element {
+  const { t } = useTranslation()
+  const [memories, setMemories] = useState<Memory[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [confirmingClear, setConfirmingClear] = useState(false)
+
+  useEffect(() => {
+    void window.api.listMemories().then((m) => {
+      setMemories(m)
+      setLoaded(true)
+    })
+    return window.api.onMemoriesChanged(() => {
+      void window.api.listMemories().then(setMemories)
+    })
+  }, [])
+
+  const onForget = (id: string): void => {
+    void window.api.deleteMemory(id).then(setMemories)
+  }
+
+  const onClearAll = (): void => {
+    void window.api.clearMemories().then((m) => {
+      setMemories(m)
+      setConfirmingClear(false)
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <Section title={t('settings.memory')}>
+        <p className="mb-3 text-sm text-muted-foreground">{t('settings.memoryDescription')}</p>
+
+        {!loaded ? (
+          <p className="py-2 text-sm text-muted-foreground">{t('settings.loadingConfig')}</p>
+        ) : memories.length === 0 ? (
+          <p className="py-2 text-sm text-muted-foreground">{t('settings.memoryEmpty')}</p>
+        ) : (
+          <ul className="space-y-2">
+            {memories.map((m) => (
+              <li
+                key={m.id}
+                className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2"
+              >
+                <span className="text-sm break-words">{m.text}</span>
+                <button
+                  type="button"
+                  onClick={() => onForget(m.id)}
+                  className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-destructive"
+                >
+                  {t('settings.memoryForget')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {memories.length > 0 && (
+          <div className="mt-4 border-t border-border/60 pt-4">
+            {confirmingClear ? (
+              <div className="flex items-center gap-2">
+                <Button variant="destructive" size="sm" onClick={onClearAll}>
+                  {t('settings.memoryClearConfirm')}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setConfirmingClear(false)}>
+                  {t('settings.cancel')}
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setConfirmingClear(true)}>
+                {t('settings.memoryClearAll')}
+              </Button>
+            )}
+          </div>
+        )}
       </Section>
     </div>
   )

@@ -9,12 +9,14 @@
 pub mod config;
 pub mod llm;
 pub mod mcp;
+pub mod memories;
 pub mod sessions;
 pub mod skill;
 pub mod system_prompt;
 pub mod users;
 
 // Re-export the flat user/session API so existing call sites keep working.
+pub use memories::{pull_memories, upsert_memories};
 pub use sessions::{
     delete_session, fetch_session, patch_session, pull_sessions, upsert_session,
 };

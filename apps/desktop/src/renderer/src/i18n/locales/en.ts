@@ -128,6 +128,7 @@ const en = {
     // Tabs
     tabProfile: 'Profile',
     tabInterface: 'Interface',
+    tabMemory: 'Memory',
     tabAbout: 'About',
     // Profile tab
     account: 'Account',
@@ -138,6 +139,15 @@ const en = {
     // Interface tab
     language: 'Language',
     languageDescription: 'Choose the display language.',
+    // Memory tab
+    memory: 'What Flairy remembers',
+    memoryDescription:
+      'Flairy remembers helpful things about you as you chat, so you don’t have to repeat yourself. You can forget any of them here.',
+    memoryEmpty: 'Flairy hasn’t remembered anything about you yet.',
+    memoryForget: 'Forget',
+    memoryClearAll: 'Forget everything',
+    memoryClearConfirm: 'Yes, forget everything',
+    cancel: 'Cancel',
     // About tab
     about: 'About',
     appTagline: 'Your AI assistant that just works.',
