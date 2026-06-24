@@ -12,7 +12,8 @@
     "publish": {
       "provider": "github",
       "owner": "eloxt",
-      "repo": "flairy"
+      "repo": "flairy",
+      "releaseType": "draft"
     },
     "mac": {
       "target": [

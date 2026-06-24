@@ -118,5 +118,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/flairy-server-linux-amd64
+          # Keep the release a draft (matches electron-builder's releaseType);
+          # without this the action would un-draft / publish it on update.
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
