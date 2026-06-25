@@ -33,8 +33,9 @@ import { cjk } from "@streamdown/cjk";
 // so every markdown block would re-render and re-run its parser effect on every
 // streamed token. During streaming that churn can compound into a "maximum update
 // depth exceeded" (React #185) crash. Hoisting these keeps the identities stable.
+// (remarkPlugins is built per-row in AssistantRow, keyed on its citation set, so a
+// late-arriving source can bust the block memo and re-resolve chips — see there.)
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
-const STREAMDOWN_REMARK_PLUGINS = [remarkCitations];
 const STREAMDOWN_COMPONENTS = { sup: CitationChip };
 
 /**
@@ -411,6 +412,18 @@ function AssistantRow({
 }): React.JSX.Element {
   const hasText = Boolean(m.text.trim());
   const cites = sources ?? [];
+  // Streamdown memoizes each markdown block by content + plugin references, and
+  // CitationChip resolves its [n] against context at render time. If a search's
+  // sources land AFTER the answer text stopped changing (a late tool result, or a
+  // second search in the turn), the content-keyed block never re-renders and the
+  // chips stay unresolved until the view remounts. Bumping the remark-plugins
+  // reference when the resolvable citation set changes busts that memo so the
+  // block re-renders and the chips re-resolve. Keyed on the id signature — not the
+  // array, which is a fresh slice each render — so it stays stable across streamed
+  // tokens (no per-token churn; see the crash note on STREAMDOWN_PLUGINS).
+  const citeKey = cites.map((s) => s.i).join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const remarkPlugins = useMemo(() => [remarkCitations], [citeKey]);
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
       {m.thinking?.trim() && (
@@ -428,7 +441,7 @@ function AssistantRow({
             animated
             caret="block"
             plugins={STREAMDOWN_PLUGINS}
-            remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
+            remarkPlugins={remarkPlugins}
             components={STREAMDOWN_COMPONENTS}
             className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono"
           >
