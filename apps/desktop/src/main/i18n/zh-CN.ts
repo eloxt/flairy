@@ -11,5 +11,6 @@ export const zhCN: MainCatalog = {
   'menu.window': '窗口',
   'menu.help': '帮助',
   'menu.renameChat': '重命名',
-  'menu.deleteChat': '删除'
+  'menu.deleteChat': '删除',
+  'menu.removeRecentDir': '从最近列表中移除'
 }

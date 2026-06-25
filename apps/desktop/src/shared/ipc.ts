@@ -34,6 +34,7 @@ export const IPC = {
   SessionSetCwd: 'session:set-cwd',
   SessionListRecentDirs: 'session:list-recent-dirs',
   SessionRemoveRecentDir: 'session:remove-recent-dir',
+  RecentDirContextMenu: 'recent-dir:context-menu',
   SessionChooseDir: 'session:choose-dir',
   SessionRename: 'session:rename',
   SessionDelete: 'session:delete',
@@ -162,6 +163,9 @@ export interface DeleteSessionArgs {
 
 /** Item the user picked from a session row's native right-click menu. */
 export type SessionMenuAction = 'rename' | 'delete'
+
+/** Item the user picked from a recent-directory's native right-click menu. */
+export type RecentDirMenuAction = 'remove'
 
 export interface SessionMeta {
   id: string
@@ -357,6 +361,12 @@ export interface FlairyApi {
   listRecentDirectories(): Promise<string[]>
   /** Forget a recent directory. Returns the updated recents list, newest first. */
   removeRecentDirectory(path: string): Promise<string[]>
+  /**
+   * Pop the OS-native right-click menu for a recent-directory entry and resolve
+   * with the chosen action, or null if dismissed. The renderer carries out the
+   * action so the store stays the source of truth.
+   */
+  showRecentDirMenu(): Promise<RecentDirMenuAction | null>
   /**
    * Set an already-known path as the working directory (recents click — no
    * native dialog). Bumps recents. Returns the updated meta when `sessionId` is

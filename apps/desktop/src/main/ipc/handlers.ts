@@ -19,7 +19,8 @@ import {
   type AuthStatus,
   type AuthUser,
   type SearchMessagesArgs,
-  type SessionMenuAction
+  type SessionMenuAction,
+  type RecentDirMenuAction
 } from '@shared/ipc'
 import { t } from '../locale'
 import { AgentService } from '../agent/agent-service'
@@ -284,6 +285,24 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SessionRemoveRecentDir, (_e, path: string) => {
     removeRecentDirectory(path)
     return listRecentDirectories()
+  })
+
+  // Pop the OS-native right-click menu for a recent-directory entry and resolve
+  // with the chosen action (or null if dismissed). Mirrors SessionContextMenu:
+  // the renderer performs the action so the store stays the source of truth.
+  ipcMain.handle(IPC.RecentDirContextMenu, () => {
+    return new Promise<RecentDirMenuAction | null>((resolve) => {
+      let action: RecentDirMenuAction | null = null
+      const menu = Menu.buildFromTemplate([
+        {
+          label: t('menu.removeRecentDir'),
+          click: () => {
+            action = 'remove'
+          }
+        }
+      ])
+      menu.popup({ window: getMainWindow() ?? undefined, callback: () => resolve(action) })
+    })
   })
 
   // Set an already-known path as the working directory (recents click — no

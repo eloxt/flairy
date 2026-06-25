@@ -287,10 +287,12 @@ export function Composer(): React.JSX.Element {
                             title={t('composer.recentDirTitle', { path: dir })}
                             onClick={() => void chooseWorkingDirectory(dir)}
                             onContextMenu={(e) => {
-                              // Right-click forgets this recent directory. Keep
-                              // the menu open so the user can prune several.
+                              // Right-click pops the OS-native menu; only remove
+                              // this recent directory if the user picks "remove".
                               e.preventDefault();
-                              void removeRecentDir(dir);
+                              void window.api.showRecentDirMenu().then((action) => {
+                                if (action === "remove") void removeRecentDir(dir);
+                              });
                             }}
                             className="items-start gap-2"
                           >

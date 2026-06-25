@@ -30,6 +30,7 @@ const api: FlairyApi = {
   setWorkingDirectory: (args) => ipcRenderer.invoke(IPC.SessionSetCwd, args),
   listRecentDirectories: () => ipcRenderer.invoke(IPC.SessionListRecentDirs),
   removeRecentDirectory: (path) => ipcRenderer.invoke(IPC.SessionRemoveRecentDir, path),
+  showRecentDirMenu: () => ipcRenderer.invoke(IPC.RecentDirContextMenu),
   chooseDirectory: (args) => ipcRenderer.invoke(IPC.SessionChooseDir, args),
   renameSession: (args) => ipcRenderer.invoke(IPC.SessionRename, args),
   deleteSession: (args) => ipcRenderer.invoke(IPC.SessionDelete, args),
