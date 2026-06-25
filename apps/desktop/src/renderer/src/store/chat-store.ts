@@ -463,15 +463,26 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   // Pick an already-known directory from the recents menu (no native dialog).
+  // Apply the cwd optimistically and SYNCHRONOUSLY (before any await) so the
+  // store update batches into the same commit as the menu's close — exactly how
+  // the synchronous permission menu behaves. Letting the IPC round-trip land the
+  // update instead would re-render mid close-animation and flash the menu.
   chooseWorkingDirectory: async (path) => {
     const sessionId = get().sessionId
+    if (sessionId) {
+      set((s) => ({
+        sessions: s.sessions.map((m) => (m.id === sessionId ? { ...m, cwd: path } : m)),
+      }))
+    } else {
+      set({ pendingCwd: path })
+    }
+    // Persist + rebind the agent in the background. The returned meta carries the
+    // canonical (normalized) cwd; reconciling it is a visual no-op since we
+    // already show this path, so it can't reintroduce the flash.
     const updated = await window.api.chooseDirectory({ sessionId, path })
     if (sessionId && updated) {
       set((s) => ({ sessions: s.sessions.map((m) => (m.id === updated.id ? updated : m)) }))
-    } else if (!sessionId) {
-      set({ pendingCwd: path })
     }
-    await get().loadRecentDirs()
   },
 
   // Forget a recent directory (composer menu right-click). Local convenience

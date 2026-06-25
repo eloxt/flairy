@@ -208,6 +208,22 @@ export function addRecentDirectory(path: string): void {
   pruneRecentDirectories()
 }
 
+/**
+ * Ensure a directory is present in recents WITHOUT reordering it if it already
+ * is (unlike {@link addRecentDirectory}, which bumps `lastUsedAt`). Used on
+ * session open so a session's cwd shows up in the composer menu. A freshly
+ * added entry sorts newest; an existing one keeps its place.
+ */
+export function ensureRecentDirectory(path: string): void {
+  const res = db
+    .prepare(
+      `INSERT INTO recent_directories (path, lastUsedAt) VALUES (?, ?)
+       ON CONFLICT(path) DO NOTHING`
+    )
+    .run(normalizeDir(path), Date.now())
+  if (res.changes > 0) pruneRecentDirectories()
+}
+
 /** Forget a recent directory (composer menu right-click → remove). No-op if absent. */
 export function removeRecentDirectory(path: string): void {
   db.prepare('DELETE FROM recent_directories WHERE path = ?').run(normalizeDir(path))

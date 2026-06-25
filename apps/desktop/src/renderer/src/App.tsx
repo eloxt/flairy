@@ -63,17 +63,18 @@ function Splash(): React.JSX.Element {
  * so streaming keeps flowing into the store while the user is on another route.
  */
 function AppLayout(): React.JSX.Element {
-  const { init, loadSessions, openSession, newChat } = useChat();
+  const { init, loadSessions, newChat } = useChat();
 
   useEffect(() => {
     const dispose = init();
     void (async () => {
-      const sessions = await loadSessions();
-      if (sessions[0]) await openSession(sessions[0]);
-      else await newChat();
+      // Load the session list to populate the sidebar, but always land on the
+      // blank "new conversation" page instead of auto-opening the latest chat.
+      await loadSessions();
+      await newChat();
     })();
     return dispose;
-  }, [init, loadSessions, openSession, newChat]);
+  }, [init, loadSessions, newChat]);
 
   return (
     <SidebarProvider>

@@ -47,6 +47,7 @@ import {
   deleteSession,
   clearAllSessions,
   addRecentDirectory,
+  ensureRecentDirectory,
   removeRecentDirectory,
   listRecentDirectories,
   upsertRemoteSession,
@@ -259,6 +260,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SessionLoadLive, (_e, sessionId: string) => {
     const meta = getSession(sessionId)
     if (!meta) throw new Error(`Unknown session: ${sessionId}`)
+    // Surface this session's working directory in the composer's recents if it
+    // isn't there already (e.g. a session synced from another device). Add-only:
+    // never reorder an entry the user already has.
+    ensureRecentDirectory(meta.cwd)
     const svc = services.get(sessionId)
     return {
       meta,
