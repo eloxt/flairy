@@ -61,14 +61,26 @@ function snippetOf(r: ExaResult): string {
  * the API directly we own the result shape, so we can return BOTH a readable
  * numbered list (for the model to reason over + cite) AND a machine-readable
  * sentinel block (for the renderer to turn into citation chips + a Sources
- * footer). Numbering restarts at 1 each call (per-search), matching the citation
- * instruction injected into the system prompt.
+ * footer). Result ids are unique across the whole agent run (turn), not just
+ * within one call: `allocateIds` hands each call a fresh, non-overlapping block
+ * so a second search in the same turn numbers from where the first left off.
+ * That keeps every `[n]` the model writes unambiguous when the renderer merges a
+ * turn's searches, and matches the citation instruction in the system prompt.
  *
  * Runs in the main process, so it calls the HTTPS API directly with the
  * server-delivered key; the key never reaches the renderer. Registered as a
  * read-only tool (no approval prompt) since it only reads the public web.
+ *
+ * `allocateIds(count)` reserves `count` consecutive ids and returns the 0-based
+ * start of the block; it advances a per-run counter the caller resets at each
+ * new turn. The advance is synchronous, so concurrent `executionMode:'parallel'`
+ * searches still get disjoint ranges. Omitted (e.g. in isolation/tests) →
+ * numbering falls back to a local 1-based block.
  */
-export function createWebSearchTool(resolve: () => ExaRuntimeConfig | null): AgentTool<any> {
+export function createWebSearchTool(
+  resolve: () => ExaRuntimeConfig | null,
+  allocateIds?: (count: number) => number
+): AgentTool<any> {
   return {
     name: 'web_search',
     label: 'web_search',
@@ -153,10 +165,14 @@ export function createWebSearchTool(resolve: () => ExaRuntimeConfig | null): Age
       // Compact, model-facing JSON — the renderer parses the SAME text and derives
       // domain/favicon from each url, so neither rides in the payload (no
       // duplicated readable list, half the context cost of the old format).
+      // Reserve a turn-unique id block so a later search in the same turn doesn't
+      // reuse [1], [2], … (which the renderer would conflate when it merges a
+      // turn's searches into one citation registry).
+      const idStart = allocateIds ? allocateIds(found.length) : 0
       const results: SearchResultInput[] = found.map((r, idx) => {
         const url = String(r.url)
         return {
-          id: idx + 1,
+          id: idStart + idx + 1,
           title: (r.title ?? url).replace(/\s+/g, ' ').trim(),
           url,
           snippet: snippetOf(r)

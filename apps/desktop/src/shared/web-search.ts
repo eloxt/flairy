@@ -11,7 +11,7 @@
 
 /** One web-search result as the renderer consumes it (a citation `[n]` target). */
 export interface SearchSource {
-  /** 1-based index within THIS search (numbering restarts per search). */
+  /** Citation number, unique across the turn (a later search keeps counting up). */
   i: number
   title: string
   url: string

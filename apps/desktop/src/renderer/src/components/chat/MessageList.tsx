@@ -94,16 +94,30 @@ export function MessageList({
   const clearPendingScroll = useChat((s) => s.clearPendingScroll);
   const running = useChat((s) => s.running);
   const rows = useMemo(() => toRows(messages), [messages]);
-  // Per-assistant-message citation registry: the sources of the most recent
-  // web_search before that message, reset at each user turn. Per-search numbering
-  // means an answer cites against the nearest preceding search (see Citations).
+  // Per-assistant-message citation registry: ALL web_search sources gathered so
+  // far in the current turn (reset at each user message), so an answer can cite
+  // any search in the turn — not just the nearest one. Ids are turn-unique (the
+  // tool blocks them per turn), so the merge can't collide; we still dedupe by id
+  // (first wins) to be safe across old sessions and to drop accidental repeats.
+  // Each assistant gets a SNAPSHOT (slice) so a later search doesn't retroactively
+  // add sources to an earlier bubble in the same turn.
   const sourcesByMessage = useMemo(() => {
     const map = new Map<string, SearchSource[]>();
-    let last: SearchSource[] = [];
+    let acc: SearchSource[] = [];
+    let seen = new Set<number>();
     for (const m of messages) {
-      if (m.role === "user") last = [];
-      else if (m.role === "tool" && m.sources?.length) last = m.sources;
-      else if (m.role === "assistant" && last.length) map.set(m.id, last);
+      if (m.role === "user") {
+        acc = [];
+        seen = new Set<number>();
+      } else if (m.role === "tool" && m.sources?.length) {
+        for (const s of m.sources) {
+          if (seen.has(s.i)) continue;
+          seen.add(s.i);
+          acc.push(s);
+        }
+      } else if (m.role === "assistant" && acc.length) {
+        map.set(m.id, acc.slice());
+      }
     }
     return map;
   }, [messages]);

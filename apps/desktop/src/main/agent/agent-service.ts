@@ -91,6 +91,14 @@ export class AgentService {
    */
   private running = false;
   /**
+   * Running count of web-search results emitted in the current turn, used to give
+   * each search a turn-unique citation id block. Reset to 0 at each `agent_start`
+   * (a new user-initiated run) so numbering restarts per turn, while a second
+   * search WITHIN a turn continues from where the first stopped — keeping every
+   * `[n]` the model writes unambiguous when the renderer merges a turn's sources.
+   */
+  private searchIdOffset = 0;
+  /**
    * Resolved model for the server-assigned `tool` role, or undefined when no tool
    * model is assigned. Delivered + resolved but NOT yet wired into the loop — a
    * stub for a future auxiliary-call feature. See the constructor.
@@ -225,7 +233,11 @@ export class AgentService {
       }
       // Keep the run-state flag in lockstep with the lifecycle events the
       // renderer also keys off, so isRunning() matches what the UI shows.
-      if (event.type === "agent_start") this.running = true;
+      if (event.type === "agent_start") {
+        this.running = true;
+        // New turn: restart per-turn web-search citation numbering.
+        this.searchIdOffset = 0;
+      }
       if (event.type === "agent_end") this.running = false;
       this.send(sessionId, normalizeEvent(event));
       // Persist on turn boundaries so a crash doesn't lose history.
@@ -251,7 +263,18 @@ export class AgentService {
     // model never sees a tool it can't actually use. Resolved fresh at execute
     // time from the latest server config (key never captured here).
     if (resolveExaService(this.server.getConfig())) {
-      tools.push(createWebSearchTool(() => resolveExaService(this.server.getConfig())));
+      tools.push(
+        createWebSearchTool(
+          () => resolveExaService(this.server.getConfig()),
+          // Reserve a turn-unique id block per search (advance synchronously so
+          // parallel searches get disjoint ranges); reset each turn (agent_start).
+          (count) => {
+            const start = this.searchIdOffset;
+            this.searchIdOffset += count;
+            return start;
+          }
+        )
+      );
       tools.push(createWebFetchTool(() => resolveExaService(this.server.getConfig())));
     }
     tools.push(...this.mcp.getTools());
@@ -552,8 +575,9 @@ function buildSystemPrompt(config: ConfigSnapshot, cwd: string): string {
 /**
  * How the agent should use `web_search` and cite its results. The renderer turns
  * the bracketed `[n]` markers into citation chips + a Sources list, resolving
- * each number against that search's results — so the numbers MUST match what the
- * tool returned, and numbering is per-search (restarts at 1 each call).
+ * each number against the turn's merged search results — so the numbers MUST
+ * match what the tool returned. Ids are unique across a turn (a second search
+ * continues numbering, it does not restart at 1).
  */
 const WEB_SEARCH_INSTRUCTIONS = `<web_search>
 You can search the live web with the \`web_search\` tool. Use it whenever the answer depends on current events, recent facts, prices, releases, or anything you're not confident is up to date.
@@ -563,7 +587,7 @@ CITING SOURCES — REQUIRED. Whenever your answer uses information from web_sear
   GTA 6 will cost $79.99 for the standard edition[1], with an Ultimate Edition at $99.99[2][3].
 
 Rules:
-- Use the exact number shown for each result in the tool output (the leading \`[1]\`, \`[2]\`, …). Numbering restarts at 1 for each separate search.
+- Use the exact number shown for each result in the tool output (the leading \`[1]\`, \`[2]\`, …). Ids stay unique across your whole reply: a later search keeps counting up (e.g. \`[11]\`, \`[12]\`), it does NOT restart at 1 — always cite the number actually shown.
 - Place each marker right after the specific claim it backs — never collect them all at the end, and never invent a "Sources" section yourself (the app renders one).
 - Combine markers like \`[1][2]\` when several results support the same point.
 - Only cite numbers that actually appear in the results you received.
