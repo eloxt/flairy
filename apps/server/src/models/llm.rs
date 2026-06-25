@@ -82,6 +82,40 @@ impl ThinkingLevel {
     }
 }
 
+/// An input modality a model accepts. Mirrors pi-ai's `Model.input` element type
+/// (`"text" | "image"`) and `Modality` in `packages/shared/src/config.ts`. Stored
+/// as a non-empty TEXT[] on `llm_models`; the client forwards it to pi, which
+/// gates whether images are sent or stripped with an "(image omitted…)" note.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Modality {
+    Text,
+    Image,
+}
+
+impl Modality {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Modality::Text => "text",
+            Modality::Image => "image",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "text" => Some(Modality::Text),
+            "image" => Some(Modality::Image),
+            _ => None,
+        }
+    }
+}
+
+/// Default input modalities (text-only) for rows/payloads that omit them — keeps
+/// the field non-empty and matches the DB column default.
+fn default_input_modalities() -> Vec<Modality> {
+    vec![Modality::Text]
+}
+
 /// A scenario slot a model can be assigned to.
 /// - `Main` — the primary agent loop (required for the client to run).
 /// - `Tool` — an auxiliary / cheaper model.
@@ -166,6 +200,10 @@ pub struct LlmModelConfig {
     pub name: String,
     /// Provider model id, e.g. "claude-sonnet-4-20250514".
     pub model: String,
+    /// Input modalities the model accepts (non-empty; defaults to `[Text]`).
+    /// Forwarded to pi as `Model.input` to gate image attachments.
+    #[serde(default = "default_input_modalities")]
+    pub input: Vec<Modality>,
     /// Reasoning effort the client applies when running this model. `None` →
     /// no explicit level forced (client/provider default decides).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -188,6 +226,8 @@ pub struct LlmModelInput {
     pub provider_id: String,
     pub name: String,
     pub model: String,
+    #[serde(default = "default_input_modalities")]
+    pub input: Vec<Modality>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

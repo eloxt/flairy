@@ -44,6 +44,8 @@ export const IPC = {
   MemoryDelete: 'memory:delete',
   MemoryClear: 'memory:clear',
   DialogPickDirectory: 'dialog:pick-directory',
+  ImageViewerOpen: 'image-viewer:open',
+  ImageViewerGet: 'image-viewer:get',
   SecretsSet: 'secrets:set',
   SecretsHas: 'secrets:has',
   AuthLogin: 'auth:login',
@@ -93,6 +95,16 @@ export interface Attachment {
   mimeType: string
 }
 
+/**
+ * A displayable image (a user-attached picture). Carried on a chat bubble so the
+ * renderer can show a thumbnail, and handed to the standalone image-viewer window
+ * for full-size zoom/pan. `data` is raw base64 (no data: prefix).
+ */
+export interface ViewerImage {
+  data: string
+  mimeType: string
+}
+
 /* ---------- command payloads ---------- */
 
 export interface PromptArgs {
@@ -126,17 +138,13 @@ export interface ApprovalResponseArgs {
 }
 
 /**
- * Tool-approval posture for a session.
- *   - `ask`  : current behavior — mutating/MCP tools prompt for confirmation.
+ * Tool-approval posture.
+ *   - `ask`  : mutating/MCP tools prompt for confirmation.
  *   - `full` : "Full access" — every tool runs without prompting.
- * Per-session and in-memory only; resets to `ask` on restart.
+ * GLOBAL (not per-session): one value applies to every session. Held in renderer
+ * state + an in-memory mirror in main; resets to the safe `ask` on restart.
  */
 export type PermissionMode = 'ask' | 'full'
-
-export interface SetPermissionModeArgs {
-  sessionId: string
-  mode: PermissionMode
-}
 
 export interface SetCwdArgs {
   sessionId: string
@@ -340,8 +348,8 @@ export interface FlairyApi {
   respondApproval(args: ApprovalResponseArgs): Promise<void>
   /** Submit the user's answers to an `ask` tool call (null when cancelled). */
   respondQuestion(args: QuestionResponseArgs): Promise<void>
-  /** Set the tool-approval posture for a session (in-memory, per-session). */
-  setPermissionMode(args: SetPermissionModeArgs): Promise<void>
+  /** Set the GLOBAL tool-approval posture (persisted; applies to every session). */
+  setPermissionMode(mode: PermissionMode): Promise<void>
   listSessions(): Promise<SessionMeta[]>
   loadSession(sessionId: string): Promise<{ meta: SessionMeta; messages: unknown[] }>
   /**
@@ -408,6 +416,13 @@ export interface FlairyApi {
   getConfig(): Promise<RedactedConfigSnapshot | null>
   /** Open (or focus) the standalone Settings window. */
   openSettings(): Promise<void>
+  /** Open a borderless window showing `image` full size with zoom/pan. */
+  openImageViewer(image: ViewerImage): Promise<void>
+  /**
+   * Called by the image-viewer window itself: fetch (and consume) the image main
+   * stashed for the given id when the window was opened. Returns null if missing.
+   */
+  getViewerImage(id: string): Promise<ViewerImage | null>
   /** This app's version (from package.json), resolved synchronously by main. */
   getAppVersion(): string
   /** The newer release the app already knows about, or null if up to date. */

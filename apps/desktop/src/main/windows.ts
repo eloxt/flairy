@@ -42,12 +42,20 @@ const webPreferences = {
 } as const
 
 /** Load a renderer HTML entry (`index` → main app, `settings` → Settings window). */
-function loadRenderer(win: BrowserWindow, entry: 'index' | 'settings' = 'index'): void {
+type RendererEntry = 'index' | 'settings' | 'image-viewer'
+
+/**
+ * Load a renderer HTML entry. `query` (without a leading `?`) is appended so a
+ * window can read parameters from `location.search` — used to tell the image
+ * viewer which stashed image to fetch.
+ */
+function loadRenderer(win: BrowserWindow, entry: RendererEntry = 'index', query = ''): void {
+  const search = query ? `?${query}` : ''
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     const base = process.env['ELECTRON_RENDERER_URL']
-    win.loadURL(entry === 'index' ? base : `${base}/${entry}.html`)
+    win.loadURL(entry === 'index' ? `${base}${search}` : `${base}/${entry}.html${search}`)
   } else {
-    win.loadFile(join(RENDERER_DIR, `${entry}.html`))
+    win.loadFile(join(RENDERER_DIR, `${entry}.html`), query ? { search } : undefined)
   }
 }
 
@@ -112,6 +120,32 @@ export function openSettingsWindow(): void {
   openLinksExternally(win)
   loadRenderer(win, 'settings')
   settingsWindow = win
+}
+
+/**
+ * Open a standalone window showing a single image full size (zoom/pan handled in
+ * the renderer). `id` keys the image main stashed for the viewer to fetch on load.
+ * Each call spawns a fresh window so several images can be inspected side by side.
+ */
+export function openImageViewerWindow(id: string): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 320,
+    minHeight: 240,
+    show: false,
+    title: 'Image',
+    backgroundColor: '#000000',
+    autoHideMenuBar: true,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 15 },
+    webPreferences
+  })
+
+  win.on('ready-to-show', () => win.show())
+  openLinksExternally(win)
+  loadRenderer(win, 'image-viewer', `id=${encodeURIComponent(id)}`)
+  return win
 }
 
 /** Send an event to every live renderer window (config + auth changes fan out). */

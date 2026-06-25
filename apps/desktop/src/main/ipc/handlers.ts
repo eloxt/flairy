@@ -6,7 +6,6 @@ import {
   type AbortArgs,
   type ApprovalResponseArgs,
   type QuestionResponseArgs,
-  type SetPermissionModeArgs,
   type PermissionMode,
   type CreateSessionArgs,
   type SetCwdArgs,
@@ -20,7 +19,8 @@ import {
   type AuthUser,
   type SearchMessagesArgs,
   type SessionMenuAction,
-  type RecentDirMenuAction
+  type RecentDirMenuAction,
+  type ViewerImage
 } from '@shared/ipc'
 import { t } from '../locale'
 import { AgentService } from '../agent/agent-service'
@@ -60,18 +60,18 @@ import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
 import type { UpdateManager } from '../update/update-checker'
 import { redactConfig } from '../sync/config-redact'
-import { broadcast, getMainWindow, openSettingsWindow } from '../windows'
+import { broadcast, getMainWindow, openImageViewerWindow, openSettingsWindow } from '../windows'
+import { randomUUID } from 'node:crypto'
 
 /** Live agent services keyed by sessionId. */
 const services = new Map<string, AgentService>()
 
 /**
- * Per-session tool-approval posture chosen by the user. Kept here (not only on
- * the AgentService) so a mode picked before the service exists — or after it's
- * been discarded — is reapplied when the service is (re)created. In-memory only,
- * so everything resets to `'ask'` on restart.
+ * Images awaiting pickup by a just-opened image-viewer window, keyed by the id in
+ * the window's query string. Filled by ImageViewerOpen, drained (once) by
+ * ImageViewerGet. Transient — never persisted.
  */
-const permissionModes = new Map<string, PermissionMode>()
+const pendingViewerImages = new Map<string, ViewerImage>()
 
 /**
  * Persist a freshly issued token + user, open the authenticated socket, and
@@ -103,6 +103,13 @@ async function pickDirectory(): Promise<string | null> {
   return dir
 }
 
+/**
+ * The global tool-approval posture. One value for every session (not per-session);
+ * the renderer's toggle drives it and `getOrCreateService` applies it to each new
+ * AgentService. In-memory: resets to the safe `'ask'` on restart.
+ */
+let permissionMode: PermissionMode = 'ask'
+
 function getOrCreateService(
   sessionId: string,
   server: ServerClient,
@@ -119,9 +126,8 @@ function getOrCreateService(
       mcp,
       messages: loadMessages(sessionId)
     })
-    // Reapply any mode the user chose before this service existed.
-    const mode = permissionModes.get(sessionId)
-    if (mode) svc.setPermissionMode(mode)
+    // Apply the global approval posture to the fresh service.
+    svc.setPermissionMode(permissionMode)
     services.set(sessionId, svc)
   }
   return svc
@@ -149,7 +155,6 @@ export function registerIpcHandlers(
   server.onSessionRemoteDelete(({ sessionId }) => {
     services.get(sessionId)?.dispose()
     services.delete(sessionId)
-    permissionModes.delete(sessionId)
     approvals.rejectSession(sessionId)
     questions.rejectSession(sessionId)
     deleteSession(sessionId)
@@ -201,7 +206,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.AgentPrompt, async (_e, args: PromptArgs) => {
     try {
-      await getOrCreateService(args.sessionId, server, mcp).prompt(args.text, args.attachments)
+      await getOrCreateService(args.sessionId, server, mcp).submit(args.text, args.attachments)
     } catch (err) {
       // Creating the service can throw (e.g. no LLM config delivered yet). Push
       // it back as a visible error event instead of a swallowed invoke rejection.
@@ -232,9 +237,11 @@ export function registerIpcHandlers(
   // Set the tool-approval posture for a session. Store it so it survives service
   // (re)creation, and apply it to a live service immediately if one exists. We do
   // NOT call getOrCreateService here — that throws before LLM config has arrived.
-  ipcMain.handle(IPC.AgentSetPermissionMode, (_e, args: SetPermissionModeArgs) => {
-    permissionModes.set(args.sessionId, args.mode)
-    services.get(args.sessionId)?.setPermissionMode(args.mode)
+  // Global posture: remember it for sessions created later, and push it to every
+  // session that's already live so the change takes effect immediately.
+  ipcMain.handle(IPC.AgentSetPermissionMode, (_e, mode: PermissionMode) => {
+    permissionMode = mode
+    for (const svc of services.values()) svc.setPermissionMode(mode)
   })
 
   ipcMain.handle(IPC.SessionList, () => listSessions())
@@ -343,14 +350,13 @@ export function registerIpcHandlers(
 
   // Delete a session locally. Tear the live service down fully (dispose, not
   // abort) so a late terminal event can't re-persist messages, settle any
-  // pending approval for it, drop its permission posture, then remove the rows.
-  // Also tell the server to delete it (and propagate to the user's other
-  // devices) so a restart/reconnect doesn't pull it back. No-op if offline; an
-  // unsynced session never existed server-side, so a pull can't resurrect it.
+  // pending approval for it, then remove the rows. Also tell the server to
+  // delete it (and propagate to the user's other devices) so a restart/reconnect
+  // doesn't pull it back. No-op if offline; an unsynced session never existed
+  // server-side, so a pull can't resurrect it.
   ipcMain.handle(IPC.SessionDelete, (_e, args: DeleteSessionArgs) => {
     services.get(args.sessionId)?.dispose()
     services.delete(args.sessionId)
-    permissionModes.delete(args.sessionId)
     approvals.rejectSession(args.sessionId)
     questions.rejectSession(args.sessionId)
     server.sendSessionDelete({ sessionId: args.sessionId })
@@ -421,6 +427,23 @@ export function registerIpcHandlers(
     return dir
   })
 
+  // Open a full-size image-viewer window. The base64 image can be large, so it's
+  // stashed in main keyed by a random id and handed to the new window via a query
+  // param; the window fetches (and consumes) it once on load — never round-tripped
+  // through a URL. The id is deleted on first read so the buffer doesn't linger.
+  ipcMain.handle(IPC.ImageViewerOpen, (_e, image: ViewerImage) => {
+    const id = randomUUID()
+    pendingViewerImages.set(id, image)
+    const win = openImageViewerWindow(id)
+    // Free the buffer when the window closes. Reads are non-consuming (the viewer
+    // may fetch twice under React StrictMode), so close is the only drain point.
+    win.on('closed', () => pendingViewerImages.delete(id))
+  })
+
+  ipcMain.handle(IPC.ImageViewerGet, (_e, id: string): ViewerImage | null => {
+    return pendingViewerImages.get(id) ?? null
+  })
+
   ipcMain.handle(IPC.SecretsSet, (_e, args: SetSecretArgs) => setSecret(args))
 
   ipcMain.handle(IPC.SecretsHas, (_e, provider: SetSecretArgs['provider']) => hasSecret(provider))
@@ -449,7 +472,6 @@ export function registerIpcHandlers(
     // keeps the history; a relogin repopulates it via session:pull.
     for (const svc of services.values()) svc.dispose()
     services.clear()
-    permissionModes.clear()
     clearAllSessions()
     // Wipe locally-cached memories too so one account's memories can't leak to
     // the next account signed in on this machine; a relogin repopulates them via

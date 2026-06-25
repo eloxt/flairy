@@ -22,6 +22,16 @@
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 /**
+ * An input modality a model accepts. Mirrors pi-ai's `Model.input` element type
+ * and `Modality` in `apps/server/src/models/llm.rs`. The client forwards the set
+ * to pi as `Model.input`, which gates whether image attachments reach the
+ * provider or are replaced with an "(image omitted…)" placeholder. pi's
+ * text-generation model carries only an input modality (output modality exists
+ * solely on its image-generation models), so only `input` is configured here.
+ */
+export type Modality = 'text' | 'image'
+
+/**
  * A provider connection (catalog row). Holds the API protocol + the credential
  * and optional gateway used to reach it. Many models can hang off one provider
  * and share its credential. Client injects `credential` via `new Agent({ getApiKey })`.
@@ -93,6 +103,11 @@ export interface LlmModelConfig {
   /** Provider model id, e.g. "claude-sonnet-4-20250514". */
   model: string
   /**
+   * Input modalities the model accepts (non-empty; defaults to `['text']`).
+   * Forwarded to pi as `Model.input` to gate image attachments. See {@link Modality}.
+   */
+  input: Modality[]
+  /**
    * Reasoning effort the client applies when running this model. Omitted →
    * provider/client default (no explicit level forced). See {@link ThinkingLevel}.
    */
@@ -110,6 +125,7 @@ export interface LlmModelInput {
   providerId: string
   name: string
   model: string
+  input: Modality[]
   thinkingLevel?: ThinkingLevel
   contextWindow?: number
   maxTokens?: number

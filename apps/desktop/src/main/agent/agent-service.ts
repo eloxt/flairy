@@ -127,6 +127,10 @@ export class AgentService {
       // Credential is resolved per-request from the latest server config — never
       // embedded in the model object or sent to the renderer.
       getApiKey: () => server.getConfig()?.llm.main?.provider.credential,
+      // Coalesce rapid steers: drain ALL queued steering messages together at the
+      // next turn boundary instead of pi's default one-per-turn, which would
+      // otherwise spread a quick burst of redirects across several turns.
+      steeringMode: "all",
       initialState: {
         systemPrompt: buildSystemPrompt(config, cwd),
         model: buildModel(mainLlm),
@@ -318,6 +322,27 @@ export class AgentService {
     this.upserted = true;
   }
 
+  /**
+   * Single entry point for composer text. Decides the routing the renderer can't
+   * safely do itself: while a turn is in flight, inject the text as a STEERING
+   * message (pi forbids prompt() during an active run and drains steers at the
+   * next turn boundary); otherwise start a fresh run via prompt().
+   *
+   * The running check happens here against the authoritative `this.running`, so
+   * the "user hit send the instant the turn ended" race lands on prompt() and
+   * re-starts the run — rather than leaving the text stranded in the steering
+   * queue, which only drains while a run is active.
+   */
+  async submit(text: string, attachments?: Attachment[]): Promise<void> {
+    if (this.running) {
+      // Inject as steering. Skip a truly empty submit (no text and no images) so we
+      // don't push a blank user message into the running turn.
+      if (text.trim() || attachments?.length) this.steer(text, attachments);
+      return;
+    }
+    await this.prompt(text, attachments);
+  }
+
   async prompt(text: string, attachments?: Attachment[]): Promise<void> {
     // First user message in a fresh session → generate a title from it. Capture
     // "is first" BEFORE agent.prompt mutates state.messages, and fire it off
@@ -417,8 +442,20 @@ export class AgentService {
     });
   }
 
-  steer(text: string): void {
-    this.agent.steer({ role: "user", content: text, timestamp: Date.now() });
+  steer(text: string, attachments?: Attachment[]): void {
+    // pi's ImageContent and our Attachment are the same shape ({ type: 'image',
+    // data, mimeType }), so images drop straight into the user message's content
+    // array next to the text part — the same array agent.prompt() builds for an
+    // image prompt. With no attachments, keep the plain-string content form.
+    const content =
+      attachments && attachments.length > 0
+        ? [{ type: "text", text }, ...attachments]
+        : text;
+    this.agent.steer({
+      role: "user",
+      content,
+      timestamp: Date.now(),
+    } as any);
   }
 
   /** Switch the tool-approval posture for the rest of this session. */
@@ -451,6 +488,10 @@ export class AgentService {
   abort(): void {
     this.running = false;
     this.agent.abort();
+    // Drop any queued steering/follow-up messages so a stop fully clears intent —
+    // otherwise a steer queued just before the stop would be injected into the
+    // next prompt's run (pi drains the queues at run start).
+    this.agent.clearAllQueues();
     // Aborting the run won't settle a blocked `ask` Promise on its own, so
     // cancel any open question for this session — otherwise the turn hangs.
     questions.rejectSession(this.sessionId);
@@ -662,7 +703,11 @@ function buildModel(llm: ActiveLlm): PiModel {
     baseUrl,
     // pi gates thinking on `reasoning`; mirror the configured effort.
     reasoning: m.thinkingLevel != null && m.thinkingLevel !== "off",
-    input: ["text"],
+    // pi strips images from a request unless the model's `input` lists "image"
+    // (transform-messages.ts checks `model.input.includes("image")`), replacing
+    // them with "(image omitted…)". The admin console configures this per model;
+    // fall back to text-only if a legacy snapshot omits it.
+    input: m.input?.length ? m.input : ["text"],
     cost: {
       input: m.cost?.input ?? 0,
       output: m.cost?.output ?? 0,

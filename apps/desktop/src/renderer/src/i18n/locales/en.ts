@@ -50,6 +50,9 @@ const en = {
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
     toolDone: 'done',
+    queued: 'Queued — will steer the running task',
+    openImage: 'Open image',
+    imagesIgnored: "Not seen — this model can't read images",
     working: 'Working…',
     running: 'Running',
     reasoning: 'Reasoning',
@@ -108,6 +111,9 @@ const en = {
   composer: {
     placeholder: 'Ask Flairy to do something…',
     addImage: 'Add image',
+    imageUnsupported: "The current model can't read images",
+    imagesIgnored:
+      "The current model can't read images, so attached pictures will be ignored.",
     removeAttachment: 'Remove attachment',
     workingDirectory: 'Working directory',
     workingDirectoryTitle: 'Working directory: {{path}}',
@@ -123,7 +129,8 @@ const en = {
     fullDescription:
       'Flairy runs every tool automatically without asking. Only use this when you trust the task.',
     stop: 'Stop',
-    send: 'Send'
+    send: 'Send',
+    steer: 'Send (steer the running task)'
   },
   settings: {
     title: 'Settings',

@@ -34,6 +34,26 @@ export interface UiMessage {
    */
   running?: boolean
   /**
+   * For a `user` bubble submitted WHILE a turn was already running: the text was
+   * routed to pi as a steering message, which only injects at the next turn
+   * boundary. Marks the optimistic bubble as pending until then (cleared on the
+   * next `message_start` for the session), so it doesn't look already-delivered.
+   */
+  queued?: boolean
+  /**
+   * For a `user` bubble: images the user attached, shown as thumbnails. Populated
+   * optimistically on send and rebuilt from the persisted image content parts on
+   * replay. Raw base64 (no data: prefix), same shape the viewer window consumes.
+   */
+  images?: { data: string; mimeType: string }[]
+  /**
+   * For a `user` bubble with images sent to a model that can't read them: pi
+   * dropped the pictures before the request. Set at send time (live only — not
+   * rebuilt on replay, since the model may differ later) to flag in the transcript
+   * that the image was never seen.
+   */
+  imagesIgnored?: boolean
+  /**
    * For `tool` messages: the call's most telling argument (file path, search
    * pattern, command…) shown after the label in the expanded row. Derived by
    * `toolArgSummary` from the same args on both the live stream and replay.
@@ -74,7 +94,6 @@ export interface SessionRuntime {
   liveBatchId: string | null
   approvalQueue: ApprovalRequestPayload[]
   questionQueue: QuestionRequestPayload[]
-  permissionMode: PermissionMode
   /**
    * True once seeded from the main process (live in-memory or persisted). Guards
    * `openSession` from re-reading the DB over an already-live runtime, which is
@@ -84,14 +103,13 @@ export interface SessionRuntime {
 }
 
 /** A blank runtime for a brand-new session (or the home screen before send). */
-function emptyRuntime(permissionMode: PermissionMode = 'ask'): SessionRuntime {
+function emptyRuntime(): SessionRuntime {
   return {
     messages: [],
     running: false,
     liveBatchId: null,
     approvalQueue: [],
     questionQueue: [],
-    permissionMode,
     hydrated: true
   }
 }
@@ -119,7 +137,7 @@ interface ChatState {
   approvalQueue: ApprovalRequestPayload[]
   /** Pending `ask` questions for the open session, oldest first; each renders a card. */
   questionQueue: QuestionRequestPayload[]
-  /** Tool-approval posture for the open session (in-memory, resets to 'ask'). */
+  /** Global tool-approval posture; applies to every session (resets to 'ask' on restart). */
   permissionMode: PermissionMode
   /**
    * Working directory chosen on the home screen before a session exists. Applied
@@ -150,7 +168,11 @@ interface ChatState {
    * pass an explicit `cwd` to start elsewhere, or `null` to reset to home.
    */
   newChat: (cwd?: string | null) => Promise<void>
-  send: (text: string, attachments?: Attachment[]) => Promise<void>
+  send: (
+    text: string,
+    attachments?: Attachment[],
+    opts?: { imagesIgnored?: boolean }
+  ) => Promise<void>
   abort: () => void
   respondApproval: (approvalId: string, approved: boolean, scope?: ApprovalScope) => void
   /** Submit the user's answers for an `ask` question and drop it from the queue. */
@@ -306,7 +328,7 @@ export const useChat = create<ChatState>((set, get) => ({
     }))
   },
 
-  send: async (text, attachments) => {
+  send: async (text, attachments, opts) => {
     if (!text.trim() && !attachments?.length) return
     // Lazily create the session on the first message. From the home screen there
     // is no sessionId yet; spin one up (with a runtime, so events have somewhere
@@ -314,11 +336,10 @@ export const useChat = create<ChatState>((set, get) => ({
     let sessionId = get().sessionId
     if (!sessionId) {
       const meta = await window.api.createSession({ cwd: get().pendingCwd ?? '~' })
-      // Carry over the mode the user picked on the home screen (the mirror) into
-      // the new session's runtime; the main-process AgentService defaults to 'ask'.
-      const mode = get().permissionMode
+      // The approval posture is global (main applies it to every new service), so
+      // there's nothing session-specific to carry over here.
       sessionId = meta.id
-      const rt = emptyRuntime(mode)
+      const rt = emptyRuntime()
       set((s) => ({
         sessions: [meta, ...s.sessions],
         sessionId: meta.id,
@@ -326,17 +347,32 @@ export const useChat = create<ChatState>((set, get) => ({
         pendingCwd: null,
         ...mirror(rt)
       }))
-      if (mode !== 'ask') window.api.setPermissionMode({ sessionId, mode })
     }
-    // For an attachments-only send, show a lightweight indicator so the
-    // optimistic user bubble (which renders only `text`) isn't blank.
-    const bubbleText =
-      text.trim() ||
-      (attachments?.length ? i18n.t('chat.imageCount', { count: attachments.length }) : '')
+    // The bubble shows the typed text (may be empty) plus image thumbnails; an
+    // image-only send renders just the thumbnails, so no placeholder text is needed.
+    const images = attachments?.map((a) => ({ data: a.data, mimeType: a.mimeType }))
+    // Captured at send time: the active model couldn't read images, so pi will
+    // drop these before the request. Stamped on the bubble so the transcript shows
+    // the picture was never seen — the composer's pre-send banner is gone by now.
+    const imagesIgnored = Boolean(opts?.imagesIgnored && images?.length)
+    // Running already? Then main routes this submit to pi as a steering message;
+    // mark the optimistic bubble "queued" until pi injects it at the next turn
+    // boundary (cleared on the next message_start for this session).
+    const wasRunning = get().runtimes[sessionId]?.running ?? false
     updateRuntime(set, get, sessionId, (rt) => ({
       ...rt,
       running: true,
-      messages: [...rt.messages, { id: crypto.randomUUID(), role: 'user', text: bubbleText }]
+      messages: [
+        ...rt.messages,
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          text: text.trim(),
+          images: images?.length ? images : undefined,
+          imagesIgnored: imagesIgnored || undefined,
+          queued: wasRunning || undefined
+        }
+      ]
     }))
     try {
       await window.api.prompt({ sessionId, text, attachments })
@@ -398,15 +434,10 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   setPermissionMode: (mode) => {
-    const sessionId = get().sessionId
-    // On the home screen there's no session yet — just remember it in the mirror;
-    // `send` seeds the lazily-created session's runtime from it.
-    if (!sessionId) {
-      set({ permissionMode: mode })
-      return
-    }
-    window.api.setPermissionMode({ sessionId, mode })
-    updateRuntime(set, get, sessionId, (rt) => ({ ...rt, permissionMode: mode }))
+    // Global posture: update local state and tell main, which applies it to every
+    // session (live now, and any created later). No sessionId needed.
+    set({ permissionMode: mode })
+    void window.api.setPermissionMode(mode)
   },
 
   setWorkingDirectory: async () => {
@@ -489,14 +520,12 @@ function mirror(rt: SessionRuntime | null): {
   running: boolean
   approvalQueue: ApprovalRequestPayload[]
   questionQueue: QuestionRequestPayload[]
-  permissionMode: PermissionMode
 } {
   return {
     messages: rt?.messages ?? [],
     running: rt?.running ?? false,
     approvalQueue: rt?.approvalQueue ?? [],
-    questionQueue: rt?.questionQueue ?? [],
-    permissionMode: rt?.permissionMode ?? 'ask'
+    questionQueue: rt?.questionQueue ?? []
   }
 }
 
@@ -562,10 +591,15 @@ function applyEvent(
       updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: true }))
       break
     case 'message_start':
-      // New turn → new batch for the tool calls it's about to issue.
+      // New turn → new batch for the tool calls it's about to issue. Also clear
+      // any "queued" flags: reaching a turn boundary means a steered message is
+      // now actually injected, so its optimistic bubble shouldn't read as pending.
       updateRuntime(set, get, sessionId, (rt) => ({
         ...rt,
-        liveBatchId: e.messageId || crypto.randomUUID()
+        liveBatchId: e.messageId || crypto.randomUUID(),
+        messages: rt.messages.some((m) => m.queued)
+          ? rt.messages.map((m) => (m.queued ? { ...m, queued: undefined } : m))
+          : rt.messages
       }))
       break
     case 'message_update': {
@@ -724,7 +758,15 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
     switch (m.role) {
       case 'user': {
         const text = partsToText(m.content)
-        if (text) out.push({ id: m.id ?? crypto.randomUUID(), role: 'user', text, sourceIndex: i })
+        const images = partsToImages(m.content)
+        if (text || images.length)
+          out.push({
+            id: m.id ?? crypto.randomUUID(),
+            role: 'user',
+            text,
+            images: images.length ? images : undefined,
+            sourceIndex: i
+          })
         break
       }
       case 'assistant': {
@@ -831,6 +873,18 @@ function partsToText(content: unknown): string {
   return content
     .map((p) => (isPart(p, 'text') ? String((p as { text?: unknown }).text ?? '') : ''))
     .join('')
+}
+
+/** Pull image content parts out of a pi message into the bubble's image shape. */
+function partsToImages(content: unknown): { data: string; mimeType: string }[] {
+  if (!Array.isArray(content)) return []
+  return content
+    .filter((p) => isPart(p, 'image'))
+    .map((p) => {
+      const img = p as { data?: unknown; mimeType?: unknown }
+      return { data: String(img.data ?? ''), mimeType: String(img.mimeType ?? 'image/png') }
+    })
+    .filter((img) => img.data)
 }
 
 function isPart(p: unknown, type: string): boolean {

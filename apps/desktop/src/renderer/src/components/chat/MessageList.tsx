@@ -5,6 +5,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Streamdown } from "streamdown";
 import { CircleAlert, ChevronRight, Sparkle, SquareTerminal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
 import { useChat } from "@/store/chat-store";
 import type { UiMessage } from "@/store/chat-store";
@@ -270,12 +271,53 @@ function MessageRow({ m }: { m: UiMessage }): React.JSX.Element {
 
 /** User turn: a quiet, right-aligned chip. Restraint over a loud bubble. */
 function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
-      <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
-          {m.text}
-        </div>
+      <div
+        className={cn(
+          "flex flex-col items-end gap-1.5 transition-opacity",
+          // Steered-while-running: queued until pi injects it at the next turn
+          // boundary; dim the whole bubble so it doesn't read as already delivered.
+          m.queued && "opacity-60",
+        )}
+      >
+        {m.images && m.images.length > 0 && (
+          <ScrollArea className="max-w-[80%]">
+            <div className="flex flex-row gap-2 pb-2.5">
+              {m.images.map((img, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => void window.api.openImageViewer(img)}
+                  title={t("chat.openImage")}
+                  className="shrink-0 overflow-hidden rounded-xl border border-border transition-opacity hover:opacity-90"
+                >
+                  <img
+                    src={`data:${img.mimeType};base64,${img.data}`}
+                    alt=""
+                    className="h-32 w-auto max-w-none object-contain"
+                  />
+                </button>
+              ))}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+        )}
+        {m.imagesIgnored && (
+          <span className="flex items-center gap-1 px-1 text-xs text-muted-foreground">
+            <CircleAlert className="size-3" />
+            {t("chat.imagesIgnored")}
+          </span>
+        )}
+        {m.text && (
+          <div className="max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
+            {m.text}
+          </div>
+        )}
+        {m.queued && (
+          <span className="px-1 text-xs text-muted-foreground">{t("chat.queued")}</span>
+        )}
       </div>
     </div>
   );

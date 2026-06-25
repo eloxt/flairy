@@ -48,6 +48,9 @@ const zhCN: typeof En = {
     imageCount_other: '📎 {{count}} 张图片',
     toolRunning: '正在{{tool}}…',
     toolDone: '完成',
+    queued: '已加入队列 — 将引导正在进行的任务',
+    openImage: '打开图片',
+    imagesIgnored: '未被读取 — 当前模型无法识别图片',
     working: '处理中…',
     running: '运行中',
     reasoning: '思考过程',
@@ -98,6 +101,8 @@ const zhCN: typeof En = {
   composer: {
     placeholder: '让 Flairy 帮你做点什么…',
     addImage: '添加图片',
+    imageUnsupported: '当前模型无法识别图片',
+    imagesIgnored: '当前模型无法识别图片，发送时附带的图片会被忽略。',
     removeAttachment: '移除附件',
     workingDirectory: '工作目录',
     workingDirectoryTitle: '工作目录：{{path}}',
@@ -111,7 +116,8 @@ const zhCN: typeof En = {
     askDescription: 'Flairy 在运行会修改文件或执行命令的工具前，会暂停等待你的确认。',
     fullDescription: 'Flairy 会自动运行每个工具而不询问。只在你信任该任务时使用。',
     stop: '停止',
-    send: '发送'
+    send: '发送',
+    steer: '发送（引导正在进行的任务）'
   },
   settings: {
     title: '设置',

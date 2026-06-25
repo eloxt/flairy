@@ -6,6 +6,7 @@ import type {
   LlmProviderConfig,
   LlmProviderInput,
   LlmRole,
+  Modality,
   ProviderApi,
   ThinkingLevel,
 } from "@flairy/shared";
@@ -64,6 +65,12 @@ const THINKING_LEVELS: ThinkingLevel[] = [
   "medium",
   "high",
   "xhigh",
+];
+
+/** Input modalities offered per model. pi gates image attachments on this set. */
+const MODALITIES: { value: Modality; label: string }[] = [
+  { value: "text", label: "Text" },
+  { value: "image", label: "Image" },
 ];
 
 /**
@@ -146,6 +153,8 @@ interface ModelForm {
   providerId: string;
   name: string;
   model: string;
+  /** Input modalities the model accepts; always non-empty (at least "text"). */
+  input: Modality[];
   /** Empty string = no explicit level (provider/client default). */
   thinkingLevel: ThinkingLevel | "";
   // Runtime params are kept as raw strings so the inputs can be cleared; empty
@@ -169,6 +178,7 @@ function modelToForm(m: LlmModelConfig): ModelForm {
     providerId: m.providerId,
     name: m.name,
     model: m.model,
+    input: m.input?.length ? m.input : ["text"],
     thinkingLevel: m.thinkingLevel ?? "",
     contextWindow: numStr(m.contextWindow),
     maxTokens: numStr(m.maxTokens),
@@ -185,6 +195,9 @@ function emptyModelForm(defaultProviderId: string): ModelForm {
     providerId: defaultProviderId,
     name: "",
     model: "",
+    // New models default to text+image: most current models are vision-capable,
+    // and an admin can untick Image for a text-only model.
+    input: ["text", "image"],
     thinkingLevel: "",
     contextWindow: "",
     maxTokens: "",
@@ -228,6 +241,8 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
     providerId: form.providerId,
     name: form.name.trim(),
     model: form.model.trim(),
+    // Guard the contract's non-empty invariant even if the UI somehow cleared it.
+    input: form.input.length ? form.input : ["text"],
     ...(form.thinkingLevel ? { thinkingLevel: form.thinkingLevel } : {}),
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -373,6 +388,7 @@ export function LlmPage(): React.JSX.Element {
                   <TableHead>Name</TableHead>
                   <TableHead>Provider</TableHead>
                   <TableHead>Model</TableHead>
+                  <TableHead>Input</TableHead>
                   <TableHead>Reasoning</TableHead>
                   <TableHead className="w-24 text-right">Actions</TableHead>
                 </TableRow>
@@ -388,6 +404,9 @@ export function LlmPage(): React.JSX.Element {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {m.model}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {(m.input?.length ? m.input : ["text"]).join(", ")}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {m.thinkingLevel ?? "—"}
@@ -723,6 +742,39 @@ function ModelEditor({
           value={form.model}
           onChange={(e) => patch({ model: e.target.value })}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Input modalities</Label>
+        <div className="flex gap-2">
+          {MODALITIES.map((mod) => {
+            const active = form.input.includes(mod.value);
+            return (
+              <Button
+                key={mod.value}
+                type="button"
+                variant={active ? "default" : "outline"}
+                size="sm"
+                // Never let the user clear the last modality — pi requires a
+                // non-empty input set.
+                disabled={active && form.input.length === 1}
+                onClick={() =>
+                  patch({
+                    input: active
+                      ? form.input.filter((x) => x !== mod.value)
+                      : [...form.input, mod.value],
+                  })
+                }
+              >
+                {mod.label}
+              </Button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          What the model can be sent. “Image” must be on for it to receive
+          attached pictures; otherwise the client strips them before the request.
+        </p>
       </div>
 
       <div className="space-y-2">

@@ -10,11 +10,13 @@ import {
   ShieldAlert,
   ShieldCheck,
   Square,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import type { Attachment, PermissionMode } from "@shared/ipc";
 import { cn } from "@/lib/utils";
 import { useChat, selectCwd } from "@/store/chat-store";
+import { useImageInputSupported } from "@/hooks/use-image-input-supported";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -120,9 +122,11 @@ export function Composer(): React.JSX.Element {
   }, []);
 
   const submit = (): void => {
-    if (!text.trim() && attachments.length === 0) return;
+    if (!canSend) return;
     const wire = attachments.map((a) => a.attachment);
-    void send(text, wire.length ? wire : undefined);
+    // Carry the "model can't read these images" verdict captured now, so the sent
+    // bubble can show it after the composer (and its banner) clears.
+    void send(text, wire.length ? wire : undefined, { imagesIgnored });
     setText("");
     setAttachments([]);
     // Reset the auto-grown height after sending.
@@ -169,7 +173,15 @@ export function Composer(): React.JSX.Element {
     setAttachments((a) => [...a, ...next]);
   };
 
+  // Text or images. Valid both for an idle prompt and a steer into a running
+  // turn — a steer carries images too (AgentService.steer), so the rule is the same.
   const canSend = text.trim().length > 0 || attachments.length > 0;
+
+  // The active model's image capability (server-driven). When it can't take
+  // images we still let the user attach + send, but warn that pi will drop the
+  // pictures before the request — otherwise they'd vanish with no explanation.
+  const imageSupported = useImageInputSupported();
+  const imagesIgnored = attachments.length > 0 && !imageSupported;
 
   return (
     <div
@@ -215,6 +227,13 @@ export function Composer(): React.JSX.Element {
               </div>
             )}
 
+            {imagesIgnored && (
+              <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                <span>{t("composer.imagesIgnored")}</span>
+              </div>
+            )}
+
             <textarea
               ref={taRef}
               value={text}
@@ -257,12 +276,15 @@ export function Composer(): React.JSX.Element {
                 >
                   <Paperclip className="size-4" />
                 </TooltipTrigger>
-                <TooltipContent>{t('composer.addImage')}</TooltipContent>
+                <TooltipContent>
+                  {imageSupported
+                    ? t('composer.addImage')
+                    : t('composer.imageUnsupported')}
+                </TooltipContent>
               </Tooltip>
 
               {/* Working directory: hover to open recents, or add another */}
               <DropdownMenu
-                modal={false}
                 onOpenChange={(open) => {
                   if (open) void loadRecentDirs();
                 }}
@@ -386,7 +408,10 @@ export function Composer(): React.JSX.Element {
 
               <div className="flex-1" />
 
-              {running ? (
+              {running && !canSend ? (
+                // Running with an empty composer → Stop. Add text or an image and
+                // the button becomes Send again, routing the content to the running
+                // turn as a steering message (main decides; see AgentService.submit).
                 <button
                   onClick={abort}
                   aria-label={t('composer.stop')}
@@ -398,7 +423,7 @@ export function Composer(): React.JSX.Element {
                 <button
                   onClick={submit}
                   disabled={!canSend}
-                  aria-label={t('composer.send')}
+                  aria-label={running ? t('composer.steer') : t('composer.send')}
                   className={cn(
                     "flex size-9 items-center justify-center rounded-xl transition-all active:translate-y-px",
                     canSend
