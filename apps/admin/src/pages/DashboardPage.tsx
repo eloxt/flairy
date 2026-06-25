@@ -44,7 +44,7 @@ export function DashboardPage(): React.JSX.Element {
                 {mainModel?.model || '—'}
               </div>
               <div className="mt-0.5 font-mono text-xs lowercase text-muted-foreground">
-                {mainProvider ? mainProvider.provider : 'not set'}
+                {mainProvider ? mainProvider.api : 'not set'}
               </div>
             </CardContent>
           </Card>

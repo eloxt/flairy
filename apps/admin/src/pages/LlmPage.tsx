@@ -3,11 +3,10 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import type {
   LlmModelConfig,
   LlmModelInput,
-  LlmProvider,
   LlmProviderConfig,
   LlmProviderInput,
   LlmRole,
-  ModelApi,
+  ProviderApi,
   ThinkingLevel,
 } from "@flairy/shared";
 import { useConfig } from "@/hooks/useConfig";
@@ -49,7 +48,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const PROVIDERS: LlmProvider[] = ["anthropic", "openai", "google"];
+/** Provider API protocols offered when creating a provider connection. */
+const PROVIDER_APIS: ProviderApi[] = [
+  "anthropic-messages",
+  "openai-completions",
+  "openai-responses",
+  "google-generative-ai",
+];
 
 /** Reasoning-effort options offered per model, in ascending order. */
 const THINKING_LEVELS: ThinkingLevel[] = [
@@ -67,17 +72,6 @@ const THINKING_LEVELS: ThinkingLevel[] = [
  * through this token and map it back to `undefined` on save.
  */
 const THINKING_DEFAULT = "__default__";
-
-/** Provider API options offered per model. */
-const MODEL_APIS: ModelApi[] = [
-  "openai-completions",
-  "openai-responses",
-  "anthropic-messages",
-  "google-generative-ai",
-];
-
-/** Sentinel Select value for "derive the API from the provider vendor". */
-const API_AUTO = "__auto__";
 
 const ROLES: {
   role: LlmRole;
@@ -108,7 +102,7 @@ interface ProviderForm {
   /** Empty for a new (unsaved) provider. */
   id: string;
   name: string;
-  provider: LlmProvider;
+  api: ProviderApi;
   credential: string;
   baseUrl: string;
 }
@@ -117,7 +111,7 @@ function providerToForm(p: LlmProviderConfig): ProviderForm {
   return {
     id: p.id,
     name: p.name,
-    provider: p.provider,
+    api: p.api,
     credential: p.credential,
     baseUrl: p.baseUrl ?? "",
   };
@@ -127,7 +121,7 @@ function emptyProviderForm(): ProviderForm {
   return {
     id: "",
     name: "",
-    provider: "anthropic",
+    api: "anthropic-messages",
     credential: "",
     baseUrl: "",
   };
@@ -136,7 +130,7 @@ function emptyProviderForm(): ProviderForm {
 function providerFormToInput(form: ProviderForm): LlmProviderInput {
   return {
     name: form.name.trim(),
-    provider: form.provider,
+    api: form.api,
     credential: form.credential,
     ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
   };
@@ -154,8 +148,6 @@ interface ModelForm {
   model: string;
   /** Empty string = no explicit level (provider/client default). */
   thinkingLevel: ThinkingLevel | "";
-  /** Empty string = derive the API from the provider vendor. */
-  api: ModelApi | "";
   // Runtime params are kept as raw strings so the inputs can be cleared; empty
   // means "omit" and the client falls back to pi-ai's registry / its defaults.
   contextWindow: string;
@@ -178,7 +170,6 @@ function modelToForm(m: LlmModelConfig): ModelForm {
     name: m.name,
     model: m.model,
     thinkingLevel: m.thinkingLevel ?? "",
-    api: m.api ?? "",
     contextWindow: numStr(m.contextWindow),
     maxTokens: numStr(m.maxTokens),
     costInput: numStr(m.cost?.input),
@@ -195,7 +186,6 @@ function emptyModelForm(defaultProviderId: string): ModelForm {
     name: "",
     model: "",
     thinkingLevel: "",
-    api: "",
     contextWindow: "",
     maxTokens: "",
     costInput: "",
@@ -239,7 +229,6 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
     name: form.name.trim(),
     model: form.model.trim(),
     ...(form.thinkingLevel ? { thinkingLevel: form.thinkingLevel } : {}),
-    ...(form.api ? { api: form.api } : {}),
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(cost ? { cost } : {}),
@@ -310,7 +299,7 @@ export function LlmPage(): React.JSX.Element {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Vendor</TableHead>
+                  <TableHead>API</TableHead>
                   <TableHead>Base URL</TableHead>
                   <TableHead className="w-24 text-right">Actions</TableHead>
                 </TableRow>
@@ -321,8 +310,8 @@ export function LlmPage(): React.JSX.Element {
                     <TableCell className="font-medium">
                       {p.name || "—"}
                     </TableCell>
-                    <TableCell className="capitalize text-muted-foreground">
-                      {p.provider}
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {p.api}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {p.baseUrl || "—"}
@@ -581,7 +570,7 @@ function ProviderEditor({
     onChange({ ...form, ...next });
   }
 
-  const valid = form.name.trim().length > 0;
+  const valid = form.name.trim().length > 0 && form.baseUrl.trim().length > 0;
 
   return (
     <Modal
@@ -599,22 +588,27 @@ function ProviderEditor({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="provider-vendor">Vendor</Label>
+        <Label htmlFor="provider-api">API</Label>
         <Select
-          value={form.provider}
-          onValueChange={(v) => patch({ provider: v as LlmProvider })}
+          value={form.api}
+          onValueChange={(v) => patch({ api: v as ProviderApi })}
         >
-          <SelectTrigger id="provider-vendor">
+          <SelectTrigger id="provider-api">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PROVIDERS.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
+            {PROVIDER_APIS.map((a) => (
+              <SelectItem key={a} value={a}>
+                {a}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">
+          The HTTP API protocol the client uses to reach this provider. Pick{" "}
+          <code>openai-completions</code> for custom or third-party
+          OpenAI-compatible endpoints.
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -635,15 +629,16 @@ function ProviderEditor({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="baseUrl">Base URL (optional)</Label>
+        <Label htmlFor="baseUrl">Base URL</Label>
         <Input
           id="baseUrl"
-          placeholder="https://gateway.example.com/v1"
+          placeholder="https://api.anthropic.com"
           value={form.baseUrl}
           onChange={(e) => patch({ baseUrl: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          Gateway / proxy override.
+          The endpoint the client calls — the official vendor URL or a gateway /
+          proxy. Required: the client has no built-in default.
         </p>
       </div>
 
@@ -696,14 +691,14 @@ function ModelEditor({
             <SelectValue placeholder="Select a provider">
               {(value) => {
                 const p = providers.find((p) => p.id === value);
-                return p ? `${p.name} (${p.provider})` : "Select a provider";
+                return p ? `${p.name} (${p.api})` : "Select a provider";
               }}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {providers.map((p) => (
               <SelectItem key={p.id} value={p.id}>
-                {p.name} ({p.provider})
+                {p.name} ({p.api})
               </SelectItem>
             ))}
           </SelectContent>
@@ -756,34 +751,6 @@ function ModelEditor({
           How hard the model thinks before answering. Delivered to every client
           and applied to the agent loop. “Provider default” forces no level.
           “xhigh” is honored only by select models.
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="model-api">Provider API</Label>
-        <Select
-          value={form.api || API_AUTO}
-          onValueChange={(v) =>
-            patch({ api: v === API_AUTO ? "" : (v as ModelApi) })
-          }
-        >
-          <SelectTrigger id="model-api">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={API_AUTO}>Auto (by vendor)</SelectItem>
-            {MODEL_APIS.map((a) => (
-              <SelectItem key={a} value={a}>
-                {a}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          How the client talks to the provider. Leave on “Auto” for the vendor’s
-          native API; pick <code>openai-completions</code> for custom or
-          third-party OpenAI-compatible endpoints. Required for models pi-ai
-          doesn’t know built-in (e.g. <code>glm-5.2</code>).
         </p>
       </div>
 

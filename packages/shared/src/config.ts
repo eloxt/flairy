@@ -10,9 +10,6 @@
  * Each module is its own table on the server; new modules are added the same way.
  */
 
-/** The provider vendor a provider-config connects to. */
-export type LlmProvider = 'anthropic' | 'openai' | 'google'
-
 /**
  * Reasoning / "thinking" effort delivered per model and applied by the client's
  * agent loop (pi-agent-core `AgentState.thinkingLevel`). pi maps this uniform
@@ -25,16 +22,16 @@ export type LlmProvider = 'anthropic' | 'openai' | 'google'
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 /**
- * A provider connection (catalog row). Holds the vendor + the credential and
- * optional gateway used to reach it. Many models can hang off one provider and
- * share its credential. Client injects `credential` via `new Agent({ getApiKey })`.
+ * A provider connection (catalog row). Holds the API protocol + the credential
+ * and optional gateway used to reach it. Many models can hang off one provider
+ * and share its credential. Client injects `credential` via `new Agent({ getApiKey })`.
  */
 export interface LlmProviderConfig {
   id: string
   /** Admin-facing label, e.g. "Production Anthropic". */
   name: string
-  /** Which vendor this provider talks to. */
-  provider: LlmProvider
+  /** The HTTP API protocol the client uses to reach this provider. */
+  api: ProviderApi
   /**
    * Credential used to call the provider directly. Prefer a short-lived / scoped
    * token over a long-lived master key — it is delivered to every client.
@@ -47,18 +44,19 @@ export interface LlmProviderConfig {
 /** Create/update payload for a provider (no server-owned fields). */
 export interface LlmProviderInput {
   name: string
-  provider: LlmProvider
+  api: ProviderApi
   credential: string
   baseUrl?: string
 }
 
 /**
- * How the client talks to a provider's HTTP API — a pi-ai `Api`. Needed so the
- * client can run models pi-ai's built-in registry does not know. The universal
+ * How the client talks to a provider's HTTP API — a pi-ai `Api`. Lives on the
+ * provider connection (every model under it speaks the same protocol); it drives
+ * the request format, auth scheme, and endpoint compatibility. The universal
  * `openai-completions` covers most third-party / OpenAI-compatible gateways.
- * Mirrors the `llm_model_api_check` constraint in the DB.
+ * Mirrors the `llm_provider_api_check` constraint in the DB.
  */
-export type ModelApi =
+export type ProviderApi =
   | 'openai-completions'
   | 'openai-responses'
   | 'anthropic-messages'
@@ -81,11 +79,10 @@ export interface ModelCost {
  * which scenario is decided by role assignments (see {@link LlmRole}), not a flag
  * on the model itself.
  *
- * The `api` / `contextWindow` / `maxTokens` / `cost` fields let the client run
- * models pi-ai's built-in registry does not know (custom / third-party /
- * OpenAI-compatible endpoints, e.g. provider `openai` + model `glm-5.2`). When
- * omitted, the client falls back to pi-ai's registry for known models, or to its
- * own defaults.
+ * The client builds the model entirely from this config (it does not consult
+ * pi-ai's built-in registry), so any custom / third-party / OpenAI-compatible
+ * model works. `contextWindow` / `maxTokens` / `cost` are optional; when omitted
+ * the client uses its own defaults (and treats cost as zero).
  */
 export interface LlmModelConfig {
   id: string
@@ -100,8 +97,6 @@ export interface LlmModelConfig {
    * provider/client default (no explicit level forced). See {@link ThinkingLevel}.
    */
   thinkingLevel?: ThinkingLevel
-  /** Provider API the client uses. Omitted → derived from the provider vendor. */
-  api?: ModelApi
   /** Context window in tokens. Omitted → client default. */
   contextWindow?: number
   /** Max output tokens per turn. Omitted → client default. */
@@ -116,7 +111,6 @@ export interface LlmModelInput {
   name: string
   model: string
   thinkingLevel?: ThinkingLevel
-  api?: ModelApi
   contextWindow?: number
   maxTokens?: number
   cost?: ModelCost
@@ -152,7 +146,7 @@ export interface LlmRoleAssignment {
 
 /**
  * The active LLM delivered to clients: the active model joined with its provider
- * (which supplies the credential, vendor, and base URL). Nested so the client can
+ * (which supplies the credential, API protocol, and base URL). Nested so the client can
  * read the model id from `model` and the connection details from `provider`.
  */
 export interface ActiveLlm {

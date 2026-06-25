@@ -9,29 +9,34 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The vendor a provider connection talks to.
+/// The HTTP API protocol the client uses to reach a provider — a pi-ai `Api`.
+/// Lives on the provider connection (every model under it speaks the same
+/// protocol); it drives the request format, auth scheme, and endpoint compatibility.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum LlmProvider {
-    Anthropic,
-    Openai,
-    Google,
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderApi {
+    OpenaiCompletions,
+    OpenaiResponses,
+    AnthropicMessages,
+    GoogleGenerativeAi,
 }
 
-impl LlmProvider {
+impl ProviderApi {
     pub fn as_str(self) -> &'static str {
         match self {
-            LlmProvider::Anthropic => "anthropic",
-            LlmProvider::Openai => "openai",
-            LlmProvider::Google => "google",
+            ProviderApi::OpenaiCompletions => "openai-completions",
+            ProviderApi::OpenaiResponses => "openai-responses",
+            ProviderApi::AnthropicMessages => "anthropic-messages",
+            ProviderApi::GoogleGenerativeAi => "google-generative-ai",
         }
     }
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "anthropic" => Some(LlmProvider::Anthropic),
-            "openai" => Some(LlmProvider::Openai),
-            "google" => Some(LlmProvider::Google),
+            "openai-completions" => Some(ProviderApi::OpenaiCompletions),
+            "openai-responses" => Some(ProviderApi::OpenaiResponses),
+            "anthropic-messages" => Some(ProviderApi::AnthropicMessages),
+            "google-generative-ai" => Some(ProviderApi::GoogleGenerativeAi),
             _ => None,
         }
     }
@@ -105,16 +110,16 @@ impl LlmRole {
     }
 }
 
-/// A provider connection (catalog row). Holds the vendor + credential shared by
-/// all its models.
+/// A provider connection (catalog row). Holds the API protocol + credential
+/// shared by all its models.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmProviderConfig {
     pub id: String,
     /// Admin-facing label.
     pub name: String,
-    /// Which vendor this provider talks to.
-    pub provider: LlmProvider,
+    /// The HTTP API protocol the client uses to reach this provider.
+    pub api: ProviderApi,
     /// Credential used to call the provider directly.
     pub credential: String,
     /// Optional gateway / proxy base URL override, shared by all its models.
@@ -127,7 +132,7 @@ pub struct LlmProviderConfig {
 #[serde(rename_all = "camelCase")]
 pub struct LlmProviderInput {
     pub name: String,
-    pub provider: LlmProvider,
+    pub api: ProviderApi,
     pub credential: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
@@ -147,10 +152,10 @@ pub struct ModelCost {
 /// A model entry under a provider (catalog row). Which one is used for which
 /// scenario is decided by role assignments, not a flag on the model itself.
 ///
-/// The `api` / `context_window` / `max_tokens` / `cost` fields let the client run
-/// models pi-ai's built-in registry does not know (custom / third-party / OpenAI-
-/// compatible endpoints). When `None`, the client falls back to pi-ai's registry
-/// for known models, or to its own defaults.
+/// The client builds the model entirely from this config (it does not consult
+/// pi-ai's built-in registry), so any custom / third-party / OpenAI-compatible
+/// model works. `context_window` / `max_tokens` / `cost` are optional; when
+/// `None` the client uses its own defaults (and treats cost as zero).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmModelConfig {
@@ -165,10 +170,6 @@ pub struct LlmModelConfig {
     /// no explicit level forced (client/provider default decides).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
-    /// How the client talks to the provider (pi-ai `Api`), e.g.
-    /// "openai-completions". `None` → client derives it from the provider vendor.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub api: Option<String>,
     /// Context window in tokens. `None` → client default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i32>,
@@ -189,8 +190,6 @@ pub struct LlmModelInput {
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub api: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

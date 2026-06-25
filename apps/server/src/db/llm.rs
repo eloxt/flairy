@@ -8,8 +8,8 @@ use uuid::Uuid;
 use super::{config::bump_version, parse_uuid};
 use crate::error::{AppError, AppResult};
 use crate::models::llm::{
-    ActiveLlm, LlmModelConfig, LlmModelInput, LlmProvider, LlmProviderConfig, LlmProviderInput,
-    LlmRole, LlmRoleAssignment, ModelCost, RoleModels, ThinkingLevel,
+    ActiveLlm, LlmModelConfig, LlmModelInput, LlmProviderConfig, LlmProviderInput, LlmRole,
+    LlmRoleAssignment, ModelCost, ProviderApi, RoleModels, ThinkingLevel,
 };
 
 /// Parse the nullable `thinking_level` TEXT column into the enum. An unknown
@@ -44,20 +44,19 @@ fn build_cost(
 // ---------------------------------------------------------------------------
 
 fn map_provider(row: &PgRow) -> AppResult<LlmProviderConfig> {
-    let provider_str: String = row.get("provider");
-    let provider = LlmProvider::from_str(&provider_str)
-        .ok_or_else(|| AppError::Internal(format!("unknown provider in db: {provider_str}")))?;
+    let api_str: String = row.get("api");
+    let api = ProviderApi::from_str(&api_str)
+        .ok_or_else(|| AppError::Internal(format!("unknown provider api in db: {api_str}")))?;
     Ok(LlmProviderConfig {
         id: row.get::<Uuid, _>("id").to_string(),
         name: row.get("name"),
-        provider,
+        api,
         credential: row.get("credential"),
         base_url: row.get("base_url"),
     })
 }
 
-const PROVIDER_SELECT: &str =
-    "SELECT id, name, provider, credential, base_url FROM llm_providers";
+const PROVIDER_SELECT: &str = "SELECT id, name, api, credential, base_url FROM llm_providers";
 
 /// All provider connections, oldest first.
 pub async fn list_providers(pool: &PgPool) -> AppResult<Vec<LlmProviderConfig>> {
@@ -76,13 +75,13 @@ pub async fn create_provider(
     let mut tx = pool.begin().await?;
 
     let row = sqlx::query(
-        "INSERT INTO llm_providers (id, name, provider, credential, base_url)
+        "INSERT INTO llm_providers (id, name, api, credential, base_url)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, provider, credential, base_url",
+         RETURNING id, name, api, credential, base_url",
     )
     .bind(id)
     .bind(&input.name)
-    .bind(input.provider.as_str())
+    .bind(input.api.as_str())
     .bind(&input.credential)
     .bind(&input.base_url)
     .fetch_one(&mut *tx)
@@ -104,13 +103,13 @@ pub async fn update_provider(
 
     let row = sqlx::query(
         "UPDATE llm_providers
-         SET name = $2, provider = $3, credential = $4, base_url = $5, updated_at = now()
+         SET name = $2, api = $3, credential = $4, base_url = $5, updated_at = now()
          WHERE id = $1
-         RETURNING id, name, provider, credential, base_url",
+         RETURNING id, name, api, credential, base_url",
     )
     .bind(uid)
     .bind(&input.name)
-    .bind(input.provider.as_str())
+    .bind(input.api.as_str())
     .bind(&input.credential)
     .bind(&input.base_url)
     .fetch_optional(&mut *tx)
@@ -158,7 +157,6 @@ fn map_model(row: &PgRow) -> LlmModelConfig {
         name: row.get("name"),
         model: row.get("model"),
         thinking_level: parse_thinking_level(row.get("thinking_level")),
-        api: row.get("api"),
         context_window: row.get("context_window"),
         max_tokens: row.get("max_tokens"),
         cost: build_cost(
@@ -170,12 +168,12 @@ fn map_model(row: &PgRow) -> LlmModelConfig {
     }
 }
 
-const MODEL_SELECT: &str = "SELECT id, provider_id, name, model, thinking_level, api, \
+const MODEL_SELECT: &str = "SELECT id, provider_id, name, model, thinking_level, \
      context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write \
      FROM llm_models";
 
 /// The column list every model write returns, kept in sync with [`map_model`].
-const MODEL_RETURNING: &str = "id, provider_id, name, model, thinking_level, api, \
+const MODEL_RETURNING: &str = "id, provider_id, name, model, thinking_level, \
      context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write";
 
 /// All models across every provider, oldest first.
@@ -210,9 +208,9 @@ pub async fn create_model(
 
     let row = sqlx::query(&format!(
         "INSERT INTO llm_models
-            (id, provider_id, name, model, thinking_level, api, context_window,
+            (id, provider_id, name, model, thinking_level, context_window,
              max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING {MODEL_RETURNING}"
     ))
     .bind(id)
@@ -220,7 +218,6 @@ pub async fn create_model(
     .bind(&input.name)
     .bind(&input.model)
     .bind(input.thinking_level.map(ThinkingLevel::as_str))
-    .bind(&input.api)
     .bind(input.context_window)
     .bind(input.max_tokens)
     .bind(input.cost.as_ref().map(|c| c.input))
@@ -270,9 +267,9 @@ pub async fn update_model(
 
     let row = sqlx::query(&format!(
         "UPDATE llm_models
-         SET provider_id = $2, name = $3, model = $4, thinking_level = $5, api = $6,
-             context_window = $7, max_tokens = $8, cost_input = $9, cost_output = $10,
-             cost_cache_read = $11, cost_cache_write = $12, updated_at = now()
+         SET provider_id = $2, name = $3, model = $4, thinking_level = $5,
+             context_window = $6, max_tokens = $7, cost_input = $8, cost_output = $9,
+             cost_cache_read = $10, cost_cache_write = $11, updated_at = now()
          WHERE id = $1
          RETURNING {MODEL_RETURNING}"
     ))
@@ -281,7 +278,6 @@ pub async fn update_model(
     .bind(&input.name)
     .bind(&input.model)
     .bind(input.thinking_level.map(ThinkingLevel::as_str))
-    .bind(&input.api)
     .bind(input.context_window)
     .bind(input.max_tokens)
     .bind(input.cost.as_ref().map(|c| c.input))
@@ -328,15 +324,15 @@ pub async fn delete_model(pool: &PgPool, id: &str) -> AppResult<Option<i64>> {
 /// Build an [`ActiveLlm`] from a joined role/model/provider row using the
 /// `m_*` / `p_*` aliases.
 fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
-    let provider_str: String = row.get("p_provider");
-    let provider = LlmProvider::from_str(&provider_str)
-        .ok_or_else(|| AppError::Internal(format!("unknown provider in db: {provider_str}")))?;
+    let api_str: String = row.get("p_api");
+    let api = ProviderApi::from_str(&api_str)
+        .ok_or_else(|| AppError::Internal(format!("unknown provider api in db: {api_str}")))?;
 
     Ok(ActiveLlm {
         provider: LlmProviderConfig {
             id: row.get::<Uuid, _>("p_id").to_string(),
             name: row.get("p_name"),
-            provider,
+            api,
             credential: row.get("p_credential"),
             base_url: row.get("p_base_url"),
         },
@@ -346,7 +342,6 @@ fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
             name: row.get("m_name"),
             model: row.get("m_model"),
             thinking_level: parse_thinking_level(row.get("m_thinking_level")),
-            api: row.get("m_api"),
             context_window: row.get("m_context_window"),
             max_tokens: row.get("m_max_tokens"),
             cost: build_cost(
@@ -369,7 +364,6 @@ pub async fn role_models(pool: &PgPool) -> AppResult<RoleModels> {
             m.name           AS m_name,
             m.model          AS m_model,
             m.thinking_level AS m_thinking_level,
-            m.api              AS m_api,
             m.context_window   AS m_context_window,
             m.max_tokens       AS m_max_tokens,
             m.cost_input       AS m_cost_input,
@@ -378,7 +372,7 @@ pub async fn role_models(pool: &PgPool) -> AppResult<RoleModels> {
             m.cost_cache_write AS m_cost_cache_write,
             p.id          AS p_id,
             p.name        AS p_name,
-            p.provider    AS p_provider,
+            p.api         AS p_api,
             p.credential  AS p_credential,
             p.base_url    AS p_base_url
          FROM llm_role_assignments r
