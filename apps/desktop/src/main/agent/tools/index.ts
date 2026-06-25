@@ -19,8 +19,13 @@ export { createReadTool, createWriteTool, createEditTool, createBashTool, create
  * this set is security-sensitive: only genuinely non-mutating tools belong here.
  * (`bash` is intentionally absent: it can run read-only commands, but its
  * arguments are arbitrary, so it must always be confirmed.)
+ *
+ * `web_search` is included: it only reads the public web through the
+ * server-configured provider (no local state, no fs/shell), so prompting for it
+ * would just nag the user for something inherently safe — matching the
+ * always-on, zero-config product model.
  */
-export const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls'])
+export const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'web_search'])
 
 export function isReadOnlyTool(name: string): boolean {
   return READ_ONLY_TOOLS.has(name)

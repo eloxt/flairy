@@ -9,6 +9,13 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
 import { useChat } from "@/store/chat-store";
 import type { UiMessage } from "@/store/chat-store";
+import type { SearchSource } from "@shared/web-search";
+import {
+  CitationChip,
+  CitationsProvider,
+  remarkCitations,
+  SourcesList,
+} from "./Citations";
 import { ApprovalCard } from "./ApprovalCard";
 import { QuestionCard } from "./QuestionCard";
 import { Onboarding } from "./Onboarding";
@@ -73,9 +80,23 @@ export function MessageList({
   const approvalCount = useChat((s) => s.approvalQueue.length);
   const questionCount = useChat((s) => s.questionQueue.length);
   const pendingScrollIndex = useChat((s) => s.pendingScrollIndex);
+  const pendingScrollId = useChat((s) => s.pendingScrollId);
   const clearPendingScroll = useChat((s) => s.clearPendingScroll);
   const running = useChat((s) => s.running);
   const rows = useMemo(() => toRows(messages), [messages]);
+  // Per-assistant-message citation registry: the sources of the most recent
+  // web_search before that message, reset at each user turn. Per-search numbering
+  // means an answer cites against the nearest preceding search (see Citations).
+  const sourcesByMessage = useMemo(() => {
+    const map = new Map<string, SearchSource[]>();
+    let last: SearchSource[] = [];
+    for (const m of messages) {
+      if (m.role === "user") last = [];
+      else if (m.role === "tool" && m.sources?.length) last = m.sources;
+      else if (m.role === "assistant" && last.length) map.set(m.id, last);
+    }
+    return map;
+  }, [messages]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   // The row key to flash after a search jump; cleared after the highlight fades.
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
@@ -144,7 +165,11 @@ export function MessageList({
       computeItemKey={(_i, row) => row.key}
       components={{ Header: Spacer, Footer: ApprovalFooter }}
       itemContent={(_i, row) => (
-        <RowView row={row} highlight={row.key === highlightKey} />
+        <RowView
+          row={row}
+          highlight={row.key === highlightKey}
+          sources={row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined}
+        />
       )}
     />
   );
@@ -153,9 +178,11 @@ export function MessageList({
 function RowView({
   row,
   highlight,
+  sources,
 }: {
   row: Row;
   highlight?: boolean;
+  sources?: SearchSource[];
 }): React.JSX.Element {
   const inner =
     row.kind === "group" ? (
@@ -163,7 +190,7 @@ function RowView({
     ) : row.kind === "tool" ? (
       <SingleTool m={row.m} />
     ) : (
-      <MessageRow m={row.m} />
+      <MessageRow m={row.m} sources={sources} />
     );
   // Transient ring after a search jump; fades as `highlight` flips back to false.
   return (
@@ -264,9 +291,15 @@ function EmptyState(): React.JSX.Element {
   );
 }
 
-function MessageRow({ m }: { m: UiMessage }): React.JSX.Element {
+function MessageRow({
+  m,
+  sources,
+}: {
+  m: UiMessage;
+  sources?: SearchSource[];
+}): React.JSX.Element {
   if (m.role === "user") return <UserRow m={m} />;
-  return <AssistantRow m={m} />;
+  return <AssistantRow m={m} sources={sources} />;
 }
 
 /** User turn: a quiet, right-aligned chip. Restraint over a loud bubble. */
@@ -324,8 +357,15 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
 }
 
 /** Agent turn: full-width prose, no frame. The words carry it. */
-function AssistantRow({ m }: { m: UiMessage }): React.JSX.Element {
+function AssistantRow({
+  m,
+  sources,
+}: {
+  m: UiMessage;
+  sources?: SearchSource[];
+}): React.JSX.Element {
   const hasText = Boolean(m.text.trim());
+  const cites = sources ?? [];
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
       {m.thinking?.trim() && (
@@ -336,16 +376,22 @@ function AssistantRow({ m }: { m: UiMessage }): React.JSX.Element {
         />
       )}
       {hasText && (
-        <Streamdown
-          parseIncompleteMarkdown
-          isAnimating={Boolean(m.streaming)}
-          animated
-          caret="block"
-          plugins={{ code, mermaid, math, cjk }}
-          className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono"
-        >
-          {m.text}
-        </Streamdown>
+        <CitationsProvider sources={cites}>
+          <Streamdown
+            parseIncompleteMarkdown
+            isAnimating={Boolean(m.streaming)}
+            animated
+            caret="block"
+            plugins={{ code, mermaid, math, cjk }}
+            remarkPlugins={[remarkCitations]}
+            components={{ sup: CitationChip }}
+            className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono"
+          >
+            {m.text}
+          </Streamdown>
+          {/* Sources footer: shown once the answer is in, not mid-stream. */}
+          {!m.streaming && cites.length > 0 && <SourcesList sources={cites} />}
+        </CitationsProvider>
       )}
     </div>
   );

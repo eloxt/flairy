@@ -18,6 +18,7 @@ import {
 import { createTools, isReadOnlyTool } from "./tools";
 import { createAskTool } from "./tools/ask";
 import { createMemoryTool } from "./tools/memory";
+import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
 import { approvals } from "./approvals";
@@ -240,12 +241,19 @@ export class AgentService {
    * tool-change rebuild, setCwd rebuild) so `ask` is always present.
    */
   private buildTools(cwd: string): AgentTool<any>[] {
-    return [
+    const tools: AgentTool<any>[] = [
       ...createTools(cwd),
       createAskTool(this.sessionId),
       createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
-      ...this.mcp.getTools(),
     ];
+    // Offer web_search only when an Exa service is configured + enabled, so the
+    // model never sees a tool it can't actually use. Resolved fresh at execute
+    // time from the latest server config (key never captured here).
+    if (resolveExaService(this.server.getConfig())) {
+      tools.push(createWebSearchTool(() => resolveExaService(this.server.getConfig())));
+    }
+    tools.push(...this.mcp.getTools());
+    return tools;
   }
 
   /**
@@ -531,8 +539,33 @@ function buildSystemPrompt(config: ConfigSnapshot, cwd: string): string {
   // built-in default when it's absent or disabled. Runtime context (OS, date,
   // skills, language, cwd) is injected via placeholder substitution.
   const base = findPromptBody(config, MAIN_PROMPT_NAME) ?? BASE_SYSTEM_PROMPT;
-  return injectContext(base, config, cwd);
+  const prompt = injectContext(base, config, cwd);
+  // Append web-search citation guidance only when the tool is actually available,
+  // so a config without web search doesn't carry dead instructions. Kept out of
+  // the admin-editable prompt body (no placeholder needed) since it's tied to a
+  // built-in capability, not to admin copy.
+  return resolveExaService(config) ? `${prompt}\n\n${WEB_SEARCH_INSTRUCTIONS}` : prompt;
 }
+
+/**
+ * How the agent should use `web_search` and cite its results. The renderer turns
+ * the bracketed `[n]` markers into citation chips + a Sources list, resolving
+ * each number against that search's results — so the numbers MUST match what the
+ * tool returned, and numbering is per-search (restarts at 1 each call).
+ */
+const WEB_SEARCH_INSTRUCTIONS = `<web_search>
+You can search the live web with the \`web_search\` tool. Use it whenever the answer depends on current events, recent facts, prices, releases, or anything you're not confident is up to date.
+
+CITING SOURCES — REQUIRED. Whenever your answer uses information from web_search results, you MUST add inline citation markers using the id of each result you used. This is not optional — write the literal characters \`[1]\`, \`[2]\`, etc. directly in your prose, immediately after the sentence or fact each one supports. Example:
+
+  GTA 6 will cost $79.99 for the standard edition[1], with an Ultimate Edition at $99.99[2][3].
+
+Rules:
+- Use the exact number shown for each result in the tool output (the leading \`[1]\`, \`[2]\`, …). Numbering restarts at 1 for each separate search.
+- Place each marker right after the specific claim it backs — never collect them all at the end, and never invent a "Sources" section yourself (the app renders one).
+- Combine markers like \`[1][2]\` when several results support the same point.
+- Only cite numbers that actually appear in the results you received.
+</web_search>`;
 
 /** Human-readable name for the current OS, for prompt injection. */
 function osName(): string {

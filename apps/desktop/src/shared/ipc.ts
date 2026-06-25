@@ -47,6 +47,7 @@ export const IPC = {
   DialogPickDirectory: 'dialog:pick-directory',
   ImageViewerOpen: 'image-viewer:open',
   ImageViewerGet: 'image-viewer:get',
+  ShellOpenExternal: 'shell:open-external',
   SecretsSet: 'secrets:set',
   SecretsHas: 'secrets:has',
   AuthLogin: 'auth:login',
@@ -419,6 +420,8 @@ export interface FlairyApi {
   getConfig(): Promise<RedactedConfigSnapshot | null>
   /** Open (or focus) the standalone Settings window. */
   openSettings(): Promise<void>
+  /** Open an http(s) URL in the user's default browser (e.g. a citation source). */
+  openExternal(url: string): Promise<void>
   /** Open a borderless window showing `image` full size with zoom/pan. */
   openImageViewer(image: ViewerImage): Promise<void>
   /**

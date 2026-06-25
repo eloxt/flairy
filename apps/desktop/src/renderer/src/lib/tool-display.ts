@@ -17,7 +17,8 @@ const BUILTIN_KEYS: Record<string, string> = {
   grep: 'tools.grep',
   find: 'tools.find',
   ls: 'tools.ls',
-  ask: 'tools.ask'
+  ask: 'tools.ask',
+  web_search: 'tools.web_search'
 }
 
 /** Resolve the i18n key for a tool name's user-facing label. */
@@ -41,7 +42,8 @@ const ACTIVITY_BUCKETS: Record<string, string> = {
   grep: 'grep',
   find: 'find',
   ls: 'ls',
-  ask: 'ask'
+  ask: 'ask',
+  web_search: 'web_search'
 }
 
 /** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */
@@ -77,6 +79,8 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
     case 'grep':
     case 'find':
       return str(a.pattern)
+    case 'web_search':
+      return str(a.query)
     default:
       return undefined
   }

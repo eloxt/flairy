@@ -4,11 +4,17 @@ import type {
   ApprovalRequestPayload,
   ApprovalScope,
   Attachment,
+  MessageUsage,
   PermissionMode,
   QuestionAnswer,
   QuestionRequestPayload,
   SessionMeta
 } from '@shared/ipc'
+import {
+  formatSourcesForDisplay,
+  parseSearchResults,
+  type SearchSource
+} from '@shared/web-search'
 import { toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
 import i18n from '@/i18n'
 
@@ -59,6 +65,13 @@ export interface UiMessage {
    * `toolArgSummary` from the same args on both the live stream and replay.
    */
   toolArg?: string
+  /**
+   * For a `web_search` tool message: the parsed result sources. The assistant's
+   * inline `[n]` citation chips resolve against these and the Sources footer
+   * lists them. Carried in the tool result's text (a sentinel block, see
+   * `@shared/web-search`) so it survives session reload, where `details` would not.
+   */
+  sources?: SearchSource[]
   /**
    * For `tool` messages: the id of the assistant turn that issued this call.
    * Tool calls in the same turn (a parallel batch) share it, so the UI folds
@@ -713,11 +726,24 @@ function applyEvent(
     case 'tool_execution_end':
       updateRuntime(set, get, sessionId, (rt) => ({
         ...rt,
-        messages: rt.messages.map((m) =>
-          m.id === e.toolCallId
-            ? { ...m, text: summarizeResult(e.result), isError: e.isError, running: false }
-            : m
-        )
+        messages: rt.messages.map((m) => {
+          if (m.id !== e.toolCallId) return m
+          const raw = summarizeResult(e.result)
+          // The web-search tool returns a JSON payload; detect it by parsing (not
+          // tool name — robust to the tool being named differently or coming from
+          // MCP). When it parses, show a clean list instead of the raw JSON.
+          const sources = parseSearchResults(raw)
+          if (sources) {
+            return {
+              ...m,
+              text: formatSourcesForDisplay(sources),
+              sources,
+              isError: e.isError,
+              running: false
+            }
+          }
+          return { ...m, text: raw, isError: e.isError, running: false }
+        })
       }))
       break
     case 'agent_end':
@@ -840,27 +866,50 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
           }
         }
         flushText()
+        // Attach the turn's usage + timestamp to its first bubble (if any).
+        // Mutate in place: a tool bubble here is also held by `toolBubbles` and
+        // gets its text filled in later by reference, so replacing the object
+        // would desync the two. (Matches the existing in-place `existing.text`.)
+        if (out.length > turnStart) {
+          out[turnStart].usage = m.usage
+          out[turnStart].timestamp = m.timestamp
+        }
         break
       }
       case 'toolResult': {
-        const text = partsToText(m.content) || i18n.t('chat.toolDone')
+        const raw = partsToText(m.content)
         const existing = m.toolCallId ? toolBubbles.get(m.toolCallId) : undefined
         if (existing) {
-          existing.text = text
+          // Mirror the live path: parse the web-search JSON into sources and show a
+          // clean list; other tools pass their text through unchanged.
+          const sources = parseSearchResults(raw)
+          if (sources) {
+            existing.sources = sources
+            existing.text = formatSourcesForDisplay(sources) || i18n.t('chat.toolDone')
+          } else {
+            existing.text = raw || i18n.t('chat.toolDone')
+          }
           // Carry the persisted error flag so a failed call stays red on replay,
           // mirroring the live stream's tool_execution_end (isError: e.isError).
           existing.isError = Boolean(m.isError)
+          // The result's timestamp orders this tool entry in the timeline. Don't
+          // clobber a usage-turn timestamp already stamped on the first bubble.
+          if (existing.timestamp == null) existing.timestamp = m.timestamp
         }
         // An orphan result (no matching call) stands alone in its own batch.
-        else
+        else {
+          const sources = parseSearchResults(raw)
           out.push({
             id: m.toolCallId ?? crypto.randomUUID(),
             role: 'tool',
             toolName: m.toolName,
-            text,
+            text: (sources ? formatSourcesForDisplay(sources) : raw) || i18n.t('chat.toolDone'),
+            sources: sources ?? undefined,
             isError: Boolean(m.isError),
-            batchId: m.toolCallId ?? crypto.randomUUID()
+            batchId: m.toolCallId ?? crypto.randomUUID(),
+            timestamp: m.timestamp
           })
+        }
         break
       }
     }

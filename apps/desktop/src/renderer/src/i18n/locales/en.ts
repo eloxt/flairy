@@ -82,6 +82,8 @@ const en = {
     ls_other: 'listed {{count}} folders',
     ask_one: 'asked you 1 question',
     ask_other: 'asked you {{count}} questions',
+    web_search_one: 'searched the web once',
+    web_search_other: 'searched the web {{count}}×',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -181,7 +183,11 @@ const en = {
     find: 'find files',
     ls: 'list files',
     ask: 'ask you a question',
+    web_search: 'search the web',
     fallback: 'use a tool'
+  },
+  citations: {
+    sources: 'Sources'
   }
 }
 

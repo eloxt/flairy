@@ -1,4 +1,4 @@
-import { ipcMain, dialog, Menu } from 'electron'
+import { ipcMain, dialog, Menu, shell } from 'electron'
 import {
   IPC,
   type PromptArgs,
@@ -447,6 +447,20 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.ImageViewerGet, (_e, id: string): ViewerImage | null => {
     return pendingViewerImages.get(id) ?? null
+  })
+
+  // Open an external URL (e.g. a citation source) in the default browser. Guard
+  // the scheme so the renderer can't coax the OS into launching arbitrary URIs
+  // (file:, javascript:, custom app schemes) — only real web links are allowed.
+  ipcMain.handle(IPC.ShellOpenExternal, (_e, url: string) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        void shell.openExternal(url)
+      }
+    } catch {
+      // Ignore malformed URLs — nothing to open.
+    }
   })
 
   ipcMain.handle(IPC.SecretsSet, (_e, args: SetSecretArgs) => setSecret(args))
