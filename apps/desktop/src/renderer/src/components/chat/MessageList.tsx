@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Streamdown } from "streamdown";
-import { Terminal, CircleAlert, ChevronRight, Sparkle } from "lucide-react";
+import { CircleAlert, ChevronRight, Sparkle, SquareTerminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
 import { useChat } from "@/store/chat-store";
@@ -334,16 +334,16 @@ function ReasoningBlock({
         aria-expanded={open}
         className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
       >
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
+            open && "rotate-90",
+          )}
+        />
         <Sparkle
           className={cn("size-3.5 shrink-0", streaming && "animate-pulse")}
         />
         <span>{streaming ? t("chat.reasoningLive") : t("chat.reasoning")}</span>
-        <ChevronRight
-          className={cn(
-            "size-3.5 shrink-0 transition-transform",
-            open && "rotate-90",
-          )}
-        />
       </button>
       {open && (
         <div className="mt-1 whitespace-pre-wrap border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
@@ -384,7 +384,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
             strokeWidth={2}
           />
         ) : (
-          <Terminal
+          <SquareTerminal
             className="size-3.5 shrink-0 text-muted-foreground"
             strokeWidth={2}
           />
@@ -395,7 +395,9 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
             m.isError ? "text-destructive" : "text-muted-foreground",
           )}
         >
-          {t(toolDisplayKey(m.toolName))}
+          {m.isError && !m.toolName
+            ? t("chat.error")
+            : t(toolDisplayKey(m.toolName))}
         </span>
         {m.toolArg && (
           <span
@@ -484,7 +486,7 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
             strokeWidth={2}
           />
         ) : (
-          <Terminal
+          <SquareTerminal
             className="size-3.5 shrink-0 text-muted-foreground"
             strokeWidth={2}
           />

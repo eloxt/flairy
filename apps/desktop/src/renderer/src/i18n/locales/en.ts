@@ -52,7 +52,8 @@ const en = {
     working: 'Working…',
     running: 'Running',
     reasoning: 'Reasoning',
-    reasoningLive: 'Reasoning…'
+    reasoningLive: 'Reasoning…',
+    error: 'Error'
   },
   /**
    * Aggregated, jargon-free summary clauses for a grouped run of tool calls

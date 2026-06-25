@@ -50,7 +50,8 @@ const zhCN: typeof En = {
     working: '处理中…',
     running: '运行中',
     reasoning: '思考过程',
-    reasoningLive: '正在思考…'
+    reasoningLive: '正在思考…',
+    error: '出错了'
   },
   activity: {
     read_one: '读取了 {{count}} 个文件',

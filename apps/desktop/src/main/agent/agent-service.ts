@@ -197,6 +197,26 @@ export class AgentService {
         this.send(sessionId, { type: "error", message: msg });
         return;
       }
+      // A terminal request/model failure (bad credential, endpoint, model id,
+      // network) is NOT thrown and NOT a mid-stream soft error: pi-agent-core
+      // encodes it as the turn's final assistant message — a `message_end` whose
+      // `errorMessage` is set + `stopReason: "error"` (agent.js). The branch above
+      // only catches mid-stream soft errors, so without this the turn ends
+      // silently (empty reply, no error). `aborted` is a user stop, not an error.
+      const endMsg = event?.message;
+      if (
+        event.type === "message_end" &&
+        endMsg?.role === "assistant" &&
+        endMsg.stopReason !== "aborted" &&
+        (endMsg.errorMessage || endMsg.stopReason === "error")
+      ) {
+        this.running = false;
+        this.send(sessionId, {
+          type: "error",
+          message: endMsg.errorMessage ?? "LLM request failed",
+        });
+        return;
+      }
       // Keep the run-state flag in lockstep with the lifecycle events the
       // renderer also keys off, so isRunning() matches what the UI shows.
       if (event.type === "agent_start") this.running = true;
