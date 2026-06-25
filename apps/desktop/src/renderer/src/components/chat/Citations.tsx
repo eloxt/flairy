@@ -195,15 +195,15 @@ function SourceCardBody({
       onClick={onOpen}
       className="flex w-full flex-col items-start gap-1 text-left"
     >
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Favicon source={source} className="size-3.5" />
-        <span className="truncate">{source.domain}</span>
+      <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
+        <Favicon source={source} className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{source.domain}</span>
       </span>
-      <span className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+      <span className="line-clamp-2 w-full break-words text-sm font-medium leading-snug text-foreground">
         {source.title}
       </span>
       {source.snippet && (
-        <span className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+        <span className="line-clamp-3 w-full break-words text-xs leading-relaxed text-muted-foreground">
           {source.snippet}
         </span>
       )}
