@@ -270,11 +270,10 @@ export const useChat = create<ChatState>((set, get) => ({
       }))
     })
     // The session list changed wholesale (sessions pulled from the server on
-    // login/reconnect). Reload the sidebar; if nothing is open yet, surface the
-    // newest pulled session so a relogin lands straight on the user's history.
+    // login/reconnect). Reload the sidebar only — never auto-open a session, so
+    // launch (and reconnect) always stays on the blank new-chat page.
     const offSessions = window.api.onSessionsChanged(() => {
       void (async () => {
-        const hadSession = !!get().sessionId
         const sessions = await get().loadSessions()
         console.log('[sync] SessionsChanged → reloaded', sessions.length, 'session(s)')
         const current = get().sessionId
@@ -291,9 +290,6 @@ export const useChat = create<ChatState>((set, get) => ({
               ...mirror(null)
             }
           })
-        } else if (!hadSession && sessions[0]) {
-          // Fresh pull with nothing open (e.g. relogin) — surface newest history.
-          await get().openSession(sessions[0])
         }
       })()
     })
