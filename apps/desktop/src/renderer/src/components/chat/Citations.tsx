@@ -226,6 +226,12 @@ export function SourcesList({
   // to expand on demand, not to crowd the thread. Mirrors the tool-row pattern.
   const [open, setOpen] = useState(false);
   if (sources.length === 0) return null;
+  // Order by citation number, not arrival order: parallel searches get their id
+  // blocks in fetch-resolution order, but the registry accumulates them in
+  // tool-call order, so a slower first search lands its higher ids ahead of a
+  // faster later one (e.g. 9,10,…,1,2). Sort a copy for display — ids are unique,
+  // so this is purely cosmetic and doesn't touch chip resolution (which is by id).
+  const ordered = [...sources].sort((a, b) => a.i - b.i);
   return (
     <div className="mt-3 border-t border-border/60 pt-2">
       <button
@@ -247,7 +253,7 @@ export function SourcesList({
       </button>
       {open && (
         <div className="mt-1 grid gap-1">
-          {sources.map((s) => (
+          {ordered.map((s) => (
             <button
               key={s.i}
               type="button"

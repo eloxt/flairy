@@ -102,12 +102,25 @@ export function MessageList({
   // (first wins) to be safe across old sessions and to drop accidental repeats.
   // Each assistant gets a SNAPSHOT (slice) so a later search doesn't retroactively
   // add sources to an earlier bubble in the same turn.
-  const sourcesByMessage = useMemo(() => {
+  //
+  // `footerIds` marks the ONE bubble per turn that renders the Sources footer: the
+  // turn's last sources-bearing assistant. An intermediate answer (more tool calls
+  // follow it) must not show the list mid-turn — it belongs at the end. The active
+  // turn (still running) is left out entirely until it ends, so the footer only
+  // appears once the turn is done; completed earlier turns always get theirs.
+  const { sourcesByMessage, footerIds } = useMemo(() => {
     const map = new Map<string, SearchSource[]>();
+    const footers = new Set<string>();
     let acc: SearchSource[] = [];
     let seen = new Set<number>();
+    let lastSourcedId: string | null = null;
+    const finalizeTurn = (): void => {
+      if (lastSourcedId) footers.add(lastSourcedId);
+      lastSourcedId = null;
+    };
     for (const m of messages) {
       if (m.role === "user") {
+        finalizeTurn();
         acc = [];
         seen = new Set<number>();
       } else if (m.role === "tool" && m.sources?.length) {
@@ -118,10 +131,14 @@ export function MessageList({
         }
       } else if (m.role === "assistant" && acc.length) {
         map.set(m.id, acc.slice());
+        lastSourcedId = m.id;
       }
     }
-    return map;
-  }, [messages]);
+    // The last turn closes here — but only attach its footer once it's no longer
+    // running, so a mid-turn answer doesn't show the list before the turn ends.
+    if (!running) finalizeTurn();
+    return { sourcesByMessage: map, footerIds: footers };
+  }, [messages, running]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   // The row key to flash after a search jump; cleared after the highlight fades.
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
@@ -215,6 +232,7 @@ export function MessageList({
           row={row}
           highlight={row.key === highlightKey}
           sources={row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined}
+          showSources={row.kind === "msg" && footerIds.has(row.m.id)}
         />
       )}
     />
@@ -225,10 +243,12 @@ function RowView({
   row,
   highlight,
   sources,
+  showSources,
 }: {
   row: Row;
   highlight?: boolean;
   sources?: SearchSource[];
+  showSources?: boolean;
 }): React.JSX.Element {
   const inner =
     row.kind === "group" ? (
@@ -236,7 +256,7 @@ function RowView({
     ) : row.kind === "tool" ? (
       <SingleTool m={row.m} />
     ) : (
-      <MessageRow m={row.m} sources={sources} />
+      <MessageRow m={row.m} sources={sources} showSources={showSources} />
     );
   // Transient ring after a search jump; fades as `highlight` flips back to false.
   return (
@@ -340,12 +360,14 @@ function EmptyState(): React.JSX.Element {
 function MessageRow({
   m,
   sources,
+  showSources,
 }: {
   m: UiMessage;
   sources?: SearchSource[];
+  showSources?: boolean;
 }): React.JSX.Element {
   if (m.role === "user") return <UserRow m={m} />;
-  return <AssistantRow m={m} sources={sources} />;
+  return <AssistantRow m={m} sources={sources} showSources={showSources} />;
 }
 
 /** User turn: a quiet, right-aligned chip. Restraint over a loud bubble. */
@@ -406,9 +428,11 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
 function AssistantRow({
   m,
   sources,
+  showSources,
 }: {
   m: UiMessage;
   sources?: SearchSource[];
+  showSources?: boolean;
 }): React.JSX.Element {
   const hasText = Boolean(m.text.trim());
   const cites = sources ?? [];
@@ -447,8 +471,12 @@ function AssistantRow({
           >
             {m.text}
           </Streamdown>
-          {/* Sources footer: shown once the answer is in, not mid-stream. */}
-          {!m.streaming && cites.length > 0 && <SourcesList sources={cites} />}
+          {/* Sources footer: only on the turn's final answer, after the turn ends
+              (showSources) — never under an intermediate answer that still has tool
+              calls to follow. */}
+          {showSources && !m.streaming && cites.length > 0 && (
+            <SourcesList sources={cites} />
+          )}
         </CitationsProvider>
       )}
     </div>
