@@ -9,3 +9,4 @@ dist
 flairy.db
 .omc
 .claude/scheduled_tasks.lock
+.idea
