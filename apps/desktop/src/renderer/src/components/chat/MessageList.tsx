@@ -27,6 +27,16 @@ import { math } from "@streamdown/math";
 import "katex/dist/katex.min.css";
 import { cjk } from "@streamdown/cjk";
 
+// Stable references for <Streamdown>. Passing fresh object/array literals on each
+// render defeats Streamdown's internal memoization — its Block memo compares
+// remarkPlugins/rehypePlugins by reference, and plugins/components feed useMemos —
+// so every markdown block would re-render and re-run its parser effect on every
+// streamed token. During streaming that churn can compound into a "maximum update
+// depth exceeded" (React #185) crash. Hoisting these keeps the identities stable.
+const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
+const STREAMDOWN_REMARK_PLUGINS = [remarkCitations];
+const STREAMDOWN_COMPONENTS = { sup: CitationChip };
+
 /**
  * A render unit for the thread. We fold the store's flat message list into rows
  * at render time (the store stays one-message-per-tool-call, so hydration and
@@ -403,9 +413,9 @@ function AssistantRow({
             isAnimating={Boolean(m.streaming)}
             animated
             caret="block"
-            plugins={{ code, mermaid, math, cjk }}
-            remarkPlugins={[remarkCitations]}
-            components={{ sup: CitationChip }}
+            plugins={STREAMDOWN_PLUGINS}
+            remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
+            components={STREAMDOWN_COMPONENTS}
             className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono"
           >
             {m.text}
