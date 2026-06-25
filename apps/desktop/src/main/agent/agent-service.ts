@@ -850,6 +850,10 @@ function normalizeEvent(event: any): AgentStreamEvent {
         role: event.message?.role ?? "assistant",
         text: projectText(event.message?.content),
         thinking: projectThinking(event.message?.content),
+        // pi's AssistantMessage carries the turn's token usage (with computed
+        // dollar cost) and a timestamp; forward both for the timeline/cost tabs.
+        usage: event.message?.usage,
+        timestamp: event.message?.timestamp,
       };
     case "tool_execution_start":
       return {

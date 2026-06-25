@@ -140,6 +140,27 @@ export function MessageList({
     return () => cancelAnimationFrame(raf);
   }, [pendingScrollIndex, rows, clearPendingScroll]);
 
+  // Consume a queued timeline-jump target (by UiMessage id). Same rAF dance as
+  // the search jump above, but matches the in-memory id so it works for live and
+  // replayed messages alike (no persisted sourceIndex needed).
+  useEffect(() => {
+    if (pendingScrollId == null || rows.length === 0) return;
+    const index = rows.findIndex(
+      (r) => r.kind === "msg" && r.m.id === pendingScrollId,
+    );
+    if (index < 0) {
+      clearPendingScroll();
+      return;
+    }
+    const key = rows[index].key;
+    const raf = requestAnimationFrame(() => {
+      virtuosoRef.current?.scrollToIndex({ index, align: "center" });
+      setHighlightKey(key);
+      clearPendingScroll();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pendingScrollId, rows, clearPendingScroll]);
+
   // Fade the highlight out after a short beat.
   useEffect(() => {
     if (!highlightKey) return;

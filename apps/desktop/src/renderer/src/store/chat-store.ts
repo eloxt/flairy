@@ -87,6 +87,18 @@ export interface UiMessage {
    * no stable id, so the array position is the locator.
    */
   sourceIndex?: number
+  /**
+   * Wall-clock time this bubble happened, ms epoch. Stamped at receipt for live
+   * user/tool bubbles and from pi's message timestamp for assistant turns; on
+   * replay, read back from the persisted pi message. Drives the timeline tab.
+   */
+  timestamp?: number
+  /**
+   * For an `assistant` turn: the token usage + computed dollar cost pi reported
+   * for the request. Attached to the turn's first bubble (live and on replay);
+   * the cost tab sums these. Absent on user/tool bubbles.
+   */
+  usage?: MessageUsage
 }
 
 /**
@@ -165,6 +177,13 @@ interface ChatState {
    * consumes it via `clearPendingScroll` after scrolling.
    */
   pendingScrollIndex: number | null
+  /**
+   * A UiMessage id `MessageList` should scroll to once, set when jumping from the
+   * timeline tab (same in-memory messages, so an id matches live or replayed —
+   * unlike `pendingScrollIndex`, which needs a persisted `sourceIndex`). Null
+   * otherwise; consumed via `clearPendingScroll`.
+   */
+  pendingScrollId: string | null
 
   init: () => () => void
   loadSessions: () => Promise<SessionMeta[]>
@@ -173,6 +192,8 @@ interface ChatState {
    * that message turn; omit it for a plain open, which clears any stale target.
    */
   openSession: (meta: SessionMeta, msgIndex?: number) => Promise<void>
+  /** Queue a scroll to a message in the OPEN session by its UiMessage id. */
+  scrollToMessage: (id: string) => void
   /** Clear the queued scroll target (called by MessageList after scrolling). */
   clearPendingScroll: () => void
   /**
@@ -219,6 +240,7 @@ export const useChat = create<ChatState>((set, get) => ({
   permissionMode: 'ask',
   pendingCwd: null,
   pendingScrollIndex: null,
+  pendingScrollId: null,
   recentDirs: [],
 
   /** Subscribe to the main-process event stream. Call once on mount. */
@@ -322,7 +344,9 @@ export const useChat = create<ChatState>((set, get) => ({
     }))
   },
 
-  clearPendingScroll: () => set({ pendingScrollIndex: null }),
+  scrollToMessage: (id) => set({ pendingScrollId: id }),
+
+  clearPendingScroll: () => set({ pendingScrollIndex: null, pendingScrollId: null }),
 
   /**
    * Return to the home screen (no active session, empty thread). We deliberately
@@ -383,7 +407,8 @@ export const useChat = create<ChatState>((set, get) => ({
           text: text.trim(),
           images: images?.length ? images : undefined,
           imagesIgnored: imagesIgnored || undefined,
-          queued: wasRunning || undefined
+          queued: wasRunning || undefined,
+          timestamp: Date.now()
         }
       ]
     }))
@@ -678,7 +703,9 @@ function applyEvent(
             ...last,
             text: e.text || last.text,
             thinking: last.thinking || e.thinking || undefined,
-            streaming: false
+            streaming: false,
+            usage: e.usage ?? last.usage,
+            timestamp: e.timestamp ?? last.timestamp
           }
           return { ...rt, liveBatchId, messages: [...rt.messages.slice(0, -1), finalized] }
         }
@@ -694,16 +721,27 @@ function applyEvent(
                 id: e.messageId || crypto.randomUUID(),
                 role: 'assistant',
                 text: e.text ?? '',
-                thinking: e.thinking || undefined
+                thinking: e.thinking || undefined,
+                usage: e.usage,
+                timestamp: e.timestamp
               }
             ]
           }
         }
-        return {
-          ...rt,
-          liveBatchId,
-          messages: rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+        // No visible assistant bubble (e.g. a tools-only turn). Still attach this
+        // turn's usage/timestamp to its first bubble (the first tool call shares
+        // batchId === liveBatchId) so the cost tab counts every turn.
+        const stamped = rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+        if (e.usage || e.timestamp) {
+          const idx = stamped.findIndex((m) => m.batchId === liveBatchId || m.id === e.messageId)
+          if (idx >= 0)
+            stamped[idx] = {
+              ...stamped[idx],
+              usage: stamped[idx].usage ?? e.usage,
+              timestamp: stamped[idx].timestamp ?? e.timestamp
+            }
         }
+        return { ...rt, liveBatchId, messages: stamped }
       })
       break
     case 'tool_execution_start':
@@ -718,7 +756,8 @@ function applyEvent(
             text: i18n.t('chat.toolRunning', { tool: i18n.t(toolDisplayKey(e.name)) }),
             running: true,
             toolArg: toolArgSummary(e.name, e.args),
-            batchId: rt.liveBatchId ?? e.toolCallId
+            batchId: rt.liveBatchId ?? e.toolCallId,
+            timestamp: Date.now()
           }
         ]
       }))
@@ -791,6 +830,8 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
       toolCallId?: string
       toolName?: string
       isError?: boolean
+      timestamp?: number
+      usage?: MessageUsage
     }
     switch (m.role) {
       case 'user': {
@@ -802,7 +843,8 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
             role: 'user',
             text,
             images: images.length ? images : undefined,
-            sourceIndex: i
+            sourceIndex: i,
+            timestamp: m.timestamp
           })
         break
       }
@@ -818,6 +860,9 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
         // so a parallel batch folds into one group identically on replay.
         const parts = Array.isArray(m.content) ? m.content : []
         const batchId = m.id ?? crypto.randomUUID()
+        // First bubble this turn pushes; the turn's usage/timestamp rides on it
+        // (mirrors the live stream attaching usage to the turn's first bubble).
+        const turnStart = out.length
         // The whole turn's reasoning, attached to the first assistant bubble below.
         const turnThinking = parts
           .filter((p) => isPart(p, 'thinking'))

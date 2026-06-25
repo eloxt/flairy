@@ -278,6 +278,20 @@ export interface AgentEventEnvelope {
   event: AgentStreamEvent
 }
 
+/**
+ * Token usage + already-computed dollar cost for one assistant turn. Mirrors the
+ * subset of pi-ai's `Usage` we surface in the UI (cost tab). pi-ai computes the
+ * cost from the model's configured rates, so the renderer just sums these.
+ */
+export interface MessageUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  totalTokens: number
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
+}
+
 /** Minimal subset of pi-agent-core events the UI cares about. */
 export type AgentStreamEvent =
   | { type: 'agent_start' }
@@ -286,7 +300,17 @@ export type AgentStreamEvent =
   | { type: 'turn_end' }
   | { type: 'message_start'; messageId: string }
   | { type: 'message_update'; messageId: string; delta: string; thinkingDelta?: string }
-  | { type: 'message_end'; messageId: string; role: string; text: string; thinking?: string }
+  | {
+      type: 'message_end'
+      messageId: string
+      role: string
+      text: string
+      thinking?: string
+      // Only assistant turns carry usage; the per-message timestamp pi stamps lets
+      // the timeline tab show real times.
+      usage?: MessageUsage
+      timestamp?: number
+    }
   | { type: 'tool_execution_start'; toolCallId: string; name: string; args: unknown }
   | { type: 'tool_execution_update'; toolCallId: string; partial: unknown }
   | { type: 'tool_execution_end'; toolCallId: string; result: unknown; isError: boolean }

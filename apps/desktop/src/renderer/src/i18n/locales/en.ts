@@ -59,6 +59,20 @@ const en = {
     reasoningLive: 'Reasoning…',
     error: 'Error'
   },
+  /** Right-side details panel: timeline of the conversation + spend summary. */
+  panel: {
+    toggle: 'Details',
+    timeline: 'Timeline',
+    cost: 'Cost',
+    timelineEmpty: 'Nothing has happened yet.',
+    costEmpty: 'No usage to show yet.',
+    totalCost: 'Total cost',
+    totalTokens: 'Total tokens',
+    input: 'Input',
+    output: 'Output',
+    cache: 'Cache',
+    tokensSuffix: 'tokens'
+  },
   /**
    * Aggregated, jargon-free summary clauses for a grouped run of tool calls
    * (e.g. "Read 3 files, ran 2 commands"). One stem per `toolBucket`; i18next

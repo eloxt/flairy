@@ -1,10 +1,14 @@
 import { useEffect } from "react";
 import { createHashRouter, RouterProvider, Outlet } from "react-router";
+import { useTranslation } from "react-i18next";
+import { PanelRight } from "lucide-react";
 import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
+import { useUi } from "@/store/ui-store";
 import { AppSidebar } from "@/components/AppSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { Composer } from "@/components/chat/Composer";
+import { RightPanel } from "@/components/chat/RightPanel";
 import { SearchPage } from "@/components/search/SearchPage";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { UpdateBadge } from "@/components/UpdateBadge";
@@ -86,26 +90,35 @@ function AppLayout(): React.JSX.Element {
   );
 }
 
-/** The chat page: header + thread + composer. */
+/** The chat page: header + thread + composer, with the slide-out details panel. */
 function ChatView(): React.JSX.Element {
   const messages = useChat((s) => s.messages);
   return (
-    <>
-      <ChatHeader />
-      <div className="relative flex-1 overflow-hidden">
-        <MessageList messages={messages} />
-        <Composer />
+    // A flex row: the chat column fills the space and the details drawer sits to
+    // its right, reaching the very top like the left sidebar (header is inside
+    // the chat column only).
+    <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <ChatHeader />
+        <div className="relative flex-1 overflow-hidden">
+          <MessageList messages={messages} />
+          <Composer />
+        </div>
       </div>
-    </>
+      <RightPanel />
+    </div>
   );
 }
 
 /** Header lives inside the provider so it can clear the traffic lights when collapsed. */
 function ChatHeader(): React.JSX.Element {
+  const { t } = useTranslation();
   const { state, isMobile } = useSidebar();
   const collapsed = state === "collapsed";
   // Only macOS has traffic lights to clear; Windows/Linux need no left inset.
   const isMac = window.api.platform === "darwin";
+  const rightOpen = useUi((s) => s.rightPanelOpen);
+  const toggleRight = useUi((s) => s.toggleRightPanel);
 
   // Show the active session's title; fall back to the product name on the home
   // screen (no session) or for an untitled session.
@@ -129,6 +142,19 @@ function ChatHeader(): React.JSX.Element {
         </span>
       </div>
       <UpdateBadge />
+      <button
+        type="button"
+        onClick={toggleRight}
+        aria-label={t("panel.toggle")}
+        aria-pressed={rightOpen}
+        title={t("panel.toggle")}
+        className={cn(
+          "app-no-drag flex size-7 items-center justify-center rounded-md transition-colors hover:bg-accent",
+          "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <PanelRight className="size-4" />
+      </button>
     </header>
   );
 }

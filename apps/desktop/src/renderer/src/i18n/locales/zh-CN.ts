@@ -57,6 +57,20 @@ const zhCN: typeof En = {
     reasoningLive: '正在思考…',
     error: '出错了'
   },
+  /** 右侧详情面板：对话时间线 + 花费汇总。 */
+  panel: {
+    toggle: '详情',
+    timeline: '时间线',
+    cost: '花费',
+    timelineEmpty: '还没有任何活动。',
+    costEmpty: '暂无用量数据。',
+    totalCost: '总花费',
+    totalTokens: '总 token',
+    input: '输入',
+    output: '输出',
+    cache: '缓存',
+    tokensSuffix: 'token'
+  },
   activity: {
     read_one: '读取了 {{count}} 个文件',
     read_other: '读取了 {{count}} 个文件',
