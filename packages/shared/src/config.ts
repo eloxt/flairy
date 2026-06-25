@@ -295,6 +295,40 @@ export interface SystemPromptInput {
 }
 
 /**
+ * Visual tone of a system announcement, driving the client banner's color/icon.
+ * A closed set mirrored by the server's `kind` CHECK constraint and the
+ * `AnnouncementKind` Rust enum in `apps/server/src/models/announcement.rs`.
+ */
+export type AnnouncementKind = 'info' | 'success' | 'warning' | 'error'
+
+/**
+ * A system announcement delivered in full to clients via `config:snapshot`
+ * (content is small, so the whole row ships inline like {@link SystemPromptConfig}).
+ * The desktop renders enabled announcements as banners atop the empty chat
+ * screen; users can dismiss each one locally (persisted in localStorage, never
+ * stored server-side). Mirrors `AnnouncementConfig` in `models/announcement.rs`.
+ */
+export interface AnnouncementConfig {
+  id: string
+  /** Visual tone of the banner. */
+  kind: AnnouncementKind
+  /** Headline shown in bold. */
+  title: string
+  /** Body text shown beneath the title. */
+  content: string
+  /** Disabled announcements are delivered but not shown by the client. */
+  enabled: boolean
+}
+
+/** Create/update payload for an announcement. Mirrors `AnnouncementInput`. */
+export interface AnnouncementInput {
+  kind: AnnouncementKind
+  title: string
+  content: string
+  enabled: boolean
+}
+
+/**
  * Reserved {@link SystemPromptConfig.name} the client uses as the agent's own
  * system prompt (matched case-insensitively, trimmed). Other prompts are ignored.
  */
@@ -335,6 +369,8 @@ export interface ConfigSnapshot {
   skills: SkillSummary[]
   /** System prompts (full body; small enough to ship inline). */
   systemPrompts: SystemPromptConfig[]
+  /** System announcements (full rows; shown atop the empty chat screen). */
+  announcements: AnnouncementConfig[]
   /** Monotonic global version, bumped on every change; clients use it to dedupe/diff. */
   version: number
 }
@@ -356,6 +392,8 @@ export interface AdminConfigSnapshot {
   skills: SkillListItem[]
   /** System prompts (full rows; same shape as the client view). */
   systemPrompts: SystemPromptConfig[]
+  /** System announcements (full rows; same shape as the client view). */
+  announcements: AnnouncementConfig[]
   version: number
 }
 
@@ -368,5 +406,6 @@ export interface ConfigUpdate {
   mcpServers?: McpServerConfig[]
   skills?: SkillSummary[]
   systemPrompts?: SystemPromptConfig[]
+  announcements?: AnnouncementConfig[]
   version: number
 }

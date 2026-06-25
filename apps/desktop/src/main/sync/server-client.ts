@@ -299,6 +299,7 @@ function mergeConfig(
     mcpServers: update.mcpServers ?? current.mcpServers,
     skills: update.skills ?? current.skills,
     systemPrompts: update.systemPrompts ?? current.systemPrompts,
+    announcements: update.announcements ?? current.announcements,
     version: update.version
   }
 }

@@ -35,6 +35,7 @@ pub async fn load_client_snapshot(pool: &PgPool) -> AppResult<ConfigSnapshot> {
         mcp_servers: super::mcp::list(pool).await?,
         skills: super::skill::list_summaries(pool).await?,
         system_prompts: super::system_prompt::list(pool).await?,
+        announcements: super::announcement::list(pool).await?,
         version: current_version(pool).await?,
     })
 }
@@ -49,6 +50,7 @@ pub async fn load_admin_snapshot(pool: &PgPool) -> AppResult<AdminConfigSnapshot
         mcp_servers: super::mcp::list(pool).await?,
         skills: super::skill::list_items(pool).await?,
         system_prompts: super::system_prompt::list(pool).await?,
+        announcements: super::announcement::list(pool).await?,
         version: current_version(pool).await?,
     })
 }

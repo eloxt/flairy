@@ -1,6 +1,7 @@
 //! REST API surface. One module per resource so future config modules slot in
 //! as their own file + a `.merge(...)` line below.
 
+mod announcement;
 mod auth;
 mod config;
 mod llm;
@@ -21,6 +22,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/api/health", get(health))
+        .merge(announcement::router())
         .merge(auth::router())
         .merge(config::router())
         .merge(llm::router())

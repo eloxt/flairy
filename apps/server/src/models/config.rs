@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::models::announcement::AnnouncementConfig;
 use crate::models::llm::{LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, RoleModels};
 use crate::models::mcp::McpServerConfig;
 use crate::models::skill::{SkillListItem, SkillSummary};
@@ -28,6 +29,8 @@ pub struct ConfigSnapshot {
     pub skills: Vec<SkillSummary>,
     /// Role-tagged system prompts (full body; small enough to ship inline).
     pub system_prompts: Vec<SystemPromptConfig>,
+    /// System announcements shown atop the client's empty chat screen (full rows).
+    pub announcements: Vec<AnnouncementConfig>,
     /// Monotonic global version, bumped on every change.
     pub version: i64,
 }
@@ -43,6 +46,7 @@ impl ConfigSnapshot {
             mcp_servers: Vec::new(),
             skills: Vec::new(),
             system_prompts: Vec::new(),
+            announcements: Vec::new(),
             version: 0,
         }
     }
@@ -61,6 +65,8 @@ pub struct ConfigUpdate {
     pub skills: Option<Vec<SkillSummary>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompts: Option<Vec<SystemPromptConfig>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub announcements: Option<Vec<AnnouncementConfig>>,
     pub version: i64,
 }
 
@@ -71,6 +77,7 @@ impl From<&ConfigSnapshot> for ConfigUpdate {
             mcp_servers: Some(s.mcp_servers.clone()),
             skills: Some(s.skills.clone()),
             system_prompts: Some(s.system_prompts.clone()),
+            announcements: Some(s.announcements.clone()),
             version: s.version,
         }
     }
@@ -91,5 +98,7 @@ pub struct AdminConfigSnapshot {
     pub skills: Vec<SkillListItem>,
     /// Role-tagged system prompts (full rows; same shape as the client view).
     pub system_prompts: Vec<SystemPromptConfig>,
+    /// System announcements (full rows; same shape as the client view).
+    pub announcements: Vec<AnnouncementConfig>,
     pub version: i64,
 }

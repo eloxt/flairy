@@ -6,6 +6,7 @@
 //! - [`llm`], [`mcp`], [`skill`] — per-module config catalogs.
 //! - [`config`] — aggregate snapshot loaders + the global version bump.
 
+pub mod announcement;
 pub mod config;
 pub mod llm;
 pub mod mcp;

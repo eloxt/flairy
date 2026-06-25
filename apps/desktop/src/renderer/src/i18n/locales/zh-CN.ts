@@ -43,6 +43,7 @@ const zhCN: typeof En = {
     rename: '重命名对话',
     emptyTitle: '有什么可以帮你的？',
     emptySubtitle: '用平常的话说就行，剩下的交给 Flairy。',
+    dismissAnnouncement: '关闭',
     imageCount_one: '📎 {{count}} 张图片',
     imageCount_other: '📎 {{count}} 张图片',
     toolRunning: '正在{{tool}}…',

@@ -11,6 +11,7 @@ import type { UiMessage } from "@/store/chat-store";
 import { ApprovalCard } from "./ApprovalCard";
 import { QuestionCard } from "./QuestionCard";
 import { Onboarding } from "./Onboarding";
+import { Announcements } from "./Announcements";
 import "streamdown/styles.css";
 import { code } from "@streamdown/code";
 import { mermaid } from "@streamdown/mermaid";
@@ -239,18 +240,24 @@ function ThinkingRow(): React.JSX.Element | null {
 function EmptyState(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-y-auto px-6 py-12">
-      <div className="mx-auto max-w-md text-center">
-        <h1 className="animate-rise-in text-2xl font-medium tracking-tight text-foreground">
-          {t("chat.emptyTitle")}
-        </h1>
-        <p
-          className="animate-rise-in mt-2 text-sm text-muted-foreground"
-          style={{ animationDelay: "90ms" }}
-        >
-          {t("chat.emptySubtitle")}
-        </p>
-        <Onboarding />
+    <div className="absolute inset-0 flex flex-col overflow-y-auto px-6 py-8">
+      {/* Announcements pinned to the top, matching the composer's content width. */}
+      <div className="mx-auto w-full max-w-3xl">
+        <Announcements />
+      </div>
+      <div className="flex flex-1 items-center justify-center -mt-40">
+        <div className="mx-auto max-w-md text-center">
+          <h1 className="animate-rise-in text-2xl font-medium tracking-tight text-foreground">
+            {t("chat.emptyTitle")}
+          </h1>
+          <p
+            className="animate-rise-in mt-2 text-sm text-muted-foreground"
+            style={{ animationDelay: "90ms" }}
+          >
+            {t("chat.emptySubtitle")}
+          </p>
+          <Onboarding />
+        </div>
       </div>
     </div>
   );

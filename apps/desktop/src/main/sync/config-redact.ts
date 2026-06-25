@@ -16,6 +16,8 @@ export function redactConfig(config: ConfigSnapshot | null): RedactedConfigSnaps
     mcpServers: config.mcpServers.map(redactMcpServer),
     skills: config.skills,
     systemPrompts: config.systemPrompts,
+    // Default to [] so a pre-announcements cached snapshot redacts cleanly.
+    announcements: config.announcements ?? [],
     version: config.version
   }
 }

@@ -8,6 +8,7 @@
  */
 
 import type {
+  AnnouncementConfig,
   McpServerConfig,
   Memory,
   RoleModels,
@@ -247,6 +248,8 @@ export interface RedactedConfigSnapshot {
   skills: SkillSummary[]
   /** System prompts carry no secrets and are passed through unchanged. */
   systemPrompts: SystemPromptConfig[]
+  /** Announcements carry no secrets and are passed through unchanged. */
+  announcements: AnnouncementConfig[]
   /** Monotonic global config version. */
   version: number
 }

@@ -3,6 +3,7 @@ import {
   Bot,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   MessageSquare,
   Server,
   Sparkles,
@@ -33,6 +34,7 @@ const NAV = [
   { to: '/mcp', label: 'MCP Servers', icon: Server, end: false },
   { to: '/skills', label: 'Skills', icon: Sparkles, end: false },
   { to: '/system-prompts', label: 'System Prompts', icon: MessageSquare, end: false },
+  { to: '/announcements', label: 'Announcements', icon: Megaphone, end: false },
   { to: '/users', label: 'Users', icon: Users, end: false }
 ] as const
 

@@ -1,5 +1,7 @@
 import type {
   AdminConfigSnapshot,
+  AnnouncementConfig,
+  AnnouncementInput,
   LlmModelConfig,
   LlmModelInput,
   LlmProviderConfig,
@@ -175,6 +177,23 @@ export function updateSystemPrompt(
 
 export function deleteSystemPrompt(id: string): Promise<void> {
   return request<void>(`/api/system-prompts/${id}`, { method: 'DELETE' })
+}
+
+/* ---------- Announcements ---------- */
+
+export function createAnnouncement(body: AnnouncementInput): Promise<AnnouncementConfig> {
+  return request<AnnouncementConfig>('/api/announcements', { method: 'POST', body })
+}
+
+export function updateAnnouncement(
+  id: string,
+  body: AnnouncementInput
+): Promise<AnnouncementConfig> {
+  return request<AnnouncementConfig>(`/api/announcements/${id}`, { method: 'PUT', body })
+}
+
+export function deleteAnnouncement(id: string): Promise<void> {
+  return request<void>(`/api/announcements/${id}`, { method: 'DELETE' })
 }
 
 /* ---------- Users (admin-only; not part of the config snapshot) ---------- */

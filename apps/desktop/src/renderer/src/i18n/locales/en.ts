@@ -45,6 +45,7 @@ const en = {
     rename: 'Rename chat',
     emptyTitle: 'What can I help you with?',
     emptySubtitle: 'Ask in plain words. Flairy handles the rest.',
+    dismissAnnouncement: 'Dismiss',
     imageCount_one: '📎 {{count}} image',
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
