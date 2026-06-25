@@ -172,6 +172,18 @@ function numStr(n: number | undefined): string {
   return n == null ? "" : String(n);
 }
 
+// The contract (DB / serde / pi-ai) stores price as USD per token, but admins
+// edit it as USD per *million* tokens (the industry convention). The form
+// converts on load/submit; nothing downstream changes.
+const PER_MILLION = 1_000_000;
+
+/** Per-token price → per-million-token input string (`undefined` → ""). */
+function costToForm(perToken: number | undefined): string {
+  if (perToken == null) return "";
+  // Round to kill float noise like 0.000003 * 1e6 = 2.9999999999999996.
+  return String(Math.round(perToken * PER_MILLION * 1e6) / 1e6);
+}
+
 function modelToForm(m: LlmModelConfig): ModelForm {
   return {
     id: m.id,
@@ -182,10 +194,10 @@ function modelToForm(m: LlmModelConfig): ModelForm {
     thinkingLevel: m.thinkingLevel ?? "",
     contextWindow: numStr(m.contextWindow),
     maxTokens: numStr(m.maxTokens),
-    costInput: numStr(m.cost?.input),
-    costOutput: numStr(m.cost?.output),
-    costCacheRead: numStr(m.cost?.cacheRead),
-    costCacheWrite: numStr(m.cost?.cacheWrite),
+    costInput: costToForm(m.cost?.input),
+    costOutput: costToForm(m.cost?.output),
+    costCacheRead: costToForm(m.cost?.cacheRead),
+    costCacheWrite: costToForm(m.cost?.cacheWrite),
   };
 }
 
@@ -225,12 +237,13 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
     form.costCacheRead,
     form.costCacheWrite,
   ].map(parseNum);
+  // Admins enter per-million-token prices; the contract stores per token.
   const cost = costParts.some((n) => n !== undefined)
     ? {
-        input: costParts[0] ?? 0,
-        output: costParts[1] ?? 0,
-        cacheRead: costParts[2] ?? 0,
-        cacheWrite: costParts[3] ?? 0,
+        input: (costParts[0] ?? 0) / PER_MILLION,
+        output: (costParts[1] ?? 0) / PER_MILLION,
+        cacheRead: (costParts[2] ?? 0) / PER_MILLION,
+        cacheWrite: (costParts[3] ?? 0) / PER_MILLION,
       }
     : undefined;
 
@@ -830,7 +843,7 @@ function ModelEditor({
       </div>
 
       <div className="space-y-2">
-        <Label>Price (USD per token, optional)</Label>
+        <Label>Price (USD per 1M tokens, optional)</Label>
         <div className="grid grid-cols-2 gap-3">
           <Input
             aria-label="Input price"
