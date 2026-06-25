@@ -11,6 +11,7 @@ pub mod config;
 pub mod llm;
 pub mod mcp;
 pub mod memories;
+pub mod service;
 pub mod sessions;
 pub mod skill;
 pub mod system_prompt;

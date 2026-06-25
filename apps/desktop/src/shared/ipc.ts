@@ -12,6 +12,7 @@ import type {
   McpServerConfig,
   Memory,
   RoleModels,
+  ServiceConfig,
   SkillSummary,
   SystemPromptConfig
 } from '@flairy/shared'
@@ -258,6 +259,8 @@ export interface RedactedConfigSnapshot {
   systemPrompts: SystemPromptConfig[]
   /** Announcements carry no secrets and are passed through unchanged. */
   announcements: AnnouncementConfig[]
+  /** External services with their `secret` masked (e.g. Exa web search). */
+  services: ServiceConfig[]
   /** Monotonic global config version. */
   version: number
 }

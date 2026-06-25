@@ -300,6 +300,7 @@ function mergeConfig(
     skills: update.skills ?? current.skills,
     systemPrompts: update.systemPrompts ?? current.systemPrompts,
     announcements: update.announcements ?? current.announcements,
+    services: update.services ?? current.services,
     version: update.version
   }
 }

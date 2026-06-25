@@ -345,6 +345,47 @@ export interface AnnouncementInput {
 }
 
 /**
+ * Kind of external service. A closed set mirrored by the server's `ServiceKind`
+ * Rust enum in `apps/server/src/models/service.rs`. The first (and so far only)
+ * service is Exa web search; the module is intentionally generic so more
+ * secret-bearing third-party services can be added without new plumbing.
+ */
+export type ServiceKind = 'exa'
+
+/**
+ * An external third-party service configured centrally by an admin and delivered
+ * to clients via `config:snapshot`. Carries a `secret` (e.g. an API key) plus
+ * non-secret kind-specific `settings`. Mirrors `ServiceConfig` in
+ * `apps/server/src/models/service.rs`.
+ *
+ * SECURITY: `secret` is masked before the snapshot crosses to the renderer (see
+ * `redactConfig`); the plaintext value lives only in the main process. The
+ * desktop resolves the active Exa service (`kind === 'exa'`, `enabled`) and uses
+ * its `secret` to call the provider directly — same discipline as LLM credentials.
+ */
+export interface ServiceConfig {
+  id: string
+  kind: ServiceKind
+  /** Human label shown in the admin UI. */
+  name: string
+  /** Disabled services are delivered but not used by the client. */
+  enabled: boolean
+  /** Credential (e.g. the Exa API key). Masked in the renderer-facing snapshot. */
+  secret: string
+  /** Non-secret, kind-specific settings (e.g. Exa `{ numResults, baseUrl }`). */
+  settings: Record<string, unknown>
+}
+
+/** Create/update payload for an external service. Mirrors `ServiceInput`. */
+export interface ServiceInput {
+  kind: ServiceKind
+  name: string
+  enabled: boolean
+  secret: string
+  settings: Record<string, unknown>
+}
+
+/**
  * Reserved {@link SystemPromptConfig.name} the client uses as the agent's own
  * system prompt (matched case-insensitively, trimmed). Other prompts are ignored.
  */
@@ -387,6 +428,8 @@ export interface ConfigSnapshot {
   systemPrompts: SystemPromptConfig[]
   /** System announcements (full rows; shown atop the empty chat screen). */
   announcements: AnnouncementConfig[]
+  /** External services with secrets (e.g. Exa web search). */
+  services: ServiceConfig[]
   /** Monotonic global version, bumped on every change; clients use it to dedupe/diff. */
   version: number
 }
@@ -410,6 +453,8 @@ export interface AdminConfigSnapshot {
   systemPrompts: SystemPromptConfig[]
   /** System announcements (full rows; same shape as the client view). */
   announcements: AnnouncementConfig[]
+  /** External services with secrets (e.g. Exa web search). */
+  services: ServiceConfig[]
   version: number
 }
 
@@ -423,5 +468,6 @@ export interface ConfigUpdate {
   skills?: SkillSummary[]
   systemPrompts?: SystemPromptConfig[]
   announcements?: AnnouncementConfig[]
+  services?: ServiceConfig[]
   version: number
 }

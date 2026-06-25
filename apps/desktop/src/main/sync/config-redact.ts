@@ -1,4 +1,10 @@
-import type { ActiveLlm, ConfigSnapshot, McpServerConfig, McpTransport } from '@flairy/shared'
+import type {
+  ActiveLlm,
+  ConfigSnapshot,
+  McpServerConfig,
+  McpTransport,
+  ServiceConfig
+} from '@flairy/shared'
 import type { RedactedConfigSnapshot } from '@shared/ipc'
 
 /**
@@ -18,8 +24,15 @@ export function redactConfig(config: ConfigSnapshot | null): RedactedConfigSnaps
     systemPrompts: config.systemPrompts,
     // Default to [] so a pre-announcements cached snapshot redacts cleanly.
     announcements: config.announcements ?? [],
+    // Default to [] so a pre-services cached snapshot redacts cleanly.
+    services: (config.services ?? []).map(redactService),
     version: config.version
   }
+}
+
+/** Mask the secret on an external service; non-secret settings pass through. */
+function redactService(service: ServiceConfig): ServiceConfig {
+  return { ...service, secret: mask(service.secret) }
 }
 
 /** Mask the provider credential on a single role's resolved model, or pass null. */

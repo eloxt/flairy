@@ -6,6 +6,7 @@ mod auth;
 mod config;
 mod llm;
 mod mcp;
+mod service;
 mod skill;
 mod system_prompt;
 mod users;
@@ -27,6 +28,7 @@ pub fn router(state: AppState) -> Router {
         .merge(config::router())
         .merge(llm::router())
         .merge(mcp::router())
+        .merge(service::router())
         .merge(skill::router())
         .merge(system_prompt::router())
         .merge(users::router());

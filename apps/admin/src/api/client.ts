@@ -11,6 +11,8 @@ import type {
   LoginResponse,
   McpServerConfig,
   McpServerInput,
+  ServiceConfig,
+  ServiceInput,
   SkillConfig,
   SkillInput,
   SystemPromptConfig,
@@ -194,6 +196,20 @@ export function updateAnnouncement(
 
 export function deleteAnnouncement(id: string): Promise<void> {
   return request<void>(`/api/announcements/${id}`, { method: 'DELETE' })
+}
+
+/* ---------- Services ---------- */
+
+export function createService(body: ServiceInput): Promise<ServiceConfig> {
+  return request<ServiceConfig>('/api/services', { method: 'POST', body })
+}
+
+export function updateService(id: string, body: ServiceInput): Promise<ServiceConfig> {
+  return request<ServiceConfig>(`/api/services/${id}`, { method: 'PUT', body })
+}
+
+export function deleteService(id: string): Promise<void> {
+  return request<void>(`/api/services/${id}`, { method: 'DELETE' })
 }
 
 /* ---------- Users (admin-only; not part of the config snapshot) ---------- */

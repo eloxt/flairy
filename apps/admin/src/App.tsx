@@ -9,6 +9,7 @@ import { McpPage } from '@/pages/McpPage'
 import { SkillsPage } from '@/pages/SkillsPage'
 import { SystemPromptsPage } from '@/pages/SystemPromptsPage'
 import { AnnouncementsPage } from '@/pages/AnnouncementsPage'
+import { ServicesPage } from '@/pages/ServicesPage'
 import { UsersPage } from '@/pages/UsersPage'
 
 export default function App(): React.JSX.Element {
@@ -30,6 +31,7 @@ export default function App(): React.JSX.Element {
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/system-prompts" element={<SystemPromptsPage />} />
             <Route path="/announcements" element={<AnnouncementsPage />} />
+            <Route path="/services" element={<ServicesPage />} />
             <Route path="/users" element={<UsersPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

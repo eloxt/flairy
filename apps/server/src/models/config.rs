@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::announcement::AnnouncementConfig;
 use crate::models::llm::{LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, RoleModels};
 use crate::models::mcp::McpServerConfig;
+use crate::models::service::ServiceConfig;
 use crate::models::skill::{SkillListItem, SkillSummary};
 use crate::models::system_prompt::SystemPromptConfig;
 
@@ -31,6 +32,8 @@ pub struct ConfigSnapshot {
     pub system_prompts: Vec<SystemPromptConfig>,
     /// System announcements shown atop the client's empty chat screen (full rows).
     pub announcements: Vec<AnnouncementConfig>,
+    /// External-service configs (full rows including secret, delivered like LLM credentials).
+    pub services: Vec<ServiceConfig>,
     /// Monotonic global version, bumped on every change.
     pub version: i64,
 }
@@ -47,6 +50,7 @@ impl ConfigSnapshot {
             skills: Vec::new(),
             system_prompts: Vec::new(),
             announcements: Vec::new(),
+            services: Vec::new(),
             version: 0,
         }
     }
@@ -67,6 +71,8 @@ pub struct ConfigUpdate {
     pub system_prompts: Option<Vec<SystemPromptConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub announcements: Option<Vec<AnnouncementConfig>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub services: Option<Vec<ServiceConfig>>,
     pub version: i64,
 }
 
@@ -78,6 +84,7 @@ impl From<&ConfigSnapshot> for ConfigUpdate {
             skills: Some(s.skills.clone()),
             system_prompts: Some(s.system_prompts.clone()),
             announcements: Some(s.announcements.clone()),
+            services: Some(s.services.clone()),
             version: s.version,
         }
     }
@@ -100,5 +107,7 @@ pub struct AdminConfigSnapshot {
     pub system_prompts: Vec<SystemPromptConfig>,
     /// System announcements (full rows; same shape as the client view).
     pub announcements: Vec<AnnouncementConfig>,
+    /// External-service configs (full rows; same shape as the client view).
+    pub services: Vec<ServiceConfig>,
     pub version: i64,
 }
