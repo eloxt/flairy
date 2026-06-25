@@ -82,7 +82,7 @@ export function createWebSearchTool(resolve: () => ExaRuntimeConfig | null): Age
       Query tips:
       describe the ideal page, not keywords. "blog post comparing React and Vue performance" not "React vs Vue".
       Use category:people / category:company to search through Linkedin profiles / companies respectively.
-      If highlights are insufficient, follow up with web_fetch_exa on the best URLs.`,
+      If highlights are insufficient, follow up with web_fetch on the best URLs.`,
     parameters: Type.Object(
       {
         query: Type.String({

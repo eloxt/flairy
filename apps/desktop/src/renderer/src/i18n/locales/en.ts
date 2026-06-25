@@ -98,6 +98,8 @@ const en = {
     ask_other: 'asked you {{count}} questions',
     web_search_one: 'searched the web once',
     web_search_other: 'searched the web {{count}}×',
+    web_fetch_one: 'fetched a web page once',
+    web_fetch_other: 'fetched {{count}} web pages',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -198,6 +200,7 @@ const en = {
     ls: 'list files',
     ask: 'ask you a question',
     web_search: 'search the web',
+    web_fetch: 'fetch a web page',
     fallback: 'use a tool'
   },
   citations: {

@@ -19,6 +19,7 @@ import { createTools, isReadOnlyTool } from "./tools";
 import { createAskTool } from "./tools/ask";
 import { createMemoryTool } from "./tools/memory";
 import { createWebSearchTool, resolveExaService } from "./tools/web-search";
+import { createWebFetchTool } from "./tools/web-fetch";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
 import { approvals } from "./approvals";
@@ -251,6 +252,7 @@ export class AgentService {
     // time from the latest server config (key never captured here).
     if (resolveExaService(this.server.getConfig())) {
       tools.push(createWebSearchTool(() => resolveExaService(this.server.getConfig())));
+      tools.push(createWebFetchTool(() => resolveExaService(this.server.getConfig())));
     }
     tools.push(...this.mcp.getTools());
     return tools;

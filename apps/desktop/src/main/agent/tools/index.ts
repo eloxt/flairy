@@ -25,7 +25,7 @@ export { createReadTool, createWriteTool, createEditTool, createBashTool, create
  * would just nag the user for something inherently safe — matching the
  * always-on, zero-config product model.
  */
-export const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'web_search'])
+export const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'web_search', 'web_fetch'])
 
 export function isReadOnlyTool(name: string): boolean {
   return READ_ONLY_TOOLS.has(name)

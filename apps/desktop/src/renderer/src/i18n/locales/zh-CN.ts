@@ -90,6 +90,8 @@ const zhCN: typeof En = {
     ask_other: '问了你 {{count}} 个问题',
     web_search_one: '搜索了网络',
     web_search_other: '搜索了网络 {{count}} 次',
+    web_fetch_one: '抓取了网页',
+    web_fetch_other: '抓取网页 {{count}} 次',
     other_one: '使用了 {{count}} 个工具',
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
@@ -183,6 +185,7 @@ const zhCN: typeof En = {
     ls: '列出文件',
     ask: '问你一个问题',
     web_search: '搜索网络',
+    web_fetch: '抓取网页',
     fallback: '工具'
   },
   citations: {
