@@ -73,8 +73,8 @@ export type ProviderApi =
   | 'google-generative-ai'
 
 /**
- * Per-token price of a model (USD). Informational only — the client uses it to
- * estimate usage cost; it never gates a request. Mirrors `ModelCost` in
+ * Price of a model in USD per 1M tokens. Informational only — the client uses
+ * it to estimate usage cost; it never gates a request. Mirrors `ModelCost` in
  * `apps/server/src/models/llm.rs`.
  */
 export interface ModelCost {
@@ -116,7 +116,7 @@ export interface LlmModelConfig {
   contextWindow?: number
   /** Max output tokens per turn. Omitted → client default. */
   maxTokens?: number
-  /** Per-token price. Omitted → treated as zero. */
+  /** Price in USD per 1M tokens. Omitted → treated as zero. */
   cost?: ModelCost
 }
 

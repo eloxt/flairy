@@ -172,16 +172,10 @@ function numStr(n: number | undefined): string {
   return n == null ? "" : String(n);
 }
 
-// The contract (DB / serde / pi-ai) stores price as USD per token, but admins
-// edit it as USD per *million* tokens (the industry convention). The form
-// converts on load/submit; nothing downstream changes.
-const PER_MILLION = 1_000_000;
-
-/** Per-token price → per-million-token input string (`undefined` → ""). */
-function costToForm(perToken: number | undefined): string {
-  if (perToken == null) return "";
-  // Round to kill float noise like 0.000003 * 1e6 = 2.9999999999999996.
-  return String(Math.round(perToken * PER_MILLION * 1e6) / 1e6);
+/** Per-1M-token price → input string (`undefined` → ""). */
+function costToForm(perMillion: number | undefined): string {
+  if (perMillion == null) return "";
+  return String(perMillion);
 }
 
 function modelToForm(m: LlmModelConfig): ModelForm {
@@ -237,13 +231,14 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
     form.costCacheRead,
     form.costCacheWrite,
   ].map(parseNum);
-  // Admins enter per-million-token prices; the contract stores per token.
+  // Prices are stored as USD per 1M tokens, the same unit admins type and the
+  // unit pi-ai's cost calc expects — no conversion in or out.
   const cost = costParts.some((n) => n !== undefined)
     ? {
-        input: (costParts[0] ?? 0) / PER_MILLION,
-        output: (costParts[1] ?? 0) / PER_MILLION,
-        cacheRead: (costParts[2] ?? 0) / PER_MILLION,
-        cacheWrite: (costParts[3] ?? 0) / PER_MILLION,
+        input: costParts[0] ?? 0,
+        output: costParts[1] ?? 0,
+        cacheRead: costParts[2] ?? 0,
+        cacheWrite: costParts[3] ?? 0,
       }
     : undefined;
 

@@ -743,6 +743,8 @@ function buildModel(llm: ActiveLlm): PiModel {
     // them with "(image omitted…)". The admin console configures this per model;
     // fall back to text-only if a legacy snapshot omits it.
     input: m.input?.length ? m.input : ["text"],
+    // Prices are stored as USD per 1M tokens, exactly what pi's calculateCost
+    // expects (it divides by 1e6 internally).
     cost: {
       input: m.cost?.input ?? 0,
       output: m.cost?.output ?? 0,

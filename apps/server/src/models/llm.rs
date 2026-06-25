@@ -172,8 +172,8 @@ pub struct LlmProviderInput {
     pub base_url: Option<String>,
 }
 
-/// Per-token price of a model (USD). Informational only — the client uses it to
-/// estimate usage cost; it never gates a request.
+/// Price of a model in USD per 1M tokens. Informational only — the client uses
+/// it to estimate usage cost; it never gates a request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCost {
@@ -214,7 +214,7 @@ pub struct LlmModelConfig {
     /// Max output tokens per turn. `None` → client default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<i32>,
-    /// Per-token price. `None` → treated as zero by the client.
+    /// Price in USD per 1M tokens. `None` → treated as zero by the client.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
 }
