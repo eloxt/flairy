@@ -3,7 +3,12 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Streamdown } from "streamdown";
-import { CircleAlert, ChevronRight, Sparkle, SquareTerminal } from "lucide-react";
+import {
+  CircleAlert,
+  ChevronRight,
+  Sparkle,
+  SquareTerminal,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
@@ -233,7 +238,9 @@ export function MessageList({
         <RowView
           row={row}
           highlight={row.key === highlightKey}
-          sources={row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined}
+          sources={
+            row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined
+          }
           showSources={row.kind === "msg" && footerIds.has(row.m.id)}
         />
       )}
@@ -419,7 +426,9 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
           </div>
         )}
         {m.queued && (
-          <span className="px-1 text-xs text-muted-foreground">{t("chat.queued")}</span>
+          <span className="px-1 text-xs text-muted-foreground">
+            {t("chat.queued")}
+          </span>
         )}
       </div>
     </div>
@@ -445,7 +454,7 @@ function AssistantRow({
   // an unstable plugin reference crashes Streamdown with React #185 — see the note
   // on STREAMDOWN_REMARK_PLUGINS.)
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
+    <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
       {m.thinking?.trim() && (
         <ReasoningBlock
           text={m.thinking}
@@ -456,14 +465,12 @@ function AssistantRow({
       {hasText && (
         <CitationsProvider sources={cites}>
           <Streamdown
-            parseIncompleteMarkdown
             isAnimating={Boolean(m.streaming)}
-            animated
-            caret="block"
+            caret="circle"
             plugins={STREAMDOWN_PLUGINS}
             remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
             components={STREAMDOWN_COMPONENTS}
-            className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono"
+            className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono pt-1"
           >
             {m.text}
           </Streamdown>
@@ -504,12 +511,12 @@ function ReasoningBlock({
     wasAnswered.current = Boolean(answered);
   }, [answered]);
   return (
-    <div className="mb-2">
+    <div>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
+        className="group flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
       >
         <ChevronRight
           className={cn(
@@ -520,7 +527,7 @@ function ReasoningBlock({
         <Sparkle
           className={cn("size-3.5 shrink-0", streaming && "animate-pulse")}
         />
-        <span>{streaming ? t("chat.reasoningLive") : t("chat.reasoning")}</span>
+        <span className="text-xs font-medium">{streaming ? t("chat.reasoningLive") : t("chat.reasoning")}</span>
       </button>
       {open && (
         <div className="mt-1 whitespace-pre-wrap border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
