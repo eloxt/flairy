@@ -205,6 +205,13 @@ const en = {
   },
   citations: {
     sources: 'Sources'
+  },
+  /** Full-screen fallback shown when a page crashes (route errorElement). */
+  error: {
+    title: 'Something went wrong',
+    body: 'Flairy ran into an unexpected problem. Reloading usually fixes it.',
+    reload: 'Reload',
+    details: 'Technical details'
   }
 }
 

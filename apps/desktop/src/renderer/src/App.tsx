@@ -11,6 +11,7 @@ import { Composer } from "@/components/chat/Composer";
 import { RightPanel } from "@/components/chat/RightPanel";
 import { SearchPage } from "@/components/search/SearchPage";
 import { AuthScreen } from "@/components/auth/AuthScreen";
+import { RouteError } from "@/components/RouteError";
 import { UpdateBadge } from "@/components/UpdateBadge";
 import {
   SidebarInset,
@@ -29,6 +30,7 @@ const router = createHashRouter([
   {
     path: "/",
     element: <AppLayout />,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <ChatView /> },
       { path: "search", element: <SearchPage /> },

@@ -190,6 +190,13 @@ const zhCN: typeof En = {
   },
   citations: {
     sources: '来源'
+  },
+  /** Full-screen fallback shown when a page crashes (route errorElement). */
+  error: {
+    title: '出了点问题',
+    body: 'Flairy 遇到了意外问题。重新加载通常就能解决。',
+    reload: '重新加载',
+    details: '技术详情'
   }
 }
 
