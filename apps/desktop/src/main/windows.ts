@@ -1,6 +1,6 @@
-import { shell, BrowserWindow } from 'electron'
-import { join } from 'node:path'
-import { is } from '@electron-toolkit/utils'
+import { shell, BrowserWindow } from "electron";
+import { join } from "node:path";
+import { is } from "@electron-toolkit/utils";
 
 /**
  * Window management. Each window loads its own renderer HTML entry (`index` for
@@ -10,11 +10,11 @@ import { is } from '@electron-toolkit/utils'
  * typed `window.api` bridge.
  */
 
-const PRELOAD = join(import.meta.dirname, '../preload/index.mjs')
-const RENDERER_DIR = join(import.meta.dirname, '../renderer')
+const PRELOAD = join(import.meta.dirname, "../preload/index.mjs");
+const RENDERER_DIR = join(import.meta.dirname, "../renderer");
 
 /** Single reused Settings window, if open. */
-let settingsWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null;
 
 /**
  * The current main window. Tracked at module scope (not captured by callers) so
@@ -24,11 +24,11 @@ let settingsWindow: BrowserWindow | null = null
  * captured reference would then be a destroyed object and every send would throw
  * "Object has been destroyed". Always go through getMainWindow().
  */
-let mainWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null;
 
 /** The live main window, or null if none is currently open (or it's destroyed). */
 export function getMainWindow(): BrowserWindow | null {
-  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 }
 
 // contextIsolation is the real renderer<->main boundary. sandbox is false
@@ -38,66 +38,93 @@ const webPreferences = {
   preload: PRELOAD,
   sandbox: false,
   contextIsolation: true,
-  nodeIntegration: false
-} as const
+  nodeIntegration: false,
+} as const;
 
 /** Load a renderer HTML entry (`index` → main app, `settings` → Settings window). */
-type RendererEntry = 'index' | 'settings' | 'image-viewer'
+type RendererEntry = "index" | "settings" | "image-viewer";
 
 /**
  * Load a renderer HTML entry. `query` (without a leading `?`) is appended so a
  * window can read parameters from `location.search` — used to tell the image
  * viewer which stashed image to fetch.
  */
-function loadRenderer(win: BrowserWindow, entry: RendererEntry = 'index', query = ''): void {
-  const search = query ? `?${query}` : ''
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    const base = process.env['ELECTRON_RENDERER_URL']
-    win.loadURL(entry === 'index' ? `${base}${search}` : `${base}/${entry}.html${search}`)
+function loadRenderer(
+  win: BrowserWindow,
+  entry: RendererEntry = "index",
+  query = "",
+): void {
+  const search = query ? `?${query}` : "";
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    const base = process.env["ELECTRON_RENDERER_URL"];
+    win.loadURL(
+      entry === "index" ? `${base}${search}` : `${base}/${entry}.html${search}`,
+    );
   } else {
-    win.loadFile(join(RENDERER_DIR, `${entry}.html`), query ? { search } : undefined)
+    win.loadFile(
+      join(RENDERER_DIR, `${entry}.html`),
+      query ? { search } : undefined,
+    );
   }
 }
 
 /** External links open in the OS browser, never as in-app navigations. */
 function openLinksExternally(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+    shell.openExternal(details.url);
+    return { action: "deny" };
+  });
 }
 
 export function createMainWindow(): BrowserWindow {
+  const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: "hiddenInset",
     // Center the traffic lights inside the 48px (h-12) custom title bar:
     // ~14px cluster → y = (48 - 14) / 2 ≈ 17.
     trafficLightPosition: { x: 16, y: 15 },
-    webPreferences
-  })
+    // Transparent rails on macOS: the renderer paints the chat surface opaque and
+    // leaves the side rails translucent (the `.vibrancy` class), so the desktop
+    // shows through the sidebar/details panel. We use a genuinely transparent
+    // window rather than the native `vibrancy` material: on macOS 26 (Tahoe) with
+    // Electron 34 the NSVisualEffectView materials render as a flat opaque gray
+    // and never reveal the desktop, so the frosted-glass approach is dead. A
+    // `transparent` window lets the rail's low-alpha `--sidebar` tint show the
+    // real desktop behind it (no blur, but actually see-through).
+    ...(isMac
+      ? {
+          vibrancy: "sidebar" as const,
+          visualEffectState: "active" as const,
+          backgroundColor: "#00000000",
+        }
+      : {
+          backgroundMaterial: "mica" as const,
+        }),
+    webPreferences,
+  });
 
-  win.on('ready-to-show', () => win.show())
+  win.on("ready-to-show", () => win.show());
   // Track the live main window so renderer-bound sends always resolve the current
   // one, even after a close→reopen on macOS. Clear the ref only if THIS window is
   // the one being destroyed (a later recreate overwrites it again).
-  win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null
-  })
-  openLinksExternally(win)
-  loadRenderer(win)
-  mainWindow = win
-  return win
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+  openLinksExternally(win);
+  loadRenderer(win);
+  mainWindow = win;
+  return win;
 }
 
 /** Open the standalone Settings window, or focus it if already open. */
 export function openSettingsWindow(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.focus()
-    return
+    settingsWindow.focus();
+    return;
   }
 
   const win = new BrowserWindow({
@@ -106,20 +133,20 @@ export function openSettingsWindow(): void {
     minWidth: 520,
     minHeight: 480,
     show: false,
-    title: 'Settings',
+    title: "Settings",
     autoHideMenuBar: true,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 15 },
-    webPreferences
-  })
+    webPreferences,
+  });
 
-  win.on('ready-to-show', () => win.show())
-  win.on('closed', () => {
-    settingsWindow = null
-  })
-  openLinksExternally(win)
-  loadRenderer(win, 'settings')
-  settingsWindow = win
+  win.on("ready-to-show", () => win.show());
+  win.on("closed", () => {
+    settingsWindow = null;
+  });
+  openLinksExternally(win);
+  loadRenderer(win, "settings");
+  settingsWindow = win;
 }
 
 /**
@@ -134,23 +161,23 @@ export function openImageViewerWindow(id: string): BrowserWindow {
     minWidth: 320,
     minHeight: 240,
     show: false,
-    title: 'Image',
-    backgroundColor: '#000000',
+    title: "Image",
+    backgroundColor: "#000000",
     autoHideMenuBar: true,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 15 },
-    webPreferences
-  })
+    webPreferences,
+  });
 
-  win.on('ready-to-show', () => win.show())
-  openLinksExternally(win)
-  loadRenderer(win, 'image-viewer', `id=${encodeURIComponent(id)}`)
-  return win
+  win.on("ready-to-show", () => win.show());
+  openLinksExternally(win);
+  loadRenderer(win, "image-viewer", `id=${encodeURIComponent(id)}`);
+  return win;
 }
 
 /** Send an event to every live renderer window (config + auth changes fan out). */
 export function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, payload)
+    win.webContents.send(channel, payload);
   }
 }

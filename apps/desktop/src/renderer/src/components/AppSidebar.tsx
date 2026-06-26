@@ -41,7 +41,9 @@ export function AppSidebar(): React.JSX.Element {
   const isMac = window.api.platform === "darwin";
 
   return (
-    <Sidebar className="border-r border-sidebar-border">
+    // No right border: the frosted rail is separated from the chat surface by the
+    // seam shadow alone. `!` overrides the ui sidebar's default left-side border-r.
+    <Sidebar className="border-r-0!">
       <SidebarHeader className={cn("app-drag gap-2 px-3 pb-2", isMac ? "pt-11" : "pt-2")}>
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>

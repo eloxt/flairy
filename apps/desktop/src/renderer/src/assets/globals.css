@@ -151,6 +151,9 @@
     --sidebar-accent-foreground: oklch(0.21 0 0);
     --sidebar-border: oklch(0 0 0 / 7%);
     --sidebar-ring: oklch(0.45 0 0);
+
+    /* Seam shadow where the opaque chat surface meets the frosted rails. */
+    --rail-shadow: rgba(0, 0, 0, 0.2);
 }
 
 /* ── Obsidian · Dark ─────────────────────────────────────────────────────────
@@ -191,6 +194,26 @@
     --sidebar-accent-foreground: oklch(0.95 0 0);
     --sidebar-border: oklch(1 0 0 / 8%);
     --sidebar-ring: oklch(0.55 0 0);
+
+    --rail-shadow: rgba(0, 0, 0, 0.5);
+}
+
+/* ── Frosted rails (macOS vibrancy) ──────────────────────────────────────────
+   The main window tags <html> with `.vibrancy` on macOS, where the window
+   background is a native NSVisualEffectView ('sidebar' material). We make the
+   body transparent so that material shows through, and tint the rails so the
+   desktop blurs through them just like a native sidebar. The chat surface stays
+   opaque (painted in the layout), so only the rails are translucent.          */
+:root.vibrancy {
+    --sidebar: oklch(0.97 0 0 / 0.55);
+    --sidebar-border: oklch(0 0 0 / 8%);
+}
+.dark.vibrancy {
+    --sidebar: oklch(0.15 0 0 / 0.45);
+    --sidebar-border: oklch(1 0 0 / 9%);
+}
+.vibrancy body {
+    background: transparent;
 }
 
 @layer base {

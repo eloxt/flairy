@@ -99,8 +99,13 @@ function ChatView(): React.JSX.Element {
     // A flex row: the chat column fills the space and the details drawer sits to
     // its right, reaching the very top like the left sidebar (header is inside
     // the chat column only).
-    <div className="flex flex-1 overflow-hidden">
-      <div className="relative flex min-w-0 flex-1 flex-col">
+    // The seam shadow lives on THIS overflow-hidden row, not the chat column: an
+    // element's own box-shadow isn't clipped by its own overflow, but a child's
+    // would be. z-10 keeps it above the fixed sidebar so the shadow lands on the
+    // frosted rail. The right panel reveals vibrancy, so the row stays transparent
+    // (no bg here) — only the chat column paints the opaque chat surface.
+    <div className="relative z-10 flex flex-1 overflow-hidden shadow-[-4px_0_12px_-8px_var(--rail-shadow)]">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col bg-background">
         <ChatHeader />
         <div className="relative flex-1 overflow-hidden">
           <MessageList messages={messages} />

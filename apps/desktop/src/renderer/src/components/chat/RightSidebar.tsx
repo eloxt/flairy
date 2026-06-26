@@ -15,7 +15,7 @@ export function RightSidebar(): React.JSX.Element {
   const messages = useChat((s) => s.messages)
 
   return (
-    <Tabs defaultValue="timeline" className="h-full bg-background">
+    <Tabs defaultValue="timeline" className="h-full bg-transparent">
       {/* The tab bar doubles as the panel's top bar: same height as the chat
           header (h-12) so the two columns' dividers line up, and draggable so
           the window can still be moved from the top-right. */}

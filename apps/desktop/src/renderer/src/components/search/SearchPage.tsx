@@ -87,10 +87,11 @@ export function SearchPage(): React.JSX.Element {
   const showResults = query.trim().length > 0;
 
   return (
-    // Fragment children sit directly in SidebarInset (a flex-1 flex-col) — header
-    // and search box stay shrink-0/pinned while only the results region scrolls,
-    // mirroring the chat page so the title bar never scrolls with the content.
-    <>
+    // Opaque surface filling SidebarInset (a flex-1 flex-col): paints over the
+    // window vibrancy and casts the same hairline seam shadow onto the sidebar as
+    // the chat column. Header and search box stay shrink-0/pinned while only the
+    // results region scrolls, so the title bar never scrolls with the content.
+    <div className="relative z-10 flex flex-1 flex-col bg-background shadow-[-4px_0_12px_-8px_var(--rail-shadow)]">
       <header
         className={cn(
           "app-drag flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-4",
@@ -160,6 +161,6 @@ export function SearchPage(): React.JSX.Element {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

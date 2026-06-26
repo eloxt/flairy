@@ -71,8 +71,14 @@ export function RightPanel(): React.JSX.Element {
       />
       {/* Clip window (fills the gap): hides the panel as it slides out right. */}
       <div className="absolute inset-0 overflow-hidden">
+        {/* Frosted rail matching the left sidebar (bg-sidebar → translucent under
+            vibrancy). The inset shadow sits on its inner left edge, so the seam
+            shadow falls onto the panel and slides away with it when closed. */}
         <div
-          className={cn('absolute inset-y-0 right-0 bg-background', ease)}
+          className={cn(
+            'absolute inset-y-0 right-0 bg-sidebar shadow-[inset_4px_0_12px_-8px_var(--rail-shadow)]',
+            ease
+          )}
           style={{ width, transform: open ? 'translateX(0)' : 'translateX(100%)' }}
         >
           <RightSidebar />
