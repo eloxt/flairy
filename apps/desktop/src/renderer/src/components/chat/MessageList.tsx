@@ -585,7 +585,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
         </span>
         {m.toolArg && (
           <span
-            className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground/60"
+            className="min-w-0 flex-1 truncate text-xs text-muted-foreground/60"
             title={m.toolArg}
           >
             {m.toolArg}

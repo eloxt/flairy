@@ -51,7 +51,7 @@ export function TimelinePanel({ messages }: { messages: UiMessage[] }): React.JS
               >
                 <span className="truncate text-[0.8rem] text-foreground">{preview}</span>
                 {m.timestamp ? (
-                  <span className="font-mono text-[0.65rem] text-muted-foreground tabular-nums">
+                  <span className="text-[0.65rem] text-muted-foreground tabular-nums">
                     {clockTime(m.timestamp)}
                   </span>
                 ) : null}
