@@ -184,6 +184,28 @@ export interface McpServerConfig {
   enabled: boolean
 }
 
+/**
+ * Who a resource (MCP server / skill / service) is delivered to.
+ * - `all` — every signed-in client (default).
+ * - `specific` — only the users listed in the resource's `assignedUserIds`.
+ *
+ * Mirrors the Rust `Audience` enum. This lives on the ADMIN read model only; the
+ * client-facing snapshot is already filtered server-side, so {@link ConfigSnapshot}
+ * / {@link ConfigUpdate} never carry audience.
+ */
+export type Audience = 'all' | 'specific'
+
+/**
+ * Admin view of an MCP server: the client {@link McpServerConfig} plus its
+ * audience assignment. Returned inside {@link AdminConfigSnapshot}; the
+ * client-facing {@link McpServerConfig} is unchanged.
+ */
+export type AdminMcpServerConfig = McpServerConfig & {
+  audience: Audience
+  /** User ids the resource is assigned to when `audience === 'specific'`. */
+  assignedUserIds: string[]
+}
+
 /** Create/update payload for an MCP server. */
 export interface McpServerInput {
   name: string
@@ -257,7 +279,12 @@ export interface SkillConfig {
  * `SkillConfig` without its heavy `skillMdBody` and `files` (keeps `fileCount`).
  * Mirrors `SkillListItem` in `apps/server/src/models/skill.rs`.
  */
-export type SkillListItem = Omit<SkillConfig, 'skillMdBody' | 'files'>
+export type SkillListItem = Omit<SkillConfig, 'skillMdBody' | 'files'> & {
+  /** Audience this skill is delivered to (admin read model only). */
+  audience: Audience
+  /** User ids the skill is assigned to when `audience === 'specific'`. */
+  assignedUserIds: string[]
+}
 
 /**
  * A file entry in a create/update payload. The server resolves the bytes from
@@ -386,6 +413,27 @@ export interface ServiceInput {
 }
 
 /**
+ * Admin view of an external service: the client {@link ServiceConfig} plus its
+ * audience assignment. Returned inside {@link AdminConfigSnapshot}; the
+ * client-facing {@link ServiceConfig} is unchanged.
+ */
+export type AdminServiceConfig = ServiceConfig & {
+  audience: Audience
+  /** User ids the service is assigned to when `audience === 'specific'`. */
+  assignedUserIds: string[]
+}
+
+/**
+ * PUT body for the per-resource assignment endpoints
+ * (`PUT /api/{mcp-servers,skills,services}/:id/assignment`). When
+ * `audience === 'all'`, `userIds` is ignored by the server.
+ */
+export interface ResourceAssignment {
+  audience: Audience
+  userIds: string[]
+}
+
+/**
  * Reserved {@link SystemPromptConfig.name} the client uses as the agent's own
  * system prompt (matched case-insensitively, trimmed). Other prompts are ignored.
  */
@@ -447,14 +495,15 @@ export interface AdminConfigSnapshot {
   llmModels: LlmModelConfig[]
   /** Current role→model bindings (at most one per role). */
   llmRoleAssignments: LlmRoleAssignment[]
-  mcpServers: McpServerConfig[]
+  /** MCP servers carrying their audience assignment (admin variant). */
+  mcpServers: AdminMcpServerConfig[]
   skills: SkillListItem[]
   /** System prompts (full rows; same shape as the client view). */
   systemPrompts: SystemPromptConfig[]
   /** System announcements (full rows; same shape as the client view). */
   announcements: AnnouncementConfig[]
-  /** External services with secrets (e.g. Exa web search). */
-  services: ServiceConfig[]
+  /** External services with secrets, carrying their audience assignment (admin variant). */
+  services: AdminServiceConfig[]
   version: number
 }
 

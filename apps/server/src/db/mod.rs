@@ -7,6 +7,7 @@
 //! - [`config`] — aggregate snapshot loaders + the global version bump.
 
 pub mod announcement;
+pub mod assignments;
 pub mod config;
 pub mod llm;
 pub mod mcp;

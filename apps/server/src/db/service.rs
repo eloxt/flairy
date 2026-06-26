@@ -7,8 +7,9 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::{config::bump_version, parse_uuid};
-use crate::error::AppResult;
-use crate::models::service::{ServiceConfig, ServiceInput, ServiceKind};
+use crate::error::{AppError, AppResult};
+use crate::models::audience::{Audience, ResourceAssignment};
+use crate::models::service::{AdminServiceConfig, ServiceConfig, ServiceInput, ServiceKind};
 
 fn map_row(row: &PgRow) -> AppResult<ServiceConfig> {
     Ok(ServiceConfig {
@@ -29,6 +30,79 @@ pub async fn list(pool: &PgPool) -> AppResult<Vec<ServiceConfig>> {
         .fetch_all(pool)
         .await?;
     rows.iter().map(map_row).collect()
+}
+
+/// Services visible to one user: `audience='all'` plus any specifically assigned.
+pub async fn list_for_user(pool: &PgPool, user_id: &str) -> AppResult<Vec<ServiceConfig>> {
+    let uid = parse_uuid(user_id)?;
+    let sql = format!(
+        "{SELECT} WHERE audience = 'all' OR id IN \
+         (SELECT resource_id FROM resource_assignments \
+          WHERE resource_type = 'service' AND user_id = $1) \
+         ORDER BY sort_order, created_at ASC"
+    );
+    let rows = sqlx::query(&sql).bind(uid).fetch_all(pool).await?;
+    rows.iter().map(map_row).collect()
+}
+
+fn map_admin_row(row: &PgRow) -> AppResult<AdminServiceConfig> {
+    Ok(AdminServiceConfig {
+        config: map_row(row)?,
+        audience: Audience::from_db(row.get::<String, _>("audience").as_str()),
+        assigned_user_ids: row.get::<Vec<String>, _>("assigned_user_ids"),
+    })
+}
+
+/// Admin read: services with their audience + assigned user ids.
+pub async fn list_admin(pool: &PgPool) -> AppResult<Vec<AdminServiceConfig>> {
+    let rows = sqlx::query(
+        "SELECT id, kind, name, enabled, secret, settings, audience, \
+         ARRAY(SELECT ra.user_id::text FROM resource_assignments ra \
+           WHERE ra.resource_type = 'service' AND ra.resource_id = services.id \
+           ORDER BY ra.created_at) AS assigned_user_ids \
+         FROM services ORDER BY sort_order, created_at ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(map_admin_row).collect()
+}
+
+/// Set the audience + assignment for one service (transactional, bumps version).
+pub async fn set_assignment(
+    pool: &PgPool,
+    id: &str,
+    assignment: &ResourceAssignment,
+) -> AppResult<i64> {
+    let rid = parse_uuid(id)?;
+    let mut user_ids = Vec::with_capacity(assignment.user_ids.len());
+    for u in &assignment.user_ids {
+        user_ids.push(parse_uuid(u)?);
+    }
+    user_ids.sort();
+    user_ids.dedup();
+
+    let mut tx = pool.begin().await?;
+    super::assignments::ensure_users_exist(&mut tx, &user_ids).await?;
+
+    let updated = sqlx::query("UPDATE services SET audience = $2, updated_at = now() WHERE id = $1 RETURNING id")
+        .bind(rid)
+        .bind(assignment.audience.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+    if updated.is_none() {
+        tx.rollback().await?;
+        return Err(AppError::NotFound);
+    }
+
+    let to_assign: &[Uuid] = match assignment.audience {
+        Audience::Specific => &user_ids,
+        Audience::All => &[],
+    };
+    super::assignments::replace_assignments(&mut tx, "service", rid, to_assign).await?;
+
+    let version = bump_version(&mut tx).await?;
+    tx.commit().await?;
+    Ok(version)
 }
 
 pub async fn create(pool: &PgPool, input: &ServiceInput) -> AppResult<(ServiceConfig, i64)> {
@@ -100,6 +174,8 @@ pub async fn delete(pool: &PgPool, id: &str) -> AppResult<Option<i64>> {
         tx.rollback().await?;
         return Ok(None);
     }
+
+    super::assignments::purge_assignments(&mut tx, "service", uid).await?;
 
     let version = bump_version(&mut tx).await?;
     tx.commit().await?;

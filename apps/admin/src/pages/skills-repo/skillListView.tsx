@@ -25,8 +25,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { useDeleteSkill, useListSkills } from './queries'
-import type { SkillListItem } from '@flairy/shared'
+import { useDeleteSkill, useListSkills, useSetSkillAssignment } from './queries'
+import type { ResourceAssignment, SkillListItem } from '@flairy/shared'
 import {
   ArrowDown,
   ArrowUp,
@@ -39,10 +39,13 @@ import {
   Plus,
   Search,
   Trash2,
+  Users,
   BookOpenText
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useUsers } from '@/hooks/useUsers'
+import { AssignDialog, audienceLabel } from '@/components/AssignDialog'
 import { PAGE_SIZE, formatDateShort, useDebouncedValue } from './helpers'
 
 // ---------- SortableHeader ----------
@@ -85,10 +88,12 @@ function SortableHeader({
 function SkillActionsMenu({
   skill,
   isDeleting,
+  onAssign,
   onDelete
 }: {
   skill: SkillListItem
   isDeleting: boolean
+  onAssign: (skill: SkillListItem) => void
   onDelete: (id: string) => Promise<void>
 }): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
@@ -110,6 +115,17 @@ function SkillActionsMenu({
           <MoreHorizontal className="h-4 w-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            className="cursor-pointer"
+            closeOnClick={false}
+            onClick={() => {
+              onAssign(skill)
+              setIsOpen(false)
+            }}
+          >
+            <Users className="h-4 w-4" />
+            Assign users
+          </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             className="cursor-pointer"
@@ -163,6 +179,9 @@ export function SkillsListView({
 }): React.JSX.Element {
   const deleteMutation = useDeleteSkill()
   const isDeleting = deleteMutation.isPending
+  const assignMutation = useSetSkillAssignment()
+  const { users, loading: usersLoading, error: usersError } = useUsers()
+  const [assigning, setAssigning] = useState<SkillListItem | null>(null)
 
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
@@ -193,6 +212,19 @@ export function SkillsListView({
     } else {
       setSortBy(column)
       setSortOrder('asc')
+    }
+  }
+
+  const handleAssign = async (body: ResourceAssignment): Promise<void> => {
+    if (!assigning) return
+    try {
+      await assignMutation.mutateAsync({ id: assigning.id, body })
+      toast.success('Assignment updated')
+      setAssigning(null)
+    } catch (err: unknown) {
+      toast.error('Failed to update assignment', {
+        description: err instanceof Error ? err.message : undefined
+      })
     }
   }
 
@@ -299,6 +331,7 @@ export function SkillsListView({
               </TableHead>
               <TableHead>Description</TableHead>
               <TableHead className="w-28">Files</TableHead>
+              <TableHead className="w-32">Audience</TableHead>
               <TableHead className="w-24">Enabled</TableHead>
               <TableHead className="w-44">
                 <SortableHeader
@@ -317,7 +350,7 @@ export function SkillsListView({
           <TableBody>
             {skills.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 text-muted-foreground" />
                     <p className="text-muted-foreground text-sm">
@@ -365,6 +398,14 @@ export function SkillsListView({
                       </span>
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Badge
+                        variant={skill.audience === 'all' ? 'secondary' : 'default'}
+                        className="text-xs"
+                      >
+                        {audienceLabel(skill.audience, skill.assignedUserIds)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       {skill.enabled ? (
                         <Badge variant="secondary" className="text-xs">
                           On
@@ -382,6 +423,7 @@ export function SkillsListView({
                       <SkillActionsMenu
                         skill={skill}
                         isDeleting={isDeleting}
+                        onAssign={setAssigning}
                         onDelete={handleDeleteSkill}
                       />
                     </TableCell>
@@ -426,6 +468,22 @@ export function SkillsListView({
             </Button>
           </div>
         </div>
+      )}
+
+      {assigning && (
+        <AssignDialog
+          resourceName={assigning.name}
+          initial={{
+            audience: assigning.audience,
+            userIds: assigning.assignedUserIds
+          }}
+          users={users}
+          usersLoading={usersLoading}
+          usersError={usersError}
+          saving={assignMutation.isPending}
+          onCancel={() => setAssigning(null)}
+          onSubmit={(body) => void handleAssign(body)}
+        />
       )}
     </div>
   )

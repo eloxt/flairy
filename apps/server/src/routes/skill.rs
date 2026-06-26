@@ -12,12 +12,14 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{authed, authed_admin};
+use super::{authed, authed_admin, authed_user};
 use crate::db;
 use crate::db::skill::{SkillListParams, MAX_SKILL_FILE_SIZE};
 use crate::error::{AppError, AppResult};
+use crate::models::audience::ResourceAssignment;
 use crate::models::skill::{SkillConfig, SkillInput};
 use crate::state::AppState;
+use axum::routing::put;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -25,6 +27,7 @@ pub fn router() -> Router<AppState> {
         // `files` segment is matched ahead of the `:id` capture.
         .route("/api/skills/files/upload", post(upload_file))
         .route("/api/skills/{id}/files/{*path}", get(read_file))
+        .route("/api/skills/{id}/assignment", put(set_assignment))
         .route("/api/skills", get(list).post(create))
         .route(
             "/api/skills/{id}",
@@ -89,10 +92,30 @@ async fn get_skill(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> AppResult<Json<SkillConfig>> {
-    authed_admin(&state, &headers)?;
+    let claims = authed_user(&state, &headers)?;
     let pool = state.pool()?;
+    // Admins manage everything; non-admins may read a skill only if it is
+    // assigned to them (audience='all' or an explicit assignment).
+    if !claims.is_admin() && !db::skill::user_can_access(pool, &id, &claims.sub).await? {
+        return Err(AppError::Forbidden);
+    }
     let skill = db::skill::get(pool, &id).await?.ok_or(AppError::NotFound)?;
     Ok(Json(skill))
+}
+
+/* ---------- assignment ---------- */
+
+async fn set_assignment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<ResourceAssignment>,
+) -> AppResult<StatusCode> {
+    authed_admin(&state, &headers)?;
+    let pool = state.pool()?;
+    db::skill::set_assignment(pool, &id, &body).await?;
+    state.broadcast_config().await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /* ---------- create ---------- */
@@ -188,15 +211,20 @@ async fn upload_file(
     Ok(Json(resp))
 }
 
-/* ---------- raw file read (any authenticated user) ---------- */
+/* ---------- raw file read (entitled users only) ---------- */
 
 async fn read_file(
     State(state): State<AppState>,
     Path((id, path)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> AppResult<Response> {
-    authed(&state, &headers)?;
+    let claims = authed(&state, &headers)?;
     let pool = state.pool()?;
+    // Same entitlement gate as `get_skill`: admins pass; non-admins must be
+    // assigned the skill. Closes the prior any-user-reads-any-file leak.
+    if !claims.is_admin() && !db::skill::user_can_access(pool, &id, &claims.sub).await? {
+        return Err(AppError::Forbidden);
+    }
 
     let (bytes, mime_type) = db::skill::read_file(pool, &id, &path)
         .await?

@@ -29,14 +29,14 @@ pub async fn current_version(pool: &PgPool) -> AppResult<i64> {
 }
 
 /// The CLIENT read model: the per-role active LLMs + full mcp/skill lists + version.
-pub async fn load_client_snapshot(pool: &PgPool) -> AppResult<ConfigSnapshot> {
+pub async fn load_client_snapshot(pool: &PgPool, user_id: &str) -> AppResult<ConfigSnapshot> {
     Ok(ConfigSnapshot {
         llm: super::llm::role_models(pool).await?,
-        mcp_servers: super::mcp::list(pool).await?,
-        skills: super::skill::list_summaries(pool).await?,
+        mcp_servers: super::mcp::list_for_user(pool, user_id).await?,
+        skills: super::skill::list_summaries_for_user(pool, user_id).await?,
         system_prompts: super::system_prompt::list(pool).await?,
         announcements: super::announcement::list(pool).await?,
-        services: super::service::list(pool).await?,
+        services: super::service::list_for_user(pool, user_id).await?,
         version: current_version(pool).await?,
     })
 }
@@ -48,11 +48,11 @@ pub async fn load_admin_snapshot(pool: &PgPool) -> AppResult<AdminConfigSnapshot
         llm_providers: super::llm::list_providers(pool).await?,
         llm_models: super::llm::list_models(pool).await?,
         llm_role_assignments: super::llm::list_role_assignments(pool).await?,
-        mcp_servers: super::mcp::list(pool).await?,
+        mcp_servers: super::mcp::list_admin(pool).await?,
         skills: super::skill::list_items(pool).await?,
         system_prompts: super::system_prompt::list(pool).await?,
         announcements: super::announcement::list(pool).await?,
-        services: super::service::list(pool).await?,
+        services: super::service::list_admin(pool).await?,
         version: current_version(pool).await?,
     })
 }

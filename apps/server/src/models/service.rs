@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::models::audience::Audience;
+
 /// Which third-party service this row configures. Closed set mirrored by the
 /// DB `kind` column and `ServiceKind` on the TS side.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -54,6 +56,17 @@ pub struct ServiceConfig {
     pub secret: String,
     /// Arbitrary service-specific settings (e.g. number of results, base URL).
     pub settings: serde_json::Value,
+}
+
+/// Admin read model: a service row plus its audience + assigned users. Carried
+/// by `AdminConfigSnapshot`; never delivered to clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceConfig {
+    #[serde(flatten)]
+    pub config: ServiceConfig,
+    pub audience: Audience,
+    pub assigned_user_ids: Vec<String>,
 }
 
 /// Create/update payload from the admin UI.

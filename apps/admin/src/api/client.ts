@@ -11,6 +11,7 @@ import type {
   LoginResponse,
   McpServerConfig,
   McpServerInput,
+  ResourceAssignment,
   ServiceConfig,
   ServiceInput,
   SkillConfig,
@@ -164,6 +165,11 @@ export function deleteMcpServer(id: string): Promise<void> {
   return request<void>(`/api/mcp-servers/${id}`, { method: 'DELETE' })
 }
 
+/** Set who an MCP server is delivered to (everyone vs. specific users). */
+export function setMcpAssignment(id: string, body: ResourceAssignment): Promise<void> {
+  return request<void>(`/api/mcp-servers/${id}/assignment`, { method: 'PUT', body })
+}
+
 /* ---------- System prompts ---------- */
 
 export function createSystemPrompt(body: SystemPromptInput): Promise<SystemPromptConfig> {
@@ -210,6 +216,11 @@ export function updateService(id: string, body: ServiceInput): Promise<ServiceCo
 
 export function deleteService(id: string): Promise<void> {
   return request<void>(`/api/services/${id}`, { method: 'DELETE' })
+}
+
+/** Set who a service is delivered to (everyone vs. specific users). */
+export function setServiceAssignment(id: string, body: ResourceAssignment): Promise<void> {
+  return request<void>(`/api/services/${id}/assignment`, { method: 'PUT', body })
 }
 
 /* ---------- Users (admin-only; not part of the config snapshot) ---------- */
@@ -259,6 +270,11 @@ export function updateSkill(id: string, body: SkillInput): Promise<SkillConfig> 
 
 export function deleteSkill(id: string): Promise<void> {
   return request<void>(`/api/skills/${id}`, { method: 'DELETE' })
+}
+
+/** Set who a skill is delivered to (everyone vs. specific users). */
+export function setSkillAssignment(id: string, body: ResourceAssignment): Promise<void> {
+  return request<void>(`/api/skills/${id}/assignment`, { method: 'PUT', body })
 }
 
 /**

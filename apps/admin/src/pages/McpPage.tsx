@@ -1,18 +1,23 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Users } from "lucide-react";
 import type {
+  AdminMcpServerConfig,
   McpServerConfig,
   McpServerInput,
   McpTransport,
+  ResourceAssignment,
 } from "@flairy/shared";
 import { useConfig } from "@/hooks/useConfig";
+import { useUsers } from "@/hooks/useUsers";
 import {
   createMcpServer,
   deleteMcpServer,
+  setMcpAssignment,
   updateMcpServer,
 } from "@/api/client";
 import { PageError, PageLoading } from "@/components/PageState";
 import { PageHeader } from "@/components/PageHeader";
+import { AssignDialog, audienceLabel } from "@/components/AssignDialog";
 import {
   KeyValueEditor,
   recordToRows,
@@ -20,6 +25,7 @@ import {
   type KvRow,
 } from "@/components/KeyValueEditor";
 import { TablePanel, TableEmpty } from "@/components/TablePanel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -132,13 +138,25 @@ function transportSummary(t: McpTransport): string {
 
 export function McpPage(): React.JSX.Element {
   const { config, loading, error, saving, mutate } = useConfig();
+  const { users, loading: usersLoading, error: usersError } = useUsers();
   const [editing, setEditing] = useState<ServerForm | null>(null);
+  const [assigning, setAssigning] = useState<AdminMcpServerConfig | null>(null);
 
   if (loading) return <PageLoading />;
   if (error && !config) return <PageError message={error} />;
   if (!config) return <PageError message="No configuration available." />;
 
   const servers = config.mcpServers;
+
+  async function handleAssign(body: ResourceAssignment): Promise<void> {
+    if (!assigning) return;
+    try {
+      await mutate(() => setMcpAssignment(assigning.id, body));
+      setAssigning(null);
+    } catch {
+      // surfaced via hook error state
+    }
+  }
 
   async function handleSubmit(): Promise<void> {
     if (!editing) return;
@@ -203,6 +221,7 @@ export function McpPage(): React.JSX.Element {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Transport</TableHead>
+                <TableHead className="w-32">Audience</TableHead>
                 <TableHead className="w-20">Enabled</TableHead>
                 <TableHead className="w-24 text-right">Actions</TableHead>
               </TableRow>
@@ -215,6 +234,13 @@ export function McpPage(): React.JSX.Element {
                     {transportSummary(s.transport)}
                   </TableCell>
                   <TableCell>
+                    <Badge
+                      variant={s.audience === "all" ? "secondary" : "default"}
+                    >
+                      {audienceLabel(s.audience, s.assignedUserIds)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
                     <Switch
                       checked={s.enabled}
                       onCheckedChange={(v) => void handleToggle(s, v)}
@@ -223,6 +249,14 @@ export function McpPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Assign ${s.name}`}
+                        onClick={() => setAssigning(s)}
+                      >
+                        <Users className="size-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -254,6 +288,22 @@ export function McpPage(): React.JSX.Element {
           onChange={setEditing}
           onCancel={() => setEditing(null)}
           onSubmit={handleSubmit}
+        />
+      )}
+
+      {assigning && (
+        <AssignDialog
+          resourceName={assigning.name}
+          initial={{
+            audience: assigning.audience,
+            userIds: assigning.assignedUserIds,
+          }}
+          users={users}
+          usersLoading={usersLoading}
+          usersError={usersError}
+          saving={saving}
+          onCancel={() => setAssigning(null)}
+          onSubmit={(body) => void handleAssign(body)}
         />
       )}
     </div>

@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::models::audience::Audience;
+
 /// How the client should connect to an MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -39,6 +41,17 @@ pub struct McpServerConfig {
     pub name: String,
     pub transport: McpTransport,
     pub enabled: bool,
+}
+
+/// Admin read model: a server row plus its audience + assigned users. Carried
+/// by `AdminConfigSnapshot`; never delivered to clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminMcpServer {
+    #[serde(flatten)]
+    pub config: McpServerConfig,
+    pub audience: Audience,
+    pub assigned_user_ids: Vec<String>,
 }
 
 /// Create/update payload from the admin UI.

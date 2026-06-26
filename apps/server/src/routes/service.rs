@@ -8,6 +8,7 @@ use axum::{Json, Router};
 use super::authed_admin;
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::models::audience::ResourceAssignment;
 use crate::models::service::{ServiceConfig, ServiceInput};
 use crate::state::AppState;
 
@@ -15,6 +16,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/services", get(list).post(create))
         .route("/api/services/{id}", put(update).delete(delete))
+        .route("/api/services/{id}/assignment", put(set_assignment))
 }
 
 async fn list(
@@ -63,6 +65,19 @@ async fn delete(
     db::service::delete(pool, &id)
         .await?
         .ok_or(AppError::NotFound)?;
+    state.broadcast_config().await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn set_assignment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<ResourceAssignment>,
+) -> AppResult<StatusCode> {
+    authed_admin(&state, &headers)?;
+    let pool = state.pool()?;
+    db::service::set_assignment(pool, &id, &body).await?;
     state.broadcast_config().await;
     Ok(StatusCode::NO_CONTENT)
 }

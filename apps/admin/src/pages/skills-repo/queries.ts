@@ -5,13 +5,14 @@ import {
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
-import type { SkillConfig, SkillInput } from '@flairy/shared'
+import type { ResourceAssignment, SkillConfig, SkillInput } from '@flairy/shared'
 
 import {
   createSkill,
   deleteSkill,
   getSkill,
   listSkills,
+  setSkillAssignment,
   updateSkill,
   uploadSkillFile
 } from '@/api/client'
@@ -79,6 +80,21 @@ export function useDeleteSkill(): UseMutationResult<void, Error, string> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteSkill(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: skillsKeys.all })
+    }
+  })
+}
+
+export function useSetSkillAssignment(): UseMutationResult<
+  void,
+  Error,
+  { id: string; body: ResourceAssignment }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ResourceAssignment }) =>
+      setSkillAssignment(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: skillsKeys.all })
     }

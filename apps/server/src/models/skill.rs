@@ -10,6 +10,8 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::models::audience::Audience;
+
 /// File source discriminator. The same set Bifrost uses.
 pub const SOURCE_TYPE_URL: &str = "url";
 pub const SOURCE_TYPE_TEXT: &str = "text";
@@ -83,6 +85,10 @@ pub struct SkillListItem {
     pub allowed_tools: Option<String>,
     pub enabled: bool,
     pub file_count: i64,
+    /// Audience mode for delivery (admin-only field; clients never see it).
+    pub audience: Audience,
+    /// Users this skill is assigned to when `audience == Specific` (admin-only).
+    pub assigned_user_ids: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use super::{config::bump_version, json_err, parse_uuid};
 use crate::error::{AppError, AppResult};
+use crate::models::audience::{Audience, ResourceAssignment};
 use crate::models::skill::{
     SkillConfig, SkillFile, SkillFileEntry, SkillInput, SkillListItem, SkillSummary,
     UploadFileResponse, SOURCE_TYPE_DATAURL, SOURCE_TYPE_TEXT, SOURCE_TYPE_UPLOAD, SOURCE_TYPE_URL,
@@ -50,14 +51,20 @@ fn map_list_item(row: &PgRow) -> AppResult<SkillListItem> {
         allowed_tools: row.get("allowed_tools"),
         enabled: row.get("enabled"),
         file_count: row.get("file_count"),
+        audience: Audience::from_db(row.get::<String, _>("audience").as_str()),
+        assigned_user_ids: row.get::<Vec<String>, _>("assigned_user_ids"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     })
 }
 
 const LIST_SELECT: &str = "SELECT s.id, s.name, s.description, s.license, s.compatibility, \
-    s.metadata, s.extra_frontmatter, s.allowed_tools, s.enabled, s.created_at, s.updated_at, \
-    COALESCE(c.cnt, 0) AS file_count \
+    s.metadata, s.extra_frontmatter, s.allowed_tools, s.enabled, s.audience, \
+    s.created_at, s.updated_at, \
+    COALESCE(c.cnt, 0) AS file_count, \
+    ARRAY(SELECT ra.user_id::text FROM resource_assignments ra \
+      WHERE ra.resource_type = 'skill' AND ra.resource_id = s.id \
+      ORDER BY ra.created_at) AS assigned_user_ids \
     FROM skills s \
     LEFT JOIN (SELECT skill_id, COUNT(*) AS cnt FROM skill_files GROUP BY skill_id) c \
     ON c.skill_id = s.id";
@@ -137,7 +144,9 @@ pub async fn list(pool: &PgPool, params: &SkillListParams) -> AppResult<(Vec<Ski
     }
 }
 
-/// All skills as lightweight summaries for the client config snapshot.
+/// All skills as lightweight summaries (unfiltered). Retained for callers that
+/// need the full set; the client snapshot uses [`list_summaries_for_user`].
+#[allow(dead_code)]
 pub async fn list_summaries(pool: &PgPool) -> AppResult<Vec<SkillSummary>> {
     let rows = sqlx::query(
         "SELECT s.id, s.name, s.description, s.enabled, s.updated_at, \
@@ -161,6 +170,101 @@ pub async fn list_summaries(pool: &PgPool) -> AppResult<Vec<SkillSummary>> {
             updated_at: row.get("updated_at"),
         })
         .collect())
+}
+
+/// Skill summaries visible to one user: `audience='all'` plus assigned ones.
+pub async fn list_summaries_for_user(
+    pool: &PgPool,
+    user_id: &str,
+) -> AppResult<Vec<SkillSummary>> {
+    let uid = parse_uuid(user_id)?;
+    let rows = sqlx::query(
+        "SELECT s.id, s.name, s.description, s.enabled, s.updated_at, \
+         COALESCE(c.cnt, 0) AS file_count \
+         FROM skills s \
+         LEFT JOIN (SELECT skill_id, COUNT(*) AS cnt FROM skill_files GROUP BY skill_id) c \
+         ON c.skill_id = s.id \
+         WHERE s.audience = 'all' OR s.id IN \
+         (SELECT resource_id FROM resource_assignments \
+          WHERE resource_type = 'skill' AND user_id = $1) \
+         ORDER BY s.sort_order, s.created_at ASC",
+    )
+    .bind(uid)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .iter()
+        .map(|row| SkillSummary {
+            id: row.get::<Uuid, _>("id").to_string(),
+            name: row.get("name"),
+            description: row.get("description"),
+            enabled: row.get("enabled"),
+            file_count: row.get("file_count"),
+            updated_at: row.get("updated_at"),
+        })
+        .collect())
+}
+
+/// Whether a user may access a skill's body/files: `audience='all'` or assigned.
+/// Returns `false` for a missing skill (no existence leak).
+pub async fn user_can_access(
+    pool: &PgPool,
+    skill_id: &str,
+    user_id: &str,
+) -> AppResult<bool> {
+    let sid = parse_uuid(skill_id)?;
+    let uid = parse_uuid(user_id)?;
+    let row = sqlx::query(
+        "SELECT (s.audience = 'all' OR EXISTS ( \
+            SELECT 1 FROM resource_assignments ra \
+            WHERE ra.resource_type = 'skill' AND ra.resource_id = s.id AND ra.user_id = $2 \
+         )) AS allowed \
+         FROM skills s WHERE s.id = $1",
+    )
+    .bind(sid)
+    .bind(uid)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| r.get::<bool, _>("allowed")).unwrap_or(false))
+}
+
+/// Set the audience + assignment for one skill (transactional, bumps version).
+pub async fn set_assignment(
+    pool: &PgPool,
+    id: &str,
+    assignment: &ResourceAssignment,
+) -> AppResult<i64> {
+    let rid = parse_uuid(id)?;
+    let mut user_ids = Vec::with_capacity(assignment.user_ids.len());
+    for u in &assignment.user_ids {
+        user_ids.push(parse_uuid(u)?);
+    }
+    user_ids.sort();
+    user_ids.dedup();
+
+    let mut tx = pool.begin().await?;
+    super::assignments::ensure_users_exist(&mut tx, &user_ids).await?;
+
+    let updated = sqlx::query("UPDATE skills SET audience = $2, updated_at = now() WHERE id = $1 RETURNING id")
+        .bind(rid)
+        .bind(assignment.audience.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+    if updated.is_none() {
+        tx.rollback().await?;
+        return Err(AppError::NotFound);
+    }
+
+    let to_assign: &[Uuid] = match assignment.audience {
+        Audience::Specific => &user_ids,
+        Audience::All => &[],
+    };
+    super::assignments::replace_assignments(&mut tx, "skill", rid, to_assign).await?;
+
+    let version = bump_version(&mut tx).await?;
+    tx.commit().await?;
+    Ok(version)
 }
 
 /// All skills as admin list items (used by the admin snapshot).
@@ -492,6 +596,8 @@ pub async fn delete(pool: &PgPool, id: &str) -> AppResult<Option<i64>> {
         tx.rollback().await?;
         return Ok(None);
     }
+
+    super::assignments::purge_assignments(&mut tx, "skill", uid).await?;
 
     let version = bump_version(&mut tx).await?;
     sweep_orphan_blobs(&mut tx).await?;

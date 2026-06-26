@@ -21,9 +21,12 @@ use crate::models::session::{
 use crate::state::AppState;
 
 /// Room name for a user's devices.
-fn user_room(user_id: &str) -> String {
+pub(crate) fn user_room(user_id: &str) -> String {
     format!("user:{user_id}")
 }
+
+/// Prefix of [`user_room`]; used to derive the user id from a room name.
+pub(crate) const USER_ROOM_PREFIX: &str = "user:";
 
 /// Register the default-namespace connect handler.
 pub fn register(io: &SocketIo, state: AppState) {
@@ -198,18 +201,18 @@ async fn on_connect(socket: SocketRef, Data(auth): Data<Option<SocketAuth>>, sta
         }
     }
 
-    // Emit the initial config snapshot (global, same for every client). Any
+    // Emit the initial config snapshot, filtered to this user's audience. Any
     // client event that arrived during this await already has a handler waiting.
-    let snapshot = load_snapshot(&state).await;
+    let snapshot = load_snapshot(&state, &user_id).await;
     if let Err(e) = socket.emit(events::CONFIG_SNAPSHOT, &snapshot) {
         tracing::warn!("failed to emit config snapshot: {e}");
     }
 }
 
-/// Load the global client config snapshot, falling back to an empty one.
-async fn load_snapshot(state: &AppState) -> ConfigSnapshot {
+/// Load the per-user client config snapshot, falling back to an empty one.
+async fn load_snapshot(state: &AppState, user_id: &str) -> ConfigSnapshot {
     match &state.pool {
-        Some(pool) => match db::config::load_client_snapshot(pool).await {
+        Some(pool) => match db::config::load_client_snapshot(pool, user_id).await {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!("config load failed: {e}");

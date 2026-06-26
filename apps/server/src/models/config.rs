@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::announcement::AnnouncementConfig;
 use crate::models::llm::{LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, RoleModels};
-use crate::models::mcp::McpServerConfig;
-use crate::models::service::ServiceConfig;
+use crate::models::mcp::{AdminMcpServer, McpServerConfig};
+use crate::models::service::{AdminServiceConfig, ServiceConfig};
 use crate::models::skill::{SkillListItem, SkillSummary};
 use crate::models::system_prompt::SystemPromptConfig;
 
@@ -100,14 +100,16 @@ pub struct AdminConfigSnapshot {
     pub llm_models: Vec<LlmModelConfig>,
     /// Current role→model bindings (at most one per role).
     pub llm_role_assignments: Vec<LlmRoleAssignment>,
-    pub mcp_servers: Vec<McpServerConfig>,
-    /// Admin list rows (no body/files; full skill fetched via REST).
+    /// MCP rows carrying audience + assigned users (admin-only fields).
+    pub mcp_servers: Vec<AdminMcpServer>,
+    /// Admin list rows (no body/files; full skill fetched via REST). Carry
+    /// audience + assigned users.
     pub skills: Vec<SkillListItem>,
     /// Role-tagged system prompts (full rows; same shape as the client view).
     pub system_prompts: Vec<SystemPromptConfig>,
     /// System announcements (full rows; same shape as the client view).
     pub announcements: Vec<AnnouncementConfig>,
-    /// External-service configs (full rows; same shape as the client view).
-    pub services: Vec<ServiceConfig>,
+    /// External-service configs carrying audience + assigned users (admin-only).
+    pub services: Vec<AdminServiceConfig>,
     pub version: i64,
 }
