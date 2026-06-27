@@ -50,6 +50,7 @@ const en = {
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
     toolDone: 'done',
+    planUpdated: 'Updated the task plan — see the Plan tab.',
     queued: 'Queued — will steer the running task',
     openImage: 'Open image',
     imagesIgnored: "Not seen — this model can't read images",
@@ -64,8 +65,10 @@ const en = {
     toggle: 'Details',
     timeline: 'Timeline',
     cost: 'Cost',
+    plan: 'Plan',
     timelineEmpty: 'Nothing has happened yet.',
     costEmpty: 'No usage to show yet.',
+    planEmpty: 'No tasks yet.',
     totalCost: 'Total cost',
     totalTokens: 'Total tokens',
     input: 'Input',
@@ -100,6 +103,8 @@ const en = {
     web_search_other: 'searched the web {{count}}×',
     web_fetch_one: 'fetched a web page once',
     web_fetch_other: 'fetched {{count}} web pages',
+    todo_write_one: 'updated the plan',
+    todo_write_other: 'updated the plan {{count}}×',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -201,6 +206,7 @@ const en = {
     ask: 'ask you a question',
     web_search: 'search the web',
     web_fetch: 'fetch a web page',
+    todo_write: 'update the plan',
     fallback: 'use a tool'
   },
   citations: {

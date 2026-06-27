@@ -18,6 +18,7 @@ import {
 import { createTools, isReadOnlyTool } from "./tools";
 import { createAskTool } from "./tools/ask";
 import { createMemoryTool } from "./tools/memory";
+import { createTodoTool } from "./tools/todo";
 import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import { createWebFetchTool } from "./tools/web-fetch";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -172,6 +173,10 @@ export class AgentService {
         // so it's inherently safe and exempt — gating it would nag the user for
         // something the assistant does silently and often.
         if (name === "remember") return undefined;
+        // `todo_write` only records the agent's own task plan (no files/commands),
+        // so it's inherently safe and exempt — gating it would nag for something
+        // the assistant does silently and often while working.
+        if (name === "todo_write") return undefined;
         // "Full access" auto-approves everything, including mutating/MCP tools.
         if (this.permissionMode === "full") return undefined;
         if (isReadOnlyTool(name)) return undefined;
@@ -258,6 +263,7 @@ export class AgentService {
       ...createTools(cwd),
       createAskTool(this.sessionId),
       createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
+      createTodoTool(),
     ];
     // Offer web_search only when an Exa service is configured + enabled, so the
     // model never sees a tool it can't actually use. Resolved fresh at execute
@@ -564,13 +570,30 @@ function buildSystemPrompt(config: ConfigSnapshot, cwd: string): string {
   // built-in default when it's absent or disabled. Runtime context (OS, date,
   // skills, language, cwd) is injected via placeholder substitution.
   const base = findPromptBody(config, MAIN_PROMPT_NAME) ?? BASE_SYSTEM_PROMPT;
-  const prompt = injectContext(base, config, cwd);
+  // Always append the todo guidance: `todo_write` is a built-in tool present in
+  // every session (unlike web search), so the agent should know when to plan.
+  let prompt = `${injectContext(base, config, cwd)}\n\n${TODO_INSTRUCTIONS}`;
   // Append web-search citation guidance only when the tool is actually available,
   // so a config without web search doesn't carry dead instructions. Kept out of
   // the admin-editable prompt body (no placeholder needed) since it's tied to a
   // built-in capability, not to admin copy.
-  return resolveExaService(config) ? `${prompt}\n\n${WEB_SEARCH_INSTRUCTIONS}` : prompt;
+  if (resolveExaService(config)) prompt = `${prompt}\n\n${WEB_SEARCH_INSTRUCTIONS}`;
+  return prompt;
 }
+
+/**
+ * How and when the agent should use `todo_write` to plan. The renderer turns the
+ * latest call into an inline checklist + a Plan tab, so a good plan is also the
+ * user's progress view. Tied to the built-in tool, not admin copy, so it lives
+ * here rather than in the editable prompt body.
+ */
+const TODO_INSTRUCTIONS = `<task_planning>
+For non-trivial, multi-step work, use the \`todo_write\` tool to plan and track your progress — it gives the user a live checklist of what you're doing.
+- At the start of such a task, call \`todo_write\` with the full ordered list of steps (each \`status: "pending"\`).
+- Pass the COMPLETE list every time you call it: it replaces the previous list, it does not append.
+- Keep EXACTLY ONE item \`"in_progress"\` at a time, and flip an item to \`"completed"\` the moment it's done — before starting the next.
+- Skip it entirely for trivial single-step requests, greetings, or pure questions; only plan when it genuinely helps.
+</task_planning>`;
 
 /**
  * How the agent should use `web_search` and cite its results. The renderer turns

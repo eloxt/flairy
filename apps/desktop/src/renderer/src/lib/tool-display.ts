@@ -19,7 +19,8 @@ const BUILTIN_KEYS: Record<string, string> = {
   ls: 'tools.ls',
   ask: 'tools.ask',
   web_search: 'tools.web_search',
-  web_fetch: 'tools.web_fetch'
+  web_fetch: 'tools.web_fetch',
+  todo_write: 'tools.todo_write'
 }
 
 /** Resolve the i18n key for a tool name's user-facing label. */
@@ -45,7 +46,8 @@ const ACTIVITY_BUCKETS: Record<string, string> = {
   ls: 'ls',
   ask: 'ask',
   web_search: 'web_search',
-  web_fetch: 'web_fetch'
+  web_fetch: 'web_fetch',
+  todo_write: 'todo_write'
 }
 
 /** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */

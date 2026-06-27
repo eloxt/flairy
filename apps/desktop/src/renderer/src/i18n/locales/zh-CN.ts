@@ -48,6 +48,7 @@ const zhCN: typeof En = {
     imageCount_other: '📎 {{count}} 张图片',
     toolRunning: '正在{{tool}}…',
     toolDone: '完成',
+    planUpdated: '已更新任务计划 — 见“计划”标签页。',
     queued: '已加入队列 — 将引导正在进行的任务',
     openImage: '打开图片',
     imagesIgnored: '未被读取 — 当前模型无法识别图片',
@@ -62,8 +63,10 @@ const zhCN: typeof En = {
     toggle: '详情',
     timeline: '时间线',
     cost: '花费',
+    plan: '计划',
     timelineEmpty: '还没有任何活动。',
     costEmpty: '暂无用量数据。',
+    planEmpty: '还没有任务。',
     totalCost: '总花费',
     totalTokens: '总 token',
     input: '输入',
@@ -92,6 +95,8 @@ const zhCN: typeof En = {
     web_search_other: '搜索了网络 {{count}} 次',
     web_fetch_one: '抓取了网页',
     web_fetch_other: '抓取网页 {{count}} 次',
+    todo_write_one: '更新了计划',
+    todo_write_other: '更新了计划 {{count}} 次',
     other_one: '使用了 {{count}} 个工具',
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
@@ -186,6 +191,7 @@ const zhCN: typeof En = {
     ask: '问你一个问题',
     web_search: '搜索网络',
     web_fetch: '抓取网页',
+    todo_write: '更新计划',
     fallback: '工具'
   },
   citations: {

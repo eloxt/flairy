@@ -15,6 +15,7 @@ import {
   parseSearchResults,
   type SearchSource
 } from '@shared/web-search'
+import { parseTodos, type TodoItem } from '@shared/todo'
 import { toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
 import i18n from '@/i18n'
 
@@ -72,6 +73,14 @@ export interface UiMessage {
    * `@shared/web-search`) so it survives session reload, where `details` would not.
    */
   sources?: SearchSource[]
+  /**
+   * For a `todo_write` tool message: the parsed task list. The latest such
+   * message is the agent's current plan — rendered as an inline checklist and in
+   * the right sidebar's Plan tab. Carried in the tool result's text (a sentinel
+   * block, see `@shared/todo`) so it survives session reload and device sync,
+   * where `details` would not.
+   */
+  todos?: TodoItem[]
   /**
    * For `tool` messages: the id of the assistant turn that issued this call.
    * Tool calls in the same turn (a parallel batch) share it, so the UI folds
@@ -764,6 +773,19 @@ function applyEvent(
         messages: rt.messages.map((m) => {
           if (m.id !== e.toolCallId) return m
           const raw = summarizeResult(e.result)
+          // The todo_write tool returns a JSON plan; detect it by parsing (robust
+          // to the tool name). The plan itself is shown in the Plan tab, not inline —
+          // the thread row just notes the plan changed, with `todos` carried for the tab.
+          const todos = parseTodos(raw)
+          if (todos) {
+            return {
+              ...m,
+              text: i18n.t('chat.planUpdated'),
+              todos,
+              isError: e.isError,
+              running: false
+            }
+          }
           // The web-search tool returns a JSON payload; detect it by parsing (not
           // tool name — robust to the tool being named differently or coming from
           // MCP). When it parses, show a clean list instead of the raw JSON.
@@ -921,10 +943,14 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
         const raw = partsToText(m.content)
         const existing = m.toolCallId ? toolBubbles.get(m.toolCallId) : undefined
         if (existing) {
-          // Mirror the live path: parse the web-search JSON into sources and show a
-          // clean list; other tools pass their text through unchanged.
-          const sources = parseSearchResults(raw)
-          if (sources) {
+          // Mirror the live path: parse the todo plan / web-search JSON into
+          // structured data and show a clean list; other tools pass through.
+          const todos = parseTodos(raw)
+          const sources = todos ? null : parseSearchResults(raw)
+          if (todos) {
+            existing.todos = todos
+            existing.text = i18n.t('chat.planUpdated')
+          } else if (sources) {
             existing.sources = sources
             existing.text = formatSourcesForDisplay(sources) || i18n.t('chat.toolDone')
           } else {
@@ -939,12 +965,19 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
         }
         // An orphan result (no matching call) stands alone in its own batch.
         else {
-          const sources = parseSearchResults(raw)
+          const todos = parseTodos(raw)
+          const sources = todos ? null : parseSearchResults(raw)
           out.push({
             id: m.toolCallId ?? crypto.randomUUID(),
             role: 'tool',
             toolName: m.toolName,
-            text: (sources ? formatSourcesForDisplay(sources) : raw) || i18n.t('chat.toolDone'),
+            text:
+              (todos
+                ? i18n.t('chat.planUpdated')
+                : sources
+                  ? formatSourcesForDisplay(sources)
+                  : raw) || i18n.t('chat.toolDone'),
+            todos: todos ?? undefined,
             sources: sources ?? undefined,
             isError: Boolean(m.isError),
             batchId: m.toolCallId ?? crypto.randomUUID(),
