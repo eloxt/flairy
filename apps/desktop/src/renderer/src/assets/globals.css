@@ -287,3 +287,14 @@
     }
 
 }
+
+/* Respect a reader's reduced-motion preference: drop the decorative message
+   entrance / rise-in animations. Rows render straight to their resting state;
+   layout and scroll behaviour are unchanged. (The thinking bob is left as the
+   one ongoing "agent is awake" signal.) */
+@media (prefers-reduced-motion: reduce) {
+    .animate-message-in,
+    .animate-rise-in {
+        animation: none !important;
+    }
+}

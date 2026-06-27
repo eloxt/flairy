@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Streamdown } from "streamdown";
 import {
   CircleAlert,
@@ -10,7 +9,23 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import {
+  MessageScroller,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+  useMessageScroller,
+} from "@/components/ui/message-scroller";
+import { Message, MessageContent } from "@/components/ui/message";
+import { Marker, MarkerContent } from "@/components/ui/marker";
+import {
+  Attachment,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTrigger,
+} from "@/components/ui/attachment";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
 import { useChat } from "@/store/chat-store";
 import type { UiMessage } from "@/store/chat-store";
@@ -97,10 +112,8 @@ export function MessageList({
 }): React.JSX.Element {
   const approvalCount = useChat((s) => s.approvalQueue.length);
   const questionCount = useChat((s) => s.questionQueue.length);
-  const pendingScrollIndex = useChat((s) => s.pendingScrollIndex);
-  const pendingScrollId = useChat((s) => s.pendingScrollId);
-  const clearPendingScroll = useChat((s) => s.clearPendingScroll);
   const running = useChat((s) => s.running);
+  const sessionId = useChat((s) => s.sessionId);
   const rows = useMemo(() => toRows(messages), [messages]);
   // Per-assistant-message citation registry: ALL web_search sources gathered so
   // far in the current turn (reset at each user message), so an answer can cite
@@ -146,13 +159,112 @@ export function MessageList({
     if (!running) finalizeTurn();
     return { sourcesByMessage: map, footerIds: footers };
   }, [messages, running]);
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
-  // The row key to flash after a search jump; cleared after the highlight fades.
+  // The row key to flash after a search/timeline jump; cleared once it fades.
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
+  // Row keys already present, so only genuinely new rows play the slide-up
+  // entrance — never the whole thread on open. Reset per session (below).
+  const seenRef = useRef<{ sid: string | null; keys: Set<string> } | null>(null);
 
-  // Consume a queued search-jump target. Runs in an effect (not during render) so
-  // the Virtuoso ref is attached and rows are laid out; rAF lets layout settle
-  // before scrolling. Falls back to the nearest preceding message row, else the top.
+  // Fade the highlight out after a short beat.
+  useEffect(() => {
+    if (!highlightKey) return;
+    const id = setTimeout(() => setHighlightKey(null), 1600);
+    return () => clearTimeout(id);
+  }, [highlightKey]);
+
+  // Pending approvals and questions render inline in the footer, so keep the
+  // list mounted whenever there's a message, an approval, OR a question to show.
+  if (messages.length === 0 && approvalCount === 0 && questionCount === 0)
+    return <EmptyState />;
+
+  // Reset the "seen" set whenever the session changes so a reopened/switched
+  // thread mounts without a cascade of entrances. Rows added afterwards to the
+  // OPEN session (a sent message, a streamed reply, a tool line) fall outside it
+  // and get the one-shot slide-up. Keys are deliberately never removed: a row
+  // keeps its `animate-message-in` class across re-renders (every streamed
+  // token), and a CSS animation only fires once per mount — so streaming can't
+  // restart or cut the entrance short.
+  if (!seenRef.current || seenRef.current.sid !== sessionId)
+    seenRef.current = { sid: sessionId, keys: new Set(rows.map((r) => r.key)) };
+  const seenKeys = seenRef.current.keys;
+
+  // MessageScroller replaces react-virtuoso: it renders real DOM rows (no
+  // windowing) and stays fast via content-visibility on each item. `autoScroll`
+  // pins to the live edge ONLY while the reader is already at the bottom — so a
+  // freshly opened session is NOT yanked down and reading history isn't
+  // interrupted by streamed tokens (the behaviour the old `followOutput` guard
+  // had to fake). `defaultScrollPosition="last-anchor"` opens at the most recent
+  // turn; user rows are anchors, so each turn settles cleanly into view.
+  return (
+    <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+      <MessageScroller className="absolute inset-0">
+        <MessageScrollerViewport>
+          {/* gap-0: rows carry their own vertical rhythm via per-row padding, so
+              the container must not add the primitive's default gap between them. */}
+          <MessageScrollerContent className="gap-0">
+            <Spacer />
+            {rows.map((row) => (
+              <MessageScrollerItem
+                key={row.key}
+                messageId={row.key}
+                // Anchor each user turn so the scroller treats it as a turn
+                // boundary (for last-anchor open and turn-aware scrolling).
+                scrollAnchor={row.kind === "msg" && row.m.role === "user"}
+              >
+                <RowView
+                  row={row}
+                  highlight={row.key === highlightKey}
+                  // Genuinely new rows slide in; history (and reduced-motion
+                  // users, via the CSS @media guard) render straight to rest.
+                  animate={!seenKeys.has(row.key)}
+                  sources={
+                    row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined
+                  }
+                  showSources={row.kind === "msg" && footerIds.has(row.m.id)}
+                />
+              </MessageScrollerItem>
+            ))}
+            <ApprovalFooter />
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        {/* Jump-to-live-edge affordance, lifted above the floating composer. */}
+        <MessageScrollerButton
+          direction="end"
+          className="rounded-full"
+          style={{ bottom: "calc(var(--composer-h, 9rem) + 0.5rem)" }}
+        />
+        <ScrollController rows={rows} onHighlight={setHighlightKey} />
+      </MessageScroller>
+    </MessageScrollerProvider>
+  );
+}
+
+/**
+ * Consumes the store's queued scroll targets and drives the scroller. Lives
+ * INSIDE the provider so it can call `useMessageScroller`. Two sources feed it:
+ *   - `pendingScrollIndex`: a full-text search hit, located by the persisted pi
+ *     message index (`sourceIndex`); falls back to the nearest preceding message
+ *     row, else the top.
+ *   - `pendingScrollId`: a timeline-tab jump, located by in-memory UiMessage id
+ *     (works for live and replayed messages alike).
+ * Both resolve to a row `key` (which is the item's `messageId`) and scroll to it.
+ * Since every row is in the DOM, `scrollToMessage` always finds its target — no
+ * layout/virtualization race — but we still defer to a rAF so the scroll runs
+ * after the current commit, and clear the target INSIDE the frame so clearing it
+ * doesn't re-run the effect and cancel the pending scroll before it fires.
+ */
+function ScrollController({
+  rows,
+  onHighlight,
+}: {
+  rows: Row[];
+  onHighlight: (key: string | null) => void;
+}): null {
+  const { scrollToMessage } = useMessageScroller();
+  const pendingScrollIndex = useChat((s) => s.pendingScrollIndex);
+  const pendingScrollId = useChat((s) => s.pendingScrollId);
+  const clearPendingScroll = useChat((s) => s.clearPendingScroll);
+
   useEffect(() => {
     if (
       pendingScrollIndex == null ||
@@ -178,20 +290,14 @@ export function MessageList({
     }
     if (index < 0) index = 0;
     const key = rows[index].key;
-    // Clear INSIDE the rAF (not synchronously): clearing now would flip
-    // pendingScrollIndex, re-run this effect, and its cleanup would cancel the
-    // pending frame before the scroll ever fires.
     const raf = requestAnimationFrame(() => {
-      virtuosoRef.current?.scrollToIndex({ index, align: "center" });
-      setHighlightKey(key);
+      scrollToMessage(key, { align: "center" });
+      onHighlight(key);
       clearPendingScroll();
     });
     return () => cancelAnimationFrame(raf);
-  }, [pendingScrollIndex, rows, clearPendingScroll]);
+  }, [pendingScrollIndex, rows, clearPendingScroll, scrollToMessage, onHighlight]);
 
-  // Consume a queued timeline-jump target (by UiMessage id). Same rAF dance as
-  // the search jump above, but matches the in-memory id so it works for live and
-  // replayed messages alike (no persisted sourceIndex needed).
   useEffect(() => {
     if (pendingScrollId == null || rows.length === 0) return;
     const index = rows.findIndex(
@@ -203,59 +309,26 @@ export function MessageList({
     }
     const key = rows[index].key;
     const raf = requestAnimationFrame(() => {
-      virtuosoRef.current?.scrollToIndex({ index, align: "center" });
-      setHighlightKey(key);
+      scrollToMessage(key, { align: "center" });
+      onHighlight(key);
       clearPendingScroll();
     });
     return () => cancelAnimationFrame(raf);
-  }, [pendingScrollId, rows, clearPendingScroll]);
+  }, [pendingScrollId, rows, clearPendingScroll, scrollToMessage, onHighlight]);
 
-  // Fade the highlight out after a short beat.
-  useEffect(() => {
-    if (!highlightKey) return;
-    const id = setTimeout(() => setHighlightKey(null), 1600);
-    return () => clearTimeout(id);
-  }, [highlightKey]);
-
-  // Pending approvals and questions render inline in the footer, so keep the
-  // list mounted whenever there's a message, an approval, OR a question to show.
-  if (messages.length === 0 && approvalCount === 0 && questionCount === 0)
-    return <EmptyState />;
-
-  return (
-    <Virtuoso
-      ref={virtuosoRef}
-      className="absolute inset-0 scrollbar-gutter-both"
-      data={rows}
-      // Only follow output while the agent is streaming. Otherwise `followOutput`
-      // would pin a freshly opened session to the bottom on entry (at the first
-      // frame the list is trivially "at bottom", so it keeps scrolling there as
-      // rows fill in) — we want it to stay where it loads instead.
-      followOutput={running ? "smooth" : false}
-      computeItemKey={(_i, row) => row.key}
-      components={{ Header: Spacer, Footer: ApprovalFooter }}
-      itemContent={(_i, row) => (
-        <RowView
-          row={row}
-          highlight={row.key === highlightKey}
-          sources={
-            row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined
-          }
-          showSources={row.kind === "msg" && footerIds.has(row.m.id)}
-        />
-      )}
-    />
-  );
+  return null;
 }
 
 function RowView({
   row,
   highlight,
+  animate,
   sources,
   showSources,
 }: {
   row: Row;
   highlight?: boolean;
+  animate?: boolean;
   sources?: SearchSource[];
   showSources?: boolean;
 }): React.JSX.Element {
@@ -267,11 +340,17 @@ function RowView({
     ) : (
       <MessageRow m={row.m} sources={sources} showSources={showSources} />
     );
-  // Transient ring after a search jump; fades as `highlight` flips back to false.
+  // `animate-message-in`: a one-shot slide-up + fade as the row enters (the
+  // shared keyframe — transform + opacity only, so it never fights the scroller's
+  // positioning). Set only on genuinely new rows; the class then persists, and a
+  // CSS animation fires once per mount, so streamed re-renders can't restart or
+  // cut it short. Transient ring after a search/timeline jump fades as
+  // `highlight` flips back to false.
   return (
     <div
       className={cn(
         "transition-colors duration-700",
+        animate && "animate-message-in",
         highlight && "bg-accent/40",
       )}
     >
@@ -384,53 +463,50 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
-      <div
-        className={cn(
-          "flex flex-col items-end gap-1.5 transition-opacity",
-          // Steered-while-running: queued until pi injects it at the next turn
-          // boundary; dim the whole bubble so it doesn't read as already delivered.
-          m.queued && "opacity-60",
-        )}
+      <Message
+        align="end"
+        // Steered-while-running: queued until pi injects it at the next turn
+        // boundary; dim the whole bubble so it doesn't read as already delivered.
+        className={cn("transition-opacity", m.queued && "opacity-60")}
       >
-        {m.images && m.images.length > 0 && (
-          <ScrollArea className="max-w-[80%]">
-            <div className="flex flex-row gap-2 pb-2.5">
+        <MessageContent className="items-end gap-1.5">
+          {m.images && m.images.length > 0 && (
+            <AttachmentGroup className="max-w-[80%]">
               {m.images.map((img, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => void window.api.openImageViewer(img)}
-                  title={t("chat.openImage")}
-                  className="shrink-0 overflow-hidden rounded-xl border border-border transition-opacity hover:opacity-90"
-                >
-                  <img
-                    src={`data:${img.mimeType};base64,${img.data}`}
-                    alt=""
-                    className="h-32 w-auto max-w-none object-contain"
+                <Attachment key={i} orientation="vertical" className="w-28">
+                  <AttachmentMedia variant="image" className="w-full">
+                    <img
+                      src={`data:${img.mimeType};base64,${img.data}`}
+                      alt=""
+                    />
+                  </AttachmentMedia>
+                  <AttachmentTrigger
+                    onClick={() => void window.api.openImageViewer(img)}
+                    title={t("chat.openImage")}
+                    aria-label={t("chat.openImage")}
                   />
-                </button>
+                </Attachment>
               ))}
+            </AttachmentGroup>
+          )}
+          {m.imagesIgnored && (
+            <span className="flex items-center gap-1 px-1 text-xs text-muted-foreground">
+              <CircleAlert className="size-3" />
+              {t("chat.imagesIgnored")}
+            </span>
+          )}
+          {m.text && (
+            <div className="max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
+              {m.text}
             </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-        )}
-        {m.imagesIgnored && (
-          <span className="flex items-center gap-1 px-1 text-xs text-muted-foreground">
-            <CircleAlert className="size-3" />
-            {t("chat.imagesIgnored")}
-          </span>
-        )}
-        {m.text && (
-          <div className="max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
-            {m.text}
-          </div>
-        )}
-        {m.queued && (
-          <span className="px-1 text-xs text-muted-foreground">
-            {t("chat.queued")}
-          </span>
-        )}
-      </div>
+          )}
+          {m.queued && (
+            <span className="px-1 text-xs text-muted-foreground">
+              {t("chat.queued")}
+            </span>
+          )}
+        </MessageContent>
+      </Message>
     </div>
   );
 }
@@ -455,33 +531,37 @@ function AssistantRow({
   // on STREAMDOWN_REMARK_PLUGINS.)
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
-      {m.thinking?.trim() && (
-        <ReasoningBlock
-          text={m.thinking}
-          streaming={m.streaming && !hasText}
-          answered={hasText}
-        />
-      )}
-      {hasText && (
-        <CitationsProvider sources={cites}>
-          <Streamdown
-            isAnimating={Boolean(m.streaming)}
-            caret="circle"
-            plugins={STREAMDOWN_PLUGINS}
-            remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
-            components={STREAMDOWN_COMPONENTS}
-            className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono pt-1"
-          >
-            {m.text}
-          </Streamdown>
-          {/* Sources footer: only on the turn's final answer, after the turn ends
-              (showSources) — never under an intermediate answer that still has tool
-              calls to follow. */}
-          {showSources && !m.streaming && cites.length > 0 && (
-            <SourcesList sources={cites} />
+      <Message align="start">
+        <MessageContent className="gap-2">
+          {m.thinking?.trim() && (
+            <ReasoningBlock
+              text={m.thinking}
+              streaming={m.streaming && !hasText}
+              answered={hasText}
+            />
           )}
-        </CitationsProvider>
-      )}
+          {hasText && (
+            <CitationsProvider sources={cites}>
+              <Streamdown
+                isAnimating={Boolean(m.streaming)}
+                caret="circle"
+                plugins={STREAMDOWN_PLUGINS}
+                remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
+                components={STREAMDOWN_COMPONENTS}
+                className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono pt-1"
+              >
+                {m.text}
+              </Streamdown>
+              {/* Sources footer: only on the turn's final answer, after the turn
+                  ends (showSources) — never under an intermediate answer that
+                  still has tool calls to follow. */}
+              {showSources && !m.streaming && cites.length > 0 && (
+                <SourcesList sources={cites} />
+              )}
+            </CitationsProvider>
+          )}
+        </MessageContent>
+      </Message>
     </div>
   );
 }
@@ -527,7 +607,9 @@ function ReasoningBlock({
         <Sparkle
           className={cn("size-3.5 shrink-0", streaming && "animate-pulse")}
         />
-        <span className="text-xs font-medium">{streaming ? t("chat.reasoningLive") : t("chat.reasoning")}</span>
+        <span className={cn("text-xs font-medium", streaming && "shimmer")}>
+          {streaming ? t("chat.reasoningLive") : t("chat.reasoning")}
+        </span>
       </button>
       {open && (
         <div className="mt-1 whitespace-pre-wrap border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
@@ -539,21 +621,23 @@ function ReasoningBlock({
 }
 
 /**
- * One tool call: a low-intrusion single line — tool name + a status icon,
- * collapsed by default; click to reveal the raw output. The presentational unit
- * shared by a standalone call (`SingleTool`) and the members of a `ToolGroup`,
- * so a lone call and a grouped one read identically.
+ * One tool call: a low-intrusion single line built on {@link Marker} (a status /
+ * system-note row) — tool name + a status icon, collapsed by default; click to
+ * reveal the raw output. The presentational unit shared by a standalone call
+ * (`SingleTool`) and the members of a `ToolGroup`, so a lone call and a grouped
+ * one read identically. The Marker is rendered as the disclosure `<button>`.
  */
 function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const StatusIcon = m.isError ? CircleAlert : SquareTerminal;
   return (
     <div className="py-0.5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/50"
+      <Marker
+        render={
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} />
+        }
+        className="cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
       >
         <ChevronRight
           className={cn(
@@ -562,36 +646,36 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
           )}
           strokeWidth={2}
         />
-        {m.isError ? (
-          <CircleAlert
-            className="size-3.5 shrink-0 text-destructive"
-            strokeWidth={2}
-          />
-        ) : (
-          <SquareTerminal
-            className="size-3.5 shrink-0 text-muted-foreground"
-            strokeWidth={2}
-          />
-        )}
-        <span
+        <StatusIcon
           className={cn(
-            "shrink-0 text-xs font-medium",
+            "size-3.5 shrink-0",
             m.isError ? "text-destructive" : "text-muted-foreground",
           )}
-        >
-          {m.isError && !m.toolName
-            ? t("chat.error")
-            : t(toolDisplayKey(m.toolName))}
-        </span>
-        {m.toolArg && (
+          strokeWidth={2}
+        />
+        <MarkerContent className="flex min-w-0 flex-1 items-center gap-2">
           <span
-            className="min-w-0 flex-1 truncate text-xs text-muted-foreground/60"
-            title={m.toolArg}
+            className={cn(
+              "shrink-0 text-xs font-medium",
+              m.isError ? "text-destructive" : "text-muted-foreground",
+              // Shimmer the label while the call is in flight.
+              m.running && "shimmer",
+            )}
           >
-            {m.toolArg}
+            {m.isError && !m.toolName
+              ? t("chat.error")
+              : t(toolDisplayKey(m.toolName))}
           </span>
-        )}
-      </button>
+          {m.toolArg && (
+            <span
+              className="min-w-0 flex-1 truncate text-xs text-muted-foreground/60"
+              title={m.toolArg}
+            >
+              {m.toolArg}
+            </span>
+          )}
+        </MarkerContent>
+      </Marker>
       {open && (
         <pre
           className={cn(
@@ -637,9 +721,9 @@ function summarizeTools(tools: UiMessage[], t: TFunction): string {
 
 /**
  * A contiguous run of tool calls (parallel batches and back-to-back rounds),
- * collapsed into one quiet line so the agent's work doesn't bury the
- * conversation. Collapsed it shows a plain-language summary; expanded it reveals
- * each call along a hairline rail. The right-hand status dot mirrors a single
+ * collapsed into one quiet {@link Marker} line so the agent's work doesn't bury
+ * the conversation. Collapsed it shows a plain-language summary; expanded it
+ * reveals each call along a hairline rail. The right-hand status mirrors a single
  * tool's, so the two states share one visual language.
  */
 function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
@@ -648,14 +732,15 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
   const anyRunning = tools.some((m) => m.running);
   const anyError = tools.some((m) => m.isError);
   const doneCount = tools.filter((m) => !m.running).length;
+  const StatusIcon = anyError ? CircleAlert : SquareTerminal;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/50"
+      <Marker
+        render={
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} />
+        }
+        className="cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
       >
         <ChevronRight
           className={cn(
@@ -664,31 +749,31 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
           )}
           strokeWidth={2}
         />
-        {anyError ? (
-          <CircleAlert
-            className="size-3.5 shrink-0 text-destructive"
-            strokeWidth={2}
-          />
-        ) : (
-          <SquareTerminal
-            className="size-3.5 shrink-0 text-muted-foreground"
-            strokeWidth={2}
-          />
-        )}
-        <span
+        <StatusIcon
           className={cn(
-            "text-xs font-medium",
+            "size-3.5 shrink-0",
             anyError ? "text-destructive" : "text-muted-foreground",
           )}
-        >
-          {anyRunning ? t("chat.working") : summarizeTools(tools, t)}
-        </span>
-        {anyRunning && doneCount > 0 && (
-          <span className="text-xs tabular-nums text-muted-foreground/60">
-            · {doneCount}
+          strokeWidth={2}
+        />
+        <MarkerContent className="flex items-center gap-2">
+          <span
+            className={cn(
+              "text-xs font-medium",
+              anyError ? "text-destructive" : "text-muted-foreground",
+              // Shimmer the "working…" summary while the batch is still running.
+              anyRunning && "shimmer",
+            )}
+          >
+            {anyRunning ? t("chat.working") : summarizeTools(tools, t)}
           </span>
-        )}
-      </button>
+          {anyRunning && doneCount > 0 && (
+            <span className="text-xs tabular-nums text-muted-foreground/60">
+              · {doneCount}
+            </span>
+          )}
+        </MarkerContent>
+      </Marker>
       {open && (
         <div className="mt-0.5 ml-[0.6rem] border-l border-border pl-2.5">
           {tools.map((m) => (

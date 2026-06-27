@@ -71,7 +71,9 @@ export function AppSidebar(): React.JSX.Element {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent className="px-1">
+      {/* scroll-fade-y: the history list fades at whichever edge has more to
+          scroll (scroll-driven, so no fade when it all fits). */}
+      <SidebarContent className="px-1 scroll-fade-y">
         <SidebarGroup>
           <SidebarGroupLabel className="eyebrow px-2">
             {t('chat.history')}
