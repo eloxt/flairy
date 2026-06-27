@@ -251,15 +251,18 @@ export function SourcesList({
           {t("citations.sources")} · {sources.length}
         </span>
       </button>
+      {/* grid-cols-1 forces the track to minmax(0,1fr) so it can't grow past
+          the column; min-w-0 on each row lets it shrink below its content's
+          min-content width, which is what lets the title actually truncate. */}
       {open && (
-        <div className="mt-1 grid gap-1">
+        <div className="mt-1 grid grid-cols-1 gap-1">
           {ordered.map((s) => (
             <button
               key={s.i}
               type="button"
               onClick={() => openSource(s.url)}
               title={s.url}
-              className="group flex w-full max-w-2xl items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/50"
+              className="group flex w-full min-w-0 max-w-2xl items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/50"
             >
               <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-muted px-1 text-[0.65rem] font-medium tabular-nums text-muted-foreground">
                 {s.i}
