@@ -86,8 +86,8 @@ export function AssignDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden sm:max-w-lg">
-        <DialogHeader className="mb-4">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 sm:max-w-lg">
+        <DialogHeader className="mb-4 shrink-0">
           <DialogTitle>Assign {resourceName}</DialogTitle>
           <DialogDescription>
             Choose who receives this. Everyone gets it by default, or limit it to
@@ -95,9 +95,9 @@ export function AssignDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           {/* Audience toggle (segmented). */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid shrink-0 grid-cols-2 gap-2">
             <AudienceOption
               active={audience === "all"}
               label="Everyone"
@@ -113,8 +113,8 @@ export function AssignDialog({
           </div>
 
           {audience === "specific" && (
-            <div className="space-y-2">
-              <div className="relative">
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <div className="relative shrink-0">
                 <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <Input
                   aria-label="Search users"
@@ -125,7 +125,7 @@ export function AssignDialog({
                 />
               </div>
 
-              <div className="rounded-md border">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
                 {usersLoading ? (
                   <div className="flex items-center justify-center py-10">
                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -139,7 +139,7 @@ export function AssignDialog({
                     {search ? "No users match your search." : "No users yet."}
                   </div>
                 ) : (
-                  <ScrollArea className="max-h-64">
+                  <ScrollArea className="h-full">
                     <ul className="divide-y divide-border">
                       {filtered.map((u) => {
                         const checked = selected.has(u.id);
@@ -177,22 +177,22 @@ export function AssignDialog({
                 )}
               </div>
 
-              <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+              <p className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
                 <Users className="size-3" />
                 {selected.size} user{selected.size === 1 ? "" : "s"} selected
               </p>
             </div>
           )}
+        </div>
 
-          <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button variant="outline" onClick={onCancel} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={saving}>
-              {saving && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-          </div>
+        <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border pt-4">
+          <Button variant="outline" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving && <Loader2 className="size-4 animate-spin" />}
+            Save
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
