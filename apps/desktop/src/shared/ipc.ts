@@ -174,7 +174,7 @@ export interface DeleteSessionArgs {
 }
 
 /** Item the user picked from a session row's native right-click menu. */
-export type SessionMenuAction = 'rename' | 'delete'
+export type SessionMenuAction = 'rename' | 'delete' | 'select'
 
 /** Item the user picked from a recent-directory's native right-click menu. */
 export type RecentDirMenuAction = 'remove'

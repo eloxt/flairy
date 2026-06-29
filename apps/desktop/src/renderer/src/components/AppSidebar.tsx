@@ -8,6 +8,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Sidebar,
     SidebarContent,
@@ -23,8 +24,8 @@ import {
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
 import type { SessionMeta } from "@shared/ipc";
-import { LoaderCircle, Plus, Search, Settings } from "lucide-react";
-import { useState } from "react";
+import { LoaderCircle, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
 
@@ -34,11 +35,57 @@ import { NavLink, useLocation, useNavigate } from "react-router";
  */
 export function AppSidebar(): React.JSX.Element {
   const { t } = useTranslation();
-  const { sessions, sessionId, newChat } = useChat();
+  const { sessions, sessionId, newChat, deleteSession } = useChat();
   const navigate = useNavigate();
   const onSearch = useLocation().pathname === "/search";
   // Only macOS has traffic lights to clear; Windows/Linux need no top inset.
   const isMac = window.api.platform === "darwin";
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const selectedCount = selectedIds.size;
+
+  useEffect(() => {
+    setSelectedIds((cur) => {
+      const liveIds = new Set(sessions.map((s) => s.id));
+      const next = new Set([...cur].filter((id) => liveIds.has(id)));
+      return next.size === cur.size ? cur : next;
+    });
+  }, [sessions]);
+
+  useEffect(() => {
+    if (selecting || selectedIds.size === 0) return;
+    setSelectedIds(new Set());
+  }, [selecting, selectedIds.size]);
+
+  const enterSelectionMode = (initialId: string): void => {
+    setSelecting(true);
+    setSelectedIds(new Set([initialId]));
+  };
+
+  const exitSelectionMode = (): void => {
+    setSelecting(false);
+    setConfirmBulkDelete(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string): void => {
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedSessions = async (): Promise<void> => {
+    const ids = [...selectedIds];
+    setConfirmBulkDelete(false);
+    exitSelectionMode();
+    for (const id of ids) {
+      await deleteSession(id);
+    }
+  };
 
   return (
     // No right border: the frosted rail is separated from the chat surface by the
@@ -76,7 +123,32 @@ export function AppSidebar(): React.JSX.Element {
       <SidebarContent className="px-1 scroll-fade-y">
         <SidebarGroup>
           <SidebarGroupLabel className="eyebrow px-2">
-            {t('chat.history')}
+            {selecting ? (
+              <div className="flex w-full min-w-0 items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate">
+                  {t('chat.selectedCount', { count: selectedCount })}
+                </span>
+                <button
+                  type="button"
+                  className="app-no-drag inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+                  aria-label={t('chat.deleteSelected')}
+                  disabled={selectedCount === 0}
+                  onClick={() => setConfirmBulkDelete(true)}
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className="app-no-drag inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label={t('chat.cancel')}
+                  onClick={exitSelectionMode}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              t('chat.history')
+            )}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
@@ -86,7 +158,15 @@ export function AppSidebar(): React.JSX.Element {
                 </p>
               ) : (
                 sessions.map((s) => (
-                  <SessionRow key={s.id} s={s} active={s.id === sessionId} />
+                  <SessionRow
+                    key={s.id}
+                    s={s}
+                    active={s.id === sessionId}
+                    selecting={selecting}
+                    selected={selectedIds.has(s.id)}
+                    onEnterSelectionMode={enterSelectionMode}
+                    onToggleSelected={toggleSelected}
+                  />
                 ))
               )}
             </SidebarMenu>
@@ -107,6 +187,23 @@ export function AppSidebar(): React.JSX.Element {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('chat.deleteSelectedTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('chat.deleteSelectedDescription', { count: selectedCount })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('chat.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void deleteSelectedSessions()}>
+              {t('chat.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sidebar>
   );
 }
@@ -119,9 +216,17 @@ export function AppSidebar(): React.JSX.Element {
 function SessionRow({
   s,
   active,
+  selecting,
+  selected,
+  onEnterSelectionMode,
+  onToggleSelected,
 }: {
   s: SessionMeta;
   active: boolean;
+  selecting: boolean;
+  selected: boolean;
+  onEnterSelectionMode: (id: string) => void;
+  onToggleSelected: (id: string) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const { openSession, deleteSession, renameSession } = useChat();
@@ -155,20 +260,41 @@ function SessionRow({
         />
       ) : (
         <SidebarMenuButton
-          isActive={active}
+          render={selecting ? <div role="button" tabIndex={0} /> : undefined}
+          isActive={selecting ? selected : active}
           onClick={() => {
+            if (selecting) {
+              onToggleSelected(s.id);
+              return;
+            }
             void openSession(s);
             navigate("/");
+          }}
+          onKeyDown={(e) => {
+            if (!selecting) return;
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            onToggleSelected(s.id);
           }}
           onContextMenu={(e) => {
             e.preventDefault();
             void window.api.showSessionMenu().then((action) => {
               if (action === "delete") setConfirmDelete(true);
               else if (action === "rename") setRenaming(true);
+              else if (action === "select") onEnterSelectionMode(s.id);
             });
           }}
           className="group/item rounded-lg"
         >
+          {selecting && (
+            <Checkbox
+              checked={selected}
+              aria-label={s.title || t('chat.untitled')}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              onCheckedChange={() => onToggleSelected(s.id)}
+            />
+          )}
           <span className="min-w-0 flex-1 truncate text-[0.8125rem]">
             {s.title || t('chat.untitled')}
           </span>

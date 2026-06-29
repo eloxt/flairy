@@ -17,6 +17,7 @@ export const en = {
   'menu.help': 'Help',
   'menu.renameChat': 'Rename',
   'menu.deleteChat': 'Delete',
+  'menu.selectChats': 'Select chats',
   'menu.removeRecentDir': 'Remove from recents'
 } as const
 

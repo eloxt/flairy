@@ -388,6 +388,12 @@ export function registerIpcHandlers(
           }
         },
         {
+          label: t('menu.selectChats'),
+          click: () => {
+            action = 'select'
+          }
+        },
+        {
           label: t('menu.deleteChat'),
           click: () => {
             action = 'delete'
