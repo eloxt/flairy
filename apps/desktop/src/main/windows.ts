@@ -1,4 +1,4 @@
-import { shell, BrowserWindow } from "electron";
+import { shell, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
 
@@ -173,6 +173,27 @@ export function openImageViewerWindow(id: string): BrowserWindow {
   openLinksExternally(win);
   loadRenderer(win, "image-viewer", `id=${encodeURIComponent(id)}`);
   return win;
+}
+
+/**
+ * Widen the main window by `delta` px. Used when opening the details panel would
+ * otherwise squeeze the chat column: the renderer asks for exactly the shortfall.
+ * Clamped to the current display's work area, and the window is nudged left if
+ * growing would push its right edge off-screen. Never shrinks. Animated on macOS
+ * so the resize reads as one motion with the panel's slide-out.
+ */
+export function growMainWindowWidth(delta: number): void {
+  const win = getMainWindow();
+  const grow = Math.ceil(delta);
+  if (!win || !Number.isFinite(grow) || grow <= 0) return;
+  const bounds = win.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const width = Math.min(bounds.width + grow, area.width);
+  if (width <= bounds.width) return; // already as wide as the screen allows
+  // Keep the (now wider) window fully on-screen: pull x left if the right edge
+  // would spill past the work area, but never past its left edge.
+  const x = Math.max(area.x, Math.min(bounds.x, area.x + area.width - width));
+  win.setBounds({ x, y: bounds.y, width, height: bounds.height }, true);
 }
 
 /** Send an event to every live renderer window (config + auth changes fan out). */

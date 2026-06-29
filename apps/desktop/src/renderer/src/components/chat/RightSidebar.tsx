@@ -17,7 +17,7 @@ import { PlanPanel } from './sidebar/PlanPanel'
 export function RightSidebar(): React.JSX.Element {
   const { t } = useTranslation()
   const messages = useChat((s) => s.messages)
-  const setRightPanelOpen = useUi((s) => s.setRightPanelOpen)
+  const openRightPanel = useUi((s) => s.openRightPanel)
 
   // Identity of the current plan: the most recent todo-bearing message. Each
   // todo_write is a new message, so this id changes every time the plan is
@@ -49,9 +49,9 @@ export function RightSidebar(): React.JSX.Element {
     // plan change, not when the user toggles the panel.
     if (!useUi.getState().rightPanelOpen) {
       setTab('plan')
-      setRightPanelOpen(true)
+      openRightPanel()
     }
-  }, [hasTodos, latestTodoId, setRightPanelOpen])
+  }, [hasTodos, latestTodoId, openRightPanel])
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="h-full bg-transparent">

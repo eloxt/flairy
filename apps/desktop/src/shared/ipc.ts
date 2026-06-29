@@ -56,6 +56,7 @@ export const IPC = {
   AuthStatus: 'auth:status',
   ConfigGet: 'config:get',
   WindowOpenSettings: 'window:open-settings',
+  WindowGrowWidth: 'window:grow-width',
   AppGetVersion: 'app:get-version',
   UpdateGetStatus: 'update:get-status',
   UpdateOpenRelease: 'update:open-release',
@@ -444,6 +445,12 @@ export interface FlairyApi {
   getConfig(): Promise<RedactedConfigSnapshot | null>
   /** Open (or focus) the standalone Settings window. */
   openSettings(): Promise<void>
+  /**
+   * Widen the main window by `delta` px (clamped to the display work area, never
+   * shrinks). The renderer calls this before opening the details panel when the
+   * panel would otherwise push the chat column below its comfortable minimum.
+   */
+  growWindowWidth(delta: number): Promise<void>
   /** Open an http(s) URL in the user's default browser (e.g. a citation source). */
   openExternal(url: string): Promise<void>
   /** Open a borderless window showing `image` full size with zoom/pan. */

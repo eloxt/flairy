@@ -105,7 +105,10 @@ function ChatView(): React.JSX.Element {
     // frosted rail. The right panel reveals vibrancy, so the row stays transparent
     // (no bg here) — only the chat column paints the opaque chat surface.
     <div className="relative z-10 flex flex-1 overflow-hidden shadow-[-4px_0_12px_-8px_var(--rail-shadow)]">
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col bg-background">
+      <div
+        data-chat-column
+        className="relative z-10 flex min-w-0 flex-1 flex-col bg-background"
+      >
         <ChatHeader />
         <div className="relative flex-1 overflow-hidden">
           <MessageList messages={messages} />

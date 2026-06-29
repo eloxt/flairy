@@ -61,7 +61,13 @@ import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
 import type { UpdateManager } from '../update/update-checker'
 import { redactConfig } from '../sync/config-redact'
-import { broadcast, getMainWindow, openImageViewerWindow, openSettingsWindow } from '../windows'
+import {
+  broadcast,
+  getMainWindow,
+  growMainWindowWidth,
+  openImageViewerWindow,
+  openSettingsWindow
+} from '../windows'
 import { randomUUID } from 'node:crypto'
 
 /** Live agent services keyed by sessionId. */
@@ -510,6 +516,9 @@ export function registerIpcHandlers(
 
   // Open the standalone Settings window (from the sidebar).
   ipcMain.handle(IPC.WindowOpenSettings, () => openSettingsWindow())
+
+  // Widen the main window so opening the details panel doesn't squeeze the chat.
+  ipcMain.handle(IPC.WindowGrowWidth, (_e, delta: number) => growMainWindowWidth(delta))
 
   // A window that mounts after the update check ran reads the current status so
   // its header badge reflects an already-known update (the broadcast it missed).
