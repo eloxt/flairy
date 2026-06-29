@@ -188,7 +188,7 @@ export function Composer(): React.JSX.Element {
       ref={rootRef}
       className="pointer-events-none absolute bottom-0 left-0 right-0 pt-10"
     >
-      <div className="pointer-events-auto mx-auto w-full max-w-3xl px-6">
+      <div className="pointer-events-auto mx-auto w-full max-w-200 px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
           <div className="group relative flex flex-col rounded-2xl border border-border bg-card transition-colors focus-within:border-foreground/25">
             {attachments.length > 0 && (

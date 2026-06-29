@@ -47,9 +47,9 @@ export function TimelinePanel({ messages }: { messages: UiMessage[] }): React.JS
                 type="button"
                 onClick={() => scrollToMessage(m.id)}
                 title={preview}
-                className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                className="flex min-w-0 w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
               >
-                <span className="truncate text-[0.8rem] text-foreground">{preview}</span>
+                <span className="block min-w-0 w-full truncate text-[0.8rem] text-foreground">{preview}</span>
                 {m.timestamp ? (
                   <span className="text-[0.65rem] text-muted-foreground tabular-nums">
                     {clockTime(m.timestamp)}

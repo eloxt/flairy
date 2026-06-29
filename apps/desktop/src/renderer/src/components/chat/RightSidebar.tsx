@@ -16,6 +16,7 @@ import { PlanPanel } from './sidebar/PlanPanel'
  */
 export function RightSidebar(): React.JSX.Element {
   const { t } = useTranslation()
+  const sessionId = useChat((s) => s.sessionId)
   const messages = useChat((s) => s.messages)
   const openRightPanel = useUi((s) => s.openRightPanel)
 
@@ -32,8 +33,12 @@ export function RightSidebar(): React.JSX.Element {
 
   // Controlled so we can surface the Plan tab when a plan is created/updated.
   const [tab, setTab] = useState('timeline')
+  const lastSessionId = useRef<string | null>(null)
   const lastPlanId = useRef<string | null>(null)
   useEffect(() => {
+    const sessionChanged = sessionId !== lastSessionId.current
+    lastSessionId.current = sessionId
+
     if (!hasTodos) {
       lastPlanId.current = null
       // The Plan tab unmounts when a session has no plan; don't strand the panel
@@ -41,17 +46,21 @@ export function RightSidebar(): React.JSX.Element {
       setTab((cur) => (cur === 'plan' ? 'timeline' : cur))
       return
     }
-    if (latestTodoId === lastPlanId.current) return
+    if (!sessionChanged && latestTodoId === lastPlanId.current) return
     lastPlanId.current = latestTodoId
-    // A plan was just created or updated: if the details panel is collapsed, open
-    // it straight to the Plan tab. If it's already open on another tab, leave the
-    // user where they are. Read the open flag imperatively so this fires on the
-    // plan change, not when the user toggles the panel.
-    if (!useUi.getState().rightPanelOpen) {
+    const panelOpen = useUi.getState().rightPanelOpen
+    // Switching to a session that already has a plan should surface that plan
+    // regardless of the panel's current tab. For updates within the same session,
+    // keep the existing "only interrupt if the panel is closed" behavior.
+    if (sessionChanged || !panelOpen) {
       setTab('plan')
+    }
+    // Read the open flag imperatively so this fires on the plan/session change,
+    // not when the user toggles the panel.
+    if (!panelOpen) {
       openRightPanel()
     }
-  }, [hasTodos, latestTodoId, openRightPanel])
+  }, [hasTodos, latestTodoId, openRightPanel, sessionId])
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="h-full bg-transparent">

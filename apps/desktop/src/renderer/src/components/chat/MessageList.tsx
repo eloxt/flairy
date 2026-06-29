@@ -637,7 +637,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
         render={
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} />
         }
-        className="cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
+        className="rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
       >
         <ChevronRight
           className={cn(
@@ -740,7 +740,7 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
         render={
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} />
         }
-        className="cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
+        className="rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
       >
         <ChevronRight
           className={cn(
