@@ -55,7 +55,9 @@ import {
   listMemories,
   softDeleteMemory,
   upsertRemoteMemories,
-  clearAllMemories
+  clearAllMemories,
+  getCloseToTrayPref,
+  setCloseToTrayPref
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
@@ -72,6 +74,16 @@ import { randomUUID } from 'node:crypto'
 
 /** Live agent services keyed by sessionId. */
 const services = new Map<string, AgentService>()
+
+/**
+ * Tear down every live agent service — aborts any in-flight turn and persists it
+ * (better-sqlite3 writes synchronously, so this is safe inside `before-quit`).
+ * Called on app quit so MCP/agent work doesn't leak past exit.
+ */
+export function disposeAllAgentServices(): void {
+  for (const svc of services.values()) svc.dispose()
+  services.clear()
+}
 
 /**
  * Images awaiting pickup by a just-opened image-viewer window, keyed by the id in
@@ -525,6 +537,13 @@ export function registerIpcHandlers(
 
   // Widen the main window so opening the details panel doesn't squeeze the chat.
   ipcMain.handle(IPC.WindowGrowWidth, (_e, delta: number) => growMainWindowWidth(delta))
+
+  // Close-to-tray preference (read by the main window's close handler on each
+  // close). The set path just persists; no broadcast needed.
+  ipcMain.handle(IPC.SettingsGetCloseToTray, () => getCloseToTrayPref())
+  ipcMain.handle(IPC.SettingsSetCloseToTray, (_e, value: boolean) =>
+    setCloseToTrayPref(!!value)
+  )
 
   // A window that mounts after the update check ran reads the current status so
   // its header badge reflects an already-known update (the broadcast it missed).

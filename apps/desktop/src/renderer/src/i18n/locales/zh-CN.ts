@@ -164,6 +164,9 @@ const zhCN: typeof En = {
     // 界面
     language: '语言',
     languageDescription: '选择显示语言。',
+    closeToTray: '关闭窗口时',
+    closeToTrayDescription: '关闭窗口后让 Flairy 继续在后台运行，下次可立即打开。',
+    closeToTrayLabel: '关闭后继续在后台运行',
     // 记忆
     memory: 'Flairy 记住的内容',
     memoryDescription: 'Flairy 会在对话中记住关于你的有用信息，这样你不必重复说明。你可以在这里删除其中任意一条。',

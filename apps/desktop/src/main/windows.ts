@@ -1,6 +1,7 @@
 import { shell, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
+import { getCloseToTrayPref } from "./store/db";
 
 /**
  * Window management. Each window loads its own renderer HTML entry (`index` for
@@ -29,6 +30,26 @@ let mainWindow: BrowserWindow | null = null;
 /** The live main window, or null if none is currently open (or it's destroyed). */
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+}
+
+/**
+ * Set true once a real quit is underway (tray/menu Quit, Cmd+Q) so the main
+ * window's `close` handler lets the window be destroyed instead of hiding it.
+ */
+let quitting = false;
+export function markQuitting(): void {
+  quitting = true;
+}
+
+/** Bring the main window to the front, recreating it if it was fully closed. */
+export function showMainWindow(): void {
+  const win = getMainWindow();
+  if (win) {
+    win.show();
+    win.focus();
+  } else {
+    createMainWindow();
+  }
 }
 
 // contextIsolation is the real renderer<->main boundary. sandbox is false
@@ -113,6 +134,15 @@ export function createMainWindow(): BrowserWindow {
   // the one being destroyed (a later recreate overwrites it again).
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
+  });
+  // Close-to-tray: hide the window instead of destroying it so its renderer state
+  // survives for an instant reopen. Bypassed during a real quit, and when the user
+  // turned the preference off (then it closes like an ordinary window).
+  win.on("close", (e) => {
+    if (quitting) return;
+    if (!getCloseToTrayPref()) return;
+    e.preventDefault();
+    win.hide();
   });
   openLinksExternally(win);
   loadRenderer(win);

@@ -54,6 +54,10 @@
         {
           "from": "resources/bin/darwin-arm64",
           "to": "bin"
+        },
+        {
+          "from": "resources/tray",
+          "to": "tray"
         }
       ]
     },
@@ -71,6 +75,10 @@
         {
           "from": "resources/bin/win32-x64",
           "to": "bin"
+        },
+        {
+          "from": "resources/tray",
+          "to": "tray"
         }
       ]
     }

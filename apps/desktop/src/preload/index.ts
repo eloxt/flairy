@@ -57,6 +57,8 @@ const api: FlairyApi = {
   platform: process.platform,
   getInitialLanguage: () => ipcRenderer.sendSync(IPC.SettingsGetLanguage) as AppLanguage,
   setLanguage: (lng) => ipcRenderer.invoke(IPC.SettingsSetLanguage, lng),
+  getCloseToTray: () => ipcRenderer.invoke(IPC.SettingsGetCloseToTray),
+  setCloseToTray: (v) => ipcRenderer.invoke(IPC.SettingsSetCloseToTray, v),
 
   onAgentEvent: (cb) => {
     const listener = (_e: unknown, env: AgentEventEnvelope): void => cb(env)

@@ -179,6 +179,10 @@ const en = {
     // Interface tab
     language: 'Language',
     languageDescription: 'Choose the display language.',
+    closeToTray: 'When you close the window',
+    closeToTrayDescription:
+      'Keep Flairy running in the background when you close the window, so it opens again instantly.',
+    closeToTrayLabel: 'Keep running in the background',
     // Memory tab
     memory: 'What Flairy remembers',
     memoryDescription:

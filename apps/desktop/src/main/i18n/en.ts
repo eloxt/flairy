@@ -18,7 +18,9 @@ export const en = {
   'menu.renameChat': 'Rename',
   'menu.deleteChat': 'Delete',
   'menu.selectChats': 'Select chats',
-  'menu.removeRecentDir': 'Remove from recents'
+  'menu.removeRecentDir': 'Remove from recents',
+  'tray.open': 'Open Main Window',
+  'tray.quit': 'Quit Flairy'
 } as const
 
 export type MainCatalog = Record<keyof typeof en, string>

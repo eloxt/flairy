@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { AppLanguage, Memory, RedactedConfigSnapshot } from '@shared/ipc'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type Tab = 'profile' | 'interface' | 'memory' | 'about'
 
@@ -79,7 +80,7 @@ function ProfileTab(): React.JSX.Element {
   )
 }
 
-/** Language switcher — two-button segmented toggle for English and 简体中文. */
+/** Language switcher + close-to-tray toggle. */
 function InterfaceTab(): React.JSX.Element {
   const { t, i18n } = useTranslation()
 
@@ -92,6 +93,16 @@ function InterfaceTab(): React.JSX.Element {
 
   const onSelect = (lng: AppLanguage): void => {
     void window.api.setLanguage(lng)
+  }
+
+  // Defaults to on; main resolves the real value (missing key → on).
+  const [closeToTray, setCloseToTray] = useState(true)
+  useEffect(() => {
+    void window.api.getCloseToTray().then(setCloseToTray)
+  }, [])
+  const onToggleCloseToTray = (v: boolean): void => {
+    setCloseToTray(v)
+    void window.api.setCloseToTray(v)
   }
 
   return (
@@ -110,6 +121,16 @@ function InterfaceTab(): React.JSX.Element {
             </Button>
           ))}
         </div>
+      </Section>
+
+      <Section title={t('settings.closeToTray')}>
+        <p className="mb-3 text-sm text-muted-foreground">
+          {t('settings.closeToTrayDescription')}
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={closeToTray} onCheckedChange={onToggleCloseToTray} />
+          {t('settings.closeToTrayLabel')}
+        </label>
       </Section>
     </div>
   )

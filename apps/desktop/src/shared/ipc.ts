@@ -62,6 +62,8 @@ export const IPC = {
   UpdateOpenRelease: 'update:open-release',
   SettingsGetLanguage: 'settings:get-language',
   SettingsSetLanguage: 'settings:set-language',
+  SettingsGetCloseToTray: 'settings:get-close-to-tray',
+  SettingsSetCloseToTray: 'settings:set-close-to-tray',
   // event streams (send)
   UpdateAvailable: 'update:available',
   AgentEvent: 'agent:event',
@@ -475,6 +477,10 @@ export interface FlairyApi {
   getInitialLanguage(): AppLanguage
   /** Persist a new language choice; main broadcasts the change to all windows. */
   setLanguage(lng: AppLanguage): Promise<void>
+  /** Whether closing the main window hides it to the tray instead of closing. */
+  getCloseToTray(): Promise<boolean>
+  /** Persist the close-to-tray preference (default on). */
+  setCloseToTray(value: boolean): Promise<void>
   onAgentEvent(cb: (env: AgentEventEnvelope) => void): () => void
   onApprovalRequest(cb: (req: ApprovalRequestPayload) => void): () => void
   /** Fires when the agent asks the user one or more multiple-choice questions. */

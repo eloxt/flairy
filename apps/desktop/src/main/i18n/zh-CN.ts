@@ -13,5 +13,7 @@ export const zhCN: MainCatalog = {
   'menu.renameChat': '重命名',
   'menu.deleteChat': '删除',
   'menu.selectChats': '选择多个对话',
-  'menu.removeRecentDir': '从最近列表中移除'
+  'menu.removeRecentDir': '从最近列表中移除',
+  'tray.open': '打开主窗口',
+  'tray.quit': '退出 Flairy'
 }

@@ -147,6 +147,18 @@ export function setSetting(key: string, value: string): void {
   ).run(key, value)
 }
 
+/**
+ * Close-to-tray preference. Defaults ON: only an explicit '0' disables it, so a
+ * fresh install keeps Flairy running in the tray when its window is closed.
+ */
+export function getCloseToTrayPref(): boolean {
+  return getSetting('closeToTray') !== '0'
+}
+
+export function setCloseToTrayPref(value: boolean): void {
+  setSetting('closeToTray', value ? '1' : '0')
+}
+
 export function createSession({ title, cwd }: CreateSessionArgs): SessionMeta {
   const now = Date.now()
   const meta: SessionMeta = {
