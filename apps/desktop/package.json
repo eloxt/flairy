@@ -15,6 +15,31 @@
       "repo": "flairy",
       "releaseType": "draft"
     },
+    "dmg": {
+      "window": {
+        "width": 540,
+        "height": 420
+      },
+      "contents": [
+        {
+          "x": 130,
+          "y": 180
+        },
+        {
+          "x": 410,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 330,
+          "type": "file",
+          "path": "install.command",
+          "name": "安装 Flairy.command"
+        }
+      ]
+    },
     "mac": {
       "icon": "build/icon.icns",
       "target": [
