@@ -40,6 +40,9 @@ pub struct McpServerConfig {
     /// User-friendly name.
     pub name: String,
     pub transport: McpTransport,
+    /// Empty means every remote tool from this server is allowed.
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
     pub enabled: bool,
 }
 
@@ -60,6 +63,9 @@ pub struct AdminMcpServer {
 pub struct McpServerInput {
     pub name: String,
     pub transport: McpTransport,
+    /// Empty means every remote tool from this server is allowed.
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }

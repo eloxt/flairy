@@ -15,11 +15,12 @@ pub(crate) fn map_mcp(row: &PgRow) -> AppResult<McpServerConfig> {
         id: row.get::<Uuid, _>("id").to_string(),
         name: row.get("name"),
         transport,
+        allowed_tools: row.get("allowed_tools"),
         enabled: row.get("enabled"),
     })
 }
 
-const SELECT: &str = "SELECT id, name, transport, enabled FROM mcp_servers";
+const SELECT: &str = "SELECT id, name, transport, allowed_tools, enabled FROM mcp_servers";
 
 /// All servers in stable display order.
 pub async fn list(pool: &PgPool) -> AppResult<Vec<McpServerConfig>> {
@@ -53,7 +54,7 @@ fn map_admin_mcp(row: &PgRow) -> AppResult<AdminMcpServer> {
 /// Admin read: servers with their audience + assigned user ids.
 pub async fn list_admin(pool: &PgPool) -> AppResult<Vec<AdminMcpServer>> {
     let rows = sqlx::query(
-        "SELECT id, name, transport, enabled, audience, \
+        "SELECT id, name, transport, allowed_tools, enabled, audience, \
          ARRAY(SELECT ra.user_id::text FROM resource_assignments ra \
            WHERE ra.resource_type = 'mcp' AND ra.resource_id = mcp_servers.id \
            ORDER BY ra.created_at) AS assigned_user_ids \
@@ -81,11 +82,13 @@ pub async fn set_assignment(
     let mut tx = pool.begin().await?;
     super::assignments::ensure_users_exist(&mut tx, &user_ids).await?;
 
-    let updated = sqlx::query("UPDATE mcp_servers SET audience = $2, updated_at = now() WHERE id = $1 RETURNING id")
-        .bind(rid)
-        .bind(assignment.audience.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
+    let updated = sqlx::query(
+        "UPDATE mcp_servers SET audience = $2, updated_at = now() WHERE id = $1 RETURNING id",
+    )
+    .bind(rid)
+    .bind(assignment.audience.as_str())
+    .fetch_optional(&mut *tx)
+    .await?;
     if updated.is_none() {
         tx.rollback().await?;
         return Err(AppError::NotFound);
@@ -105,16 +108,18 @@ pub async fn set_assignment(
 pub async fn create(pool: &PgPool, input: &McpServerInput) -> AppResult<(McpServerConfig, i64)> {
     let id = Uuid::new_v4();
     let transport = serde_json::to_value(&input.transport).map_err(json_err)?;
+    let allowed_tools = normalize_allowed_tools(&input.allowed_tools);
     let mut tx = pool.begin().await?;
 
     let row = sqlx::query(
-        "INSERT INTO mcp_servers (id, name, transport, enabled)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, name, transport, enabled",
+        "INSERT INTO mcp_servers (id, name, transport, allowed_tools, enabled)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, name, transport, allowed_tools, enabled",
     )
     .bind(id)
     .bind(&input.name)
     .bind(&transport)
+    .bind(&allowed_tools)
     .bind(input.enabled)
     .fetch_one(&mut *tx)
     .await?;
@@ -131,17 +136,19 @@ pub async fn update(
 ) -> AppResult<Option<(McpServerConfig, i64)>> {
     let uid = parse_uuid(id)?;
     let transport = serde_json::to_value(&input.transport).map_err(json_err)?;
+    let allowed_tools = normalize_allowed_tools(&input.allowed_tools);
     let mut tx = pool.begin().await?;
 
     let row = sqlx::query(
         "UPDATE mcp_servers
-         SET name = $2, transport = $3, enabled = $4, updated_at = now()
+         SET name = $2, transport = $3, allowed_tools = $4, enabled = $5, updated_at = now()
          WHERE id = $1
-         RETURNING id, name, transport, enabled",
+         RETURNING id, name, transport, allowed_tools, enabled",
     )
     .bind(uid)
     .bind(&input.name)
     .bind(&transport)
+    .bind(&allowed_tools)
     .bind(input.enabled)
     .fetch_optional(&mut *tx)
     .await?;
@@ -175,4 +182,16 @@ pub async fn delete(pool: &PgPool, id: &str) -> AppResult<Option<i64>> {
     let version = bump_version(&mut tx).await?;
     tx.commit().await?;
     Ok(Some(version))
+}
+
+fn normalize_allowed_tools(tools: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = tools
+        .iter()
+        .map(|tool| tool.trim())
+        .filter(|tool| !tool.is_empty())
+        .map(str::to_string)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }

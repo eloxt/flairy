@@ -17,8 +17,9 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
  * deliberately leaves remote tool servers to the host app. So `McpManager` is the
  * client side of Flairy's config-delivery model: the server pushes a list of
  * `McpServerConfig`s, and this manager connects to each enabled one, lists its
- * tools, and adapts every remote tool into a pi `AgentTool` injected into the
- * agent's tool set (agent-service.ts).
+ * tools, filters them through the server-pushed allowlist, and adapts the
+ * allowed remote tools into pi `AgentTool`s injected into the agent's tool set
+ * (agent-service.ts).
  *
  * ARCHITECTURE — one process-level singleton, NOT one per session:
  * - MCP servers are global, server-pushed config; a stdio server should be a
@@ -174,11 +175,13 @@ async function connect(server: McpServerConfig): Promise<Connection> {
   const client = new Client(CLIENT_INFO)
   await withTimeout(client.connect(buildTransport(server.transport)), 'connect')
   const { tools } = await withTimeout(client.listTools(), 'listTools')
+  const allowed = normalizeAllowedTools(server.allowedTools)
+  const visibleTools = allowed ? tools.filter((t) => allowed.has(t.name)) : tools
   return {
     hash: fingerprint(server),
     server,
     client,
-    tools: tools.map((t) => ({
+    tools: visibleTools.map((t) => ({
       remoteName: t.name,
       description: t.description,
       inputSchema: t.inputSchema
@@ -291,7 +294,16 @@ function mapContent(blocks: unknown): PiContent[] {
 
 /** Stable fingerprint of the parts of a server config that affect the connection. */
 function fingerprint(server: McpServerConfig): string {
-  return JSON.stringify({ transport: server.transport, enabled: server.enabled })
+  return JSON.stringify({
+    transport: server.transport,
+    allowedTools: [...(server.allowedTools ?? [])].sort(),
+    enabled: server.enabled
+  })
+}
+
+function normalizeAllowedTools(tools: string[] | undefined): Set<string> | null {
+  const allowed = (tools ?? []).map((tool) => tool.trim()).filter(Boolean)
+  return allowed.length > 0 ? new Set(allowed) : null
 }
 
 /** A filesystem/identifier-safe slug from a user-facing server name. */

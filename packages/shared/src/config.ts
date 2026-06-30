@@ -181,6 +181,8 @@ export interface McpServerConfig {
   /** User-friendly name. No jargon is ever surfaced to end users. */
   name: string
   transport: McpTransport
+  /** Empty means every remote tool from this server is allowed. */
+  allowedTools: string[]
   enabled: boolean
 }
 
@@ -210,6 +212,8 @@ export type AdminMcpServerConfig = McpServerConfig & {
 export interface McpServerInput {
   name: string
   transport: McpTransport
+  /** Empty means every remote tool from this server is allowed. */
+  allowedTools: string[]
   enabled: boolean
 }
 

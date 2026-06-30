@@ -51,6 +51,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
 type TransportKind = McpTransport["kind"];
 
@@ -60,6 +61,7 @@ interface ServerForm {
   id: string;
   name: string;
   enabled: boolean;
+  allowedTools: string;
   kind: TransportKind;
   command: string;
   args: string;
@@ -74,6 +76,7 @@ function toForm(server: McpServerConfig): ServerForm {
     id: server.id,
     name: server.name,
     enabled: server.enabled,
+    allowedTools: (server.allowedTools ?? []).join("\n"),
     kind: t.kind,
     command: t.kind === "stdio" ? t.command : "",
     args: t.kind === "stdio" ? (t.args ?? []).join(" ") : "",
@@ -88,6 +91,7 @@ function emptyForm(): ServerForm {
     id: "",
     name: "",
     enabled: true,
+    allowedTools: "",
     kind: "stdio",
     command: "",
     args: "",
@@ -120,6 +124,7 @@ function formToInput(form: ServerForm): McpServerInput {
   return {
     name: form.name.trim(),
     enabled: form.enabled,
+    allowedTools: parseAllowedTools(form.allowedTools),
     transport: buildTransport(form),
   };
 }
@@ -129,11 +134,29 @@ function serverToInput(
   server: McpServerConfig,
   enabled: boolean,
 ): McpServerInput {
-  return { name: server.name, transport: server.transport, enabled };
+  return {
+    name: server.name,
+    transport: server.transport,
+    allowedTools: server.allowedTools ?? [],
+    enabled,
+  };
 }
 
 function transportSummary(t: McpTransport): string {
   return t.kind === "stdio" ? `stdio · ${t.command}` : `${t.kind} · ${t.url}`;
+}
+
+function parseAllowedTools(value: string): string[] {
+  const tools = value
+    .split(/[\s,]+/)
+    .map((tool) => tool.trim())
+    .filter(Boolean);
+  return [...new Set(tools)].sort();
+}
+
+function toolFilterSummary(server: McpServerConfig): string {
+  const count = server.allowedTools?.length ?? 0;
+  return count > 0 ? `${count} selected` : "All tools";
 }
 
 export function McpPage(): React.JSX.Element {
@@ -221,6 +244,7 @@ export function McpPage(): React.JSX.Element {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Transport</TableHead>
+                <TableHead className="w-28">Tools</TableHead>
                 <TableHead className="w-32">Audience</TableHead>
                 <TableHead className="w-20">Enabled</TableHead>
                 <TableHead className="w-24 text-right">Actions</TableHead>
@@ -232,6 +256,17 @@ export function McpPage(): React.JSX.Element {
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {transportSummary(s.transport)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        (s.allowedTools?.length ?? 0) > 0
+                          ? "default"
+                          : "secondary"
+                      }
+                    >
+                      {toolFilterSummary(s)}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -412,6 +447,20 @@ function ServerEditor({
               />
             </>
           )}
+
+          <div className="space-y-2">
+            <Label htmlFor="mcp-allowed-tools">Allowed tools</Label>
+            <Textarea
+              id="mcp-allowed-tools"
+              className="min-h-24"
+              placeholder="Leave empty to allow every tool"
+              value={form.allowedTools}
+              onChange={(e) => patch({ allowedTools: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter MCP tool names separated by spaces, commas, or new lines.
+            </p>
+          </div>
 
           <div className="flex items-center gap-2">
             <Switch
