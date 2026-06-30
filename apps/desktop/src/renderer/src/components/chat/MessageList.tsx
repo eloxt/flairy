@@ -8,6 +8,7 @@ import {
   Sparkle,
   SquareTerminal,
 } from "lucide-react";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import {
   MessageScroller,
@@ -57,7 +58,10 @@ import { cjk } from "@streamdown/cjk";
 // (even via useMemo): an unstable reference resets Streamdown's stateful animation
 // plugin every commit and re-triggers the parser's setState, reproducing #185.
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
-const STREAMDOWN_REMARK_PLUGINS = [remarkCitations];
+// Passing remarkPlugins REPLACES Streamdown's default set (which bundles
+// remark-gfm). Re-add gfm here or GFM tables/strikethrough/task-lists/autolinks
+// stop parsing and render as plain text. gfm goes first to match the default order.
+const STREAMDOWN_REMARK_PLUGINS = [remarkGfm, remarkCitations];
 const STREAMDOWN_COMPONENTS = { sup: CitationChip };
 
 /**
@@ -537,7 +541,6 @@ function AssistantRow({
             <ReasoningBlock
               text={m.thinking}
               streaming={m.streaming && !hasText}
-              answered={hasText}
             />
           )}
           {hasText && (
@@ -569,27 +572,26 @@ function AssistantRow({
 /**
  * The model's reasoning for a turn: a quiet, collapsible disclosure above the
  * answer. Auto-expands while reasoning is still streaming and no answer has
- * arrived yet (so it's visible live); collapses once the answer lands or on
- * replay. Mirrors the tool-row disclosure pattern.
+ * arrived yet (so it's visible live); collapses once reasoning stops, whether
+ * the next row is answer text or a tool call. Mirrors the tool-row disclosure
+ * pattern.
  */
 function ReasoningBlock({
   text,
   streaming,
-  answered,
 }: {
   text: string;
   streaming?: boolean;
-  answered?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(Boolean(streaming) && !answered);
-  // Auto-collapse once non-reasoning content (the answer) arrives — the false →
-  // true transition of `answered` — while still letting the user toggle it back.
-  const wasAnswered = useRef(Boolean(answered));
+  const [open, setOpen] = useState(Boolean(streaming));
+  // Auto-collapse once the reasoning stream ends, whether the model moves on to
+  // answer text or to tool calls, while still letting the user toggle it back.
+  const wasStreaming = useRef(Boolean(streaming));
   useEffect(() => {
-    if (!wasAnswered.current && answered) setOpen(false);
-    wasAnswered.current = Boolean(answered);
-  }, [answered]);
+    if (wasStreaming.current && !streaming) setOpen(false);
+    wasStreaming.current = Boolean(streaming);
+  }, [streaming]);
   return (
     <div>
       <button

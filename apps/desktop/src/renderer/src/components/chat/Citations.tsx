@@ -37,6 +37,43 @@ function openSource(url: string): void {
   void window.api.openExternal(url);
 }
 
+/** Stable key for "same page" checks in the footer source list. */
+function sourceUrlKey(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    u.protocol = u.protocol.toLowerCase();
+    u.hostname = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (
+      (u.protocol === "https:" && u.port === "443") ||
+      (u.protocol === "http:" && u.port === "80")
+    )
+      u.port = "";
+    if (u.pathname.length > 1) u.pathname = u.pathname.replace(/\/+$/, "");
+    return u.toString();
+  } catch {
+    return url.trim().replace(/#.*$/, "").replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+/**
+ * The citation registry can contain the same URL more than once when a turn runs
+ * several searches and Exa returns overlapping pages with different citation ids.
+ * Keep every id for inline chip lookup, but collapse repeated pages in the
+ * footer so the source list is a page index, not a raw tool-result dump.
+ */
+function uniqueSourcesForFooter(sources: SearchSource[]): SearchSource[] {
+  const seen = new Set<string>();
+  const unique: SearchSource[] = [];
+  for (const source of sources) {
+    const key = sourceUrlKey(source.url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(source);
+  }
+  return unique;
+}
+
 /** Flatten a React children value (string | array | nested) to its text. */
 function childrenText(c: unknown): string {
   if (typeof c === "string" || typeof c === "number") return String(c);
@@ -225,13 +262,14 @@ export function SourcesList({
   // Collapsed by default — the answer carries itself; the source index is there
   // to expand on demand, not to crowd the thread. Mirrors the tool-row pattern.
   const [open, setOpen] = useState(false);
-  if (sources.length === 0) return null;
+  const footerSources = uniqueSourcesForFooter(sources);
+  if (footerSources.length === 0) return null;
   // Order by citation number, not arrival order: parallel searches get their id
   // blocks in fetch-resolution order, but the registry accumulates them in
   // tool-call order, so a slower first search lands its higher ids ahead of a
   // faster later one (e.g. 9,10,…,1,2). Sort a copy for display — ids are unique,
   // so this is purely cosmetic and doesn't touch chip resolution (which is by id).
-  const ordered = [...sources].sort((a, b) => a.i - b.i);
+  const ordered = [...footerSources].sort((a, b) => a.i - b.i);
   return (
     <div className="mt-3 border-t border-border/60 pt-2">
       <button
@@ -248,7 +286,7 @@ export function SourcesList({
           strokeWidth={2}
         />
         <span>
-          {t("citations.sources")} · {sources.length}
+          {t("citations.sources")} · {footerSources.length}
         </span>
       </button>
       {/* grid-cols-1 forces the track to minmax(0,1fr) so it can't grow past
