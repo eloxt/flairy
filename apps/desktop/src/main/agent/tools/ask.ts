@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { AskQuestion } from '@shared/ipc'
-import { questions as questionRegistry } from '../questions'
+import type { InteractionChannel } from '../interaction'
+import type { TurnOrigin } from '../turn-origin'
 
 /**
  * ask — let the model pause and ask the end-user one or more multiple-choice
@@ -10,11 +11,17 @@ import { questions as questionRegistry } from '../questions'
  * free-text "other" answer. The call BLOCKS until the user submits (or the
  * session is aborted/deleted), then the picks are returned as the tool result.
  *
- * Mirrors the approval gate's request/await round-trip via the QuestionRegistry
- * (see ../questions). This tool is exempt from the approval gate in
- * agent-service.ts (asking the user is inherently safe).
+ * Mirrors the approval gate's request/await round-trip, but routed through the
+ * interaction channel that owns the running turn's origin. `getRoute` is read at
+ * CALL time (not captured at build time) so the question reaches the front-end
+ * that authored the turn — the desktop window or the originating Telegram chat.
+ * This tool is exempt from the approval gate in agent-service.ts (asking the user
+ * is inherently safe).
  */
-export function createAskTool(sessionId: string): AgentTool<any> {
+export function createAskTool(
+  sessionId: string,
+  getRoute: () => { origin: TurnOrigin; channel: InteractionChannel }
+): AgentTool<any> {
   return {
     name: 'ask',
     label: 'ask',
@@ -75,10 +82,11 @@ export function createAskTool(sessionId: string): AgentTool<any> {
         }
       })
 
-      const answers = await questionRegistry.request({
+      const { origin, channel } = getRoute()
+      const answers = await channel.askQuestion({
         sessionId,
-        questions: withIds,
-        reason: 'Flairy needs your input'
+        origin,
+        questions: withIds
       })
 
       if (signal?.aborted || answers === null) {

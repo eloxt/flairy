@@ -23,8 +23,9 @@ import {
   type ViewerImage
 } from '@shared/ipc'
 import { t } from '../locale'
-import { AgentService } from '../agent/agent-service'
-import type { McpManager } from '../agent/mcp'
+import type { AgentManager } from '../agent/agent-manager'
+import type { TelegramManager } from '../telegram/telegram-manager'
+import type { AgentEventInternalEnvelope } from '../agent/turn-origin'
 import { approvals } from '../agent/approvals'
 import { questions } from '../agent/questions'
 import {
@@ -41,6 +42,7 @@ import {
   createSession,
   listSessions,
   getSession,
+  getTelegramThreadBySession,
   loadMessages,
   updateSessionCwd,
   updateSessionTitle,
@@ -57,7 +59,8 @@ import {
   upsertRemoteMemories,
   clearAllMemories,
   getCloseToTrayPref,
-  setCloseToTrayPref
+  setCloseToTrayPref,
+  clearTelegramBinding
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
@@ -71,19 +74,6 @@ import {
   openSettingsWindow
 } from '../windows'
 import { randomUUID } from 'node:crypto'
-
-/** Live agent services keyed by sessionId. */
-const services = new Map<string, AgentService>()
-
-/**
- * Tear down every live agent service — aborts any in-flight turn and persists it
- * (better-sqlite3 writes synchronously, so this is safe inside `before-quit`).
- * Called on app quit so MCP/agent work doesn't leak past exit.
- */
-export function disposeAllAgentServices(): void {
-  for (const svc of services.values()) svc.dispose()
-  services.clear()
-}
 
 /**
  * Images awaiting pickup by a just-opened image-viewer window, keyed by the id in
@@ -122,41 +112,27 @@ async function pickDirectory(): Promise<string | null> {
   return dir
 }
 
-/**
- * The global tool-approval posture. One value for every session (not per-session);
- * the renderer's toggle drives it and `getOrCreateService` applies it to each new
- * AgentService. In-memory: resets to the safe `'ask'` on restart.
- */
-let permissionMode: PermissionMode = 'ask'
-
-function getOrCreateService(
-  sessionId: string,
-  server: ServerClient,
-  mcp: McpManager
-): AgentService {
-  let svc = services.get(sessionId)
-  if (!svc) {
-    const meta = getSession(sessionId)
-    if (!meta) throw new Error(`Unknown session: ${sessionId}`)
-    svc = new AgentService({
-      sessionId,
-      cwd: meta.cwd,
-      server,
-      mcp,
-      messages: loadMessages(sessionId)
-    })
-    // Apply the global approval posture to the fresh service.
-    svc.setPermissionMode(permissionMode)
-    services.set(sessionId, svc)
-  }
-  return svc
-}
-
 export function registerIpcHandlers(
   server: ServerClient,
-  mcp: McpManager,
-  updates: UpdateManager
+  updates: UpdateManager,
+  agents: AgentManager,
+  telegram: TelegramManager
 ): void {
+  // Default agent-event sink: forward every service's envelope to the live main
+  // window (resolved at send time so events still arrive after a close→reopen),
+  // stripping the internal `origin` tag before it crosses IPC. Wrapped in
+  // try/catch so a later (Telegram) subscriber that throws can't break this one.
+  agents.events.on('event', (env: AgentEventInternalEnvelope) => {
+    try {
+      getMainWindow()?.webContents.send(IPC.AgentEvent, {
+        sessionId: env.sessionId,
+        event: env.event
+      })
+    } catch (err) {
+      console.error('[agent-event] window sink failed:', err)
+    }
+  })
+
   // Sessions changed on another device land in the local db so the UI sees them.
   server.onSessionRemote((payload) => {
     upsertRemoteSession(payload)
@@ -172,10 +148,8 @@ export function registerIpcHandlers(
   // A session deleted on another device: tear down any live service, remove the
   // local rows, and tell every window to refresh its sidebar.
   server.onSessionRemoteDelete(({ sessionId }) => {
-    services.get(sessionId)?.dispose()
-    services.delete(sessionId)
-    approvals.rejectSession(sessionId)
-    questions.rejectSession(sessionId)
+    agents.delete(sessionId, true) // also delete the mapped Telegram topic
+    agents.rejectInteractions(sessionId)
     deleteSession(sessionId)
     broadcast(IPC.SessionsChanged)
   })
@@ -224,8 +198,12 @@ export function registerIpcHandlers(
   if (existingToken) server.connect(existingToken)
 
   ipcMain.handle(IPC.AgentPrompt, async (_e, args: PromptArgs) => {
+    // Telegram-created sessions are read-only on desktop — they are driven only
+    // from Telegram. The composer is disabled for them; enforce it here too so the
+    // read-only guarantee can't be bypassed.
+    if (getTelegramThreadBySession(args.sessionId)) return
     try {
-      await getOrCreateService(args.sessionId, server, mcp).submit(args.text, args.attachments)
+      await agents.getOrCreate(args.sessionId).submit(args.text, args.attachments)
     } catch (err) {
       // Creating the service can throw (e.g. no LLM config delivered yet). Push
       // it back as a visible error event instead of a swallowed invoke rejection.
@@ -238,11 +216,12 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IPC.AgentSteer, (_e, args: SteerArgs) => {
-    getOrCreateService(args.sessionId, server, mcp).steer(args.text)
+    if (getTelegramThreadBySession(args.sessionId)) return
+    agents.getOrCreate(args.sessionId).steer(args.text)
   })
 
   ipcMain.handle(IPC.AgentAbort, (_e, args: AbortArgs) => {
-    services.get(args.sessionId)?.abort()
+    agents.get(args.sessionId)?.abort()
   })
 
   ipcMain.handle(IPC.AgentApprovalResponse, (_e, args: ApprovalResponseArgs) => {
@@ -253,14 +232,12 @@ export function registerIpcHandlers(
     questions.resolve(args.questionId, args.answers)
   })
 
-  // Set the tool-approval posture for a session. Store it so it survives service
-  // (re)creation, and apply it to a live service immediately if one exists. We do
-  // NOT call getOrCreateService here — that throws before LLM config has arrived.
-  // Global posture: remember it for sessions created later, and push it to every
-  // session that's already live so the change takes effect immediately.
+  // Set the global desktop tool-approval posture. AgentManager stores it so it
+  // survives service (re)creation and pushes it to every live session at once. We
+  // deliberately don't force a service to exist here — that would throw before LLM
+  // config has arrived; the manager just remembers it for sessions created later.
   ipcMain.handle(IPC.AgentSetPermissionMode, (_e, mode: PermissionMode) => {
-    permissionMode = mode
-    for (const svc of services.values()) svc.setPermissionMode(mode)
+    agents.setDesktopPermissionMode(mode)
   })
 
   ipcMain.handle(IPC.SessionList, () => listSessions())
@@ -282,7 +259,7 @@ export function registerIpcHandlers(
     // isn't there already (e.g. a session synced from another device). Add-only:
     // never reorder an entry the user already has.
     ensureRecentDirectory(meta.cwd)
-    const svc = services.get(sessionId)
+    const svc = agents.get(sessionId)
     return {
       meta,
       messages: svc ? svc.getLiveMessages() : loadMessages(sessionId),
@@ -303,7 +280,7 @@ export function registerIpcHandlers(
     if (!dir) return null
     addRecentDirectory(dir)
     const meta = updateSessionCwd(args.sessionId, dir)
-    services.get(args.sessionId)?.setCwd(dir)
+    agents.get(args.sessionId)?.setCwd(dir)
     return meta ?? null
   })
 
@@ -342,7 +319,7 @@ export function registerIpcHandlers(
     addRecentDirectory(args.path)
     if (!args.sessionId) return null
     const meta = updateSessionCwd(args.sessionId, args.path)
-    services.get(args.sessionId)?.setCwd(args.path)
+    agents.get(args.sessionId)?.setCwd(args.path)
     return meta ?? null
   })
 
@@ -378,10 +355,8 @@ export function registerIpcHandlers(
   // doesn't pull it back. No-op if offline; an unsynced session never existed
   // server-side, so a pull can't resurrect it.
   ipcMain.handle(IPC.SessionDelete, (_e, args: DeleteSessionArgs) => {
-    services.get(args.sessionId)?.dispose()
-    services.delete(args.sessionId)
-    approvals.rejectSession(args.sessionId)
-    questions.rejectSession(args.sessionId)
+    agents.delete(args.sessionId, true) // also delete the mapped Telegram topic
+    agents.rejectInteractions(args.sessionId)
     server.sendSessionDelete({ sessionId: args.sessionId })
     return deleteSession(args.sessionId)
   })
@@ -507,14 +482,20 @@ export function registerIpcHandlers(
   // Sign out: drop the socket and wipe persisted credentials, then tell every
   // window to re-gate (the main window flips to the auth screen; a settings
   // window closes itself).
-  ipcMain.handle(IPC.AuthLogout, () => {
+  ipcMain.handle(IPC.AuthLogout, async () => {
+    // Fully revoke Telegram on sign-out (HIGH-1): stop polling + forget the bot
+    // token, then drop the chat binding — so the prior account's paired chat can't
+    // drive the agent, and the next account on this machine isn't remote-controlled
+    // by it. (clearAllSessions() below also wipes the telegram_threads mappings in
+    // its transaction, so none self-heal into the next account's agent.)
+    await telegram.disconnect()
+    clearTelegramBinding()
     server.disconnect()
     server.clearConfig()
     // Tear down live agents and wipe locally-cached sessions so the signed-out
     // user's history can't leak to the next account on this machine. The server
     // keeps the history; a relogin repopulates it via session:pull.
-    for (const svc of services.values()) svc.dispose()
-    services.clear()
+    agents.disposeAll()
     clearAllSessions()
     // Wipe locally-cached memories too so one account's memories can't leak to
     // the next account signed in on this machine; a relogin repopulates them via

@@ -71,10 +71,58 @@ export function initDb(): void {
       updatedAt INTEGER NOT NULL,
       deletedAt INTEGER
     );
+    -- Telegram: (chat_id, thread_key) → session_id mapping.
+    -- thread_key = message_thread_id ?? 0 so the General/default forum topic
+    -- dedupes correctly (NULLs are distinct under SQLite UNIQUE, non-NULL 0 is not).
+    CREATE TABLE IF NOT EXISTS telegram_threads (
+      session_id TEXT PRIMARY KEY,
+      chat_id    TEXT NOT NULL,
+      thread_key INTEGER NOT NULL DEFAULT 0,
+      title      TEXT,
+      created_at INTEGER,
+      UNIQUE(chat_id, thread_key)
+    );
+    -- Single-row binding: the one Telegram chat paired as the sole owner.
+    -- id = 0 constraint (same pattern as config_cache) enforces a single row.
+    CREATE TABLE IF NOT EXISTS telegram_binding (
+      id               INTEGER PRIMARY KEY CHECK (id = 0),
+      bound_chat_id    TEXT,
+      bound_chat_title TEXT,
+      bound_user_id    TEXT,
+      enabled          INTEGER,
+      updated_at       INTEGER
+    );
+    -- Append-only audit of every remote-driven tool decision.
+    -- args_preview is a redacted/truncated snippet (mask token-shaped substrings);
+    -- args_hash is the tamper-evidence. Full args are only shown ephemerally
+    -- in the approval card and are never persisted in cleartext.
+    CREATE TABLE IF NOT EXISTS telegram_audit (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id   TEXT,
+      chat_id      TEXT,
+      thread_key   INTEGER,
+      tool_name    TEXT,
+      args_hash    TEXT,
+      args_preview TEXT,
+      decision     TEXT,
+      created_at   INTEGER
+    );
   `)
   // Skills are no longer cached in SQLite — they're materialized straight to
   // userData/skills with an on-disk manifest. Drop the legacy table if present.
   db.exec('DROP TABLE IF EXISTS skill_cache;')
+
+  // Idempotent migration: existing installs created telegram_binding before the
+  // bound_user_id column existed. Add it if missing so a paired chat can pin
+  // approvals to the specific user who completed pairing (L3 hardening).
+  {
+    const cols = (
+      db.prepare('PRAGMA table_info(telegram_binding)').all() as { name: string }[]
+    ).map((c) => c.name)
+    if (!cols.includes('bound_user_id')) {
+      db.exec('ALTER TABLE telegram_binding ADD COLUMN bound_user_id TEXT')
+    }
+  }
 
   // One-time seed: on first upgrade the recents table is empty, so backfill from
   // directories the user deliberately picked for existing sessions. Skip '~'
@@ -175,12 +223,26 @@ export function createSession({ title, cwd }: CreateSessionArgs): SessionMeta {
   return meta
 }
 
+// `fromTelegram` marks sessions created from a Telegram chat (a telegram_threads
+// mapping exists) so the renderer can tag them in the sidebar and make them
+// read-only (they are driven only from Telegram).
+const SESSION_SELECT =
+  'SELECT sessions.*, EXISTS(SELECT 1 FROM telegram_threads t WHERE t.session_id = sessions.id) AS fromTelegram FROM sessions'
+
+// SQLite returns `fromTelegram` as 0/1; SessionMeta types it as a boolean, so omit
+// it from the base before intersecting to avoid a `boolean & number` (never) clash.
+type RawSessionRow = Omit<SessionMeta, 'fromTelegram'> & { fromTelegram: number }
+
 export function listSessions(): SessionMeta[] {
-  return db.prepare('SELECT * FROM sessions ORDER BY updatedAt DESC').all() as SessionMeta[]
+  const rows = db.prepare(`${SESSION_SELECT} ORDER BY updatedAt DESC`).all() as RawSessionRow[]
+  return rows.map((r) => ({ ...r, fromTelegram: !!r.fromTelegram }))
 }
 
 export function getSession(id: string): SessionMeta | undefined {
-  return db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as SessionMeta | undefined
+  const row = db.prepare(`${SESSION_SELECT} WHERE sessions.id = ?`).get(id) as
+    | RawSessionRow
+    | undefined
+  return row ? { ...row, fromTelegram: !!row.fromTelegram } : undefined
 }
 
 /**
@@ -285,12 +347,17 @@ export function deleteSession(id: string): boolean {
  * clearing here prevents one user's sessions from leaking to the next account
  * signed in on the same machine. Atomic so a session row never outlives its
  * messages. Local-only concepts (recents, config cache) are cleared elsewhere.
+ *
+ * Telegram thread mappings are wiped in the same transaction: otherwise a mapping
+ * would outlive its session row and "self-heal" a Telegram message into a session
+ * under the NEXT account that signs in on this machine.
  */
 export function clearAllSessions(): void {
   db.transaction(() => {
     db.prepare('DELETE FROM messages').run()
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts').run()
     db.prepare('DELETE FROM sessions').run()
+    db.prepare('DELETE FROM telegram_threads').run()
   })()
 }
 
@@ -471,6 +538,197 @@ export function upsertRemoteMemories(memories: Memory[]): void {
  */
 export function clearAllMemories(): void {
   db.prepare('DELETE FROM memories').run()
+}
+
+/* ---------- Telegram thread mapping ---------- */
+
+/** A row from the telegram_threads table (camelCase for TS consumers). */
+export interface TelegramThreadRow {
+  sessionId: string
+  chatId: string
+  threadKey: number
+  title: string | null
+  createdAt: number | null
+}
+
+type RawThreadRow = {
+  session_id: string
+  chat_id: string
+  thread_key: number
+  title: string | null
+  created_at: number | null
+}
+
+function mapThreadRow(r: RawThreadRow): TelegramThreadRow {
+  return {
+    sessionId: r.session_id,
+    chatId: r.chat_id,
+    threadKey: r.thread_key,
+    title: r.title,
+    createdAt: r.created_at
+  }
+}
+
+/**
+ * Look up the thread mapping for a (chatId, threadKey) pair.
+ * Returns undefined if no session has been mapped to this topic yet.
+ */
+export function getTelegramThread(chatId: string, threadKey: number): TelegramThreadRow | undefined {
+  const row = db
+    .prepare(
+      'SELECT session_id, chat_id, thread_key, title, created_at FROM telegram_threads WHERE chat_id = ? AND thread_key = ?'
+    )
+    .get(chatId, threadKey) as RawThreadRow | undefined
+  return row ? mapThreadRow(row) : undefined
+}
+
+/** Persist a new (chatId, threadKey) → sessionId mapping. */
+export function createTelegramThread({
+  sessionId,
+  chatId,
+  threadKey,
+  title
+}: {
+  sessionId: string
+  chatId: string
+  threadKey: number
+  title?: string
+}): TelegramThreadRow {
+  const now = Date.now()
+  db.prepare(
+    `INSERT INTO telegram_threads (session_id, chat_id, thread_key, title, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(sessionId, chatId, threadKey, title ?? null, now)
+  return { sessionId, chatId, threadKey, title: title ?? null, createdAt: now }
+}
+
+/** Look up the Telegram thread row for a given Flairy sessionId (reverse lookup). */
+export function getTelegramThreadBySession(sessionId: string): TelegramThreadRow | undefined {
+  const row = db
+    .prepare(
+      'SELECT session_id, chat_id, thread_key, title, created_at FROM telegram_threads WHERE session_id = ?'
+    )
+    .get(sessionId) as RawThreadRow | undefined
+  return row ? mapThreadRow(row) : undefined
+}
+
+/** Update the stored title for a Telegram thread (mirrors the session's generated title). */
+export function updateTelegramThreadTitle(sessionId: string, title: string): void {
+  db.prepare('UPDATE telegram_threads SET title = ? WHERE session_id = ?').run(title, sessionId)
+}
+
+/**
+ * Delete the Telegram thread mapping for a session (called on session delete,
+ * remote-delete, and logout to keep the mapping table clean).
+ */
+export function deleteTelegramThread(sessionId: string): void {
+  db.prepare('DELETE FROM telegram_threads WHERE session_id = ?').run(sessionId)
+}
+
+/**
+ * All session ids that have an active Telegram thread mapping.
+ * Used at startup to seed the TelegramManager's in-memory owned-session Set.
+ */
+export function listTelegramSessionIds(): string[] {
+  return (db.prepare('SELECT session_id FROM telegram_threads').all() as { session_id: string }[]).map(
+    (r) => r.session_id
+  )
+}
+
+/* ---------- Telegram binding (single-row) ---------- */
+
+/** The paired Telegram chat that owns this Flairy instance. */
+export interface TelegramBindingRow {
+  chatId: string | null
+  chatTitle: string | null
+  /** Telegram user id of the sender who completed pairing; pins approval taps. */
+  userId: string | null
+  enabled: boolean
+  updatedAt: number | null
+}
+
+/** Read the current binding, or undefined if no chat has been paired yet. */
+export function getTelegramBinding(): TelegramBindingRow | undefined {
+  const row = db
+    .prepare(
+      'SELECT bound_chat_id, bound_chat_title, bound_user_id, enabled, updated_at FROM telegram_binding WHERE id = 0'
+    )
+    .get() as
+    | {
+        bound_chat_id: string | null
+        bound_chat_title: string | null
+        bound_user_id: string | null
+        enabled: number | null
+        updated_at: number | null
+      }
+    | undefined
+  if (!row) return undefined
+  return {
+    chatId: row.bound_chat_id,
+    chatTitle: row.bound_chat_title,
+    userId: row.bound_user_id,
+    enabled: Boolean(row.enabled),
+    updatedAt: row.updated_at
+  }
+}
+
+/** Upsert the binding row. Callers pass a precomputed chatId, title, user id, and enabled flag. */
+export function setTelegramBinding({
+  chatId,
+  title,
+  userId,
+  enabled
+}: {
+  chatId: string
+  title: string
+  userId: string | null
+  enabled: boolean
+}): void {
+  db.prepare(
+    `INSERT INTO telegram_binding (id, bound_chat_id, bound_chat_title, bound_user_id, enabled, updated_at)
+     VALUES (0, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       bound_chat_id    = excluded.bound_chat_id,
+       bound_chat_title = excluded.bound_chat_title,
+       bound_user_id    = excluded.bound_user_id,
+       enabled          = excluded.enabled,
+       updated_at       = excluded.updated_at`
+  ).run(chatId, title, userId, enabled ? 1 : 0, Date.now())
+}
+
+/** Remove the binding row (unpair or sign-out). No-op if already absent. */
+export function clearTelegramBinding(): void {
+  db.prepare('DELETE FROM telegram_binding WHERE id = 0').run()
+}
+
+/* ---------- Telegram audit log ---------- */
+
+/**
+ * Append one record to the immutable Telegram tool-decision audit log.
+ * `argsHash` is the tamper-evidence; `argsPreview` is a redacted/truncated
+ * snippet — both are computed by the caller before this call.
+ */
+export function appendTelegramAudit({
+  sessionId,
+  chatId,
+  threadKey,
+  toolName,
+  argsHash,
+  argsPreview,
+  decision
+}: {
+  sessionId: string
+  chatId: string
+  threadKey: number
+  toolName: string
+  argsHash: string
+  argsPreview: string
+  decision: string
+}): void {
+  db.prepare(
+    `INSERT INTO telegram_audit (session_id, chat_id, thread_key, tool_name, args_hash, args_preview, decision, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(sessionId, chatId, threadKey, toolName, argsHash, argsPreview, decision, Date.now())
 }
 
 /* ---------- Full-text search ---------- */

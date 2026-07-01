@@ -37,6 +37,7 @@ const en = {
     history: 'History',
     chatsWillAppearHere: 'Your chats will appear here',
     untitled: 'Untitled chat',
+    fromTelegram: 'From Telegram',
     deleteTitle: 'Delete this chat?',
     deleteDescription:
       'This action cannot be undone. The chat and its messages will be permanently deleted.',
@@ -141,6 +142,7 @@ const en = {
   },
   composer: {
     placeholder: 'Ask Flairy to do something…',
+    telegramReadOnly: 'This chat is controlled from Telegram — read-only here.',
     addImage: 'Add image',
     imageUnsupported: "The current model can't read images",
     imagesIgnored:
@@ -169,6 +171,7 @@ const en = {
     tabProfile: 'Profile',
     tabInterface: 'Interface',
     tabMemory: 'Memory',
+    tabTelegram: 'Telegram',
     tabAbout: 'About',
     // Profile tab
     account: 'Account',
@@ -186,12 +189,44 @@ const en = {
     // Memory tab
     memory: 'What Flairy remembers',
     memoryDescription:
-      'Flairy remembers helpful things about you as you chat, so you don’t have to repeat yourself. You can forget any of them here.',
-    memoryEmpty: 'Flairy hasn’t remembered anything about you yet.',
+      "Flairy remembers helpful things about you as you chat, so you don't have to repeat yourself. You can forget any of them here.",
+    memoryEmpty: "Flairy hasn't remembered anything about you yet.",
     memoryForget: 'Forget',
     memoryClearAll: 'Forget everything',
     memoryClearConfirm: 'Yes, forget everything',
     cancel: 'Cancel',
+    // Telegram tab
+    telegramConnection: 'Connection',
+    telegramConnectionDescription:
+      'Enter your bot token (from @BotFather) to let Flairy receive messages from Telegram.',
+    telegramTokenPlaceholder: 'Bot token from @BotFather',
+    telegramConnectButton: 'Connect',
+    telegramConnecting: 'Connecting…',
+    telegramDisconnectButton: 'Disconnect',
+    telegramStatusConnected: 'Connected as @{{username}}',
+    telegramStatusNotConnected: 'Not connected',
+    telegramStatusPaused: 'Paused — not accepting new messages',
+    telegramStatusError: 'Error: {{error}}',
+    telegramLastActive: 'Last message received: {{time}}',
+    telegramLinkGroup: 'Link your chat',
+    telegramLinkGroupDescription:
+      'Pair your private chat with the bot. Threads in that chat each become a separate conversation in Flairy.',
+    telegramPairButton: 'Get pairing code',
+    telegramPairingCodeLabel: 'Your pairing code',
+    telegramPairingCodeExpiry: 'Expires at {{time}}',
+    telegramPairingStepsTitle: 'How to link your chat:',
+    telegramPairingStep1: '1. In @BotFather, enable Threaded Mode for your bot.',
+    telegramPairingStep2: '2. Open a direct chat with your bot in Telegram.',
+    telegramPairingStep3: '3. Send /pair {{code}} in that chat.',
+    telegramPaired: 'Linked with {{chat}}',
+    telegramUnpairButton: 'Unlink chat',
+    telegramKillSwitch: 'Pause',
+    telegramKillSwitchDescription:
+      'Stop Flairy from accepting new Telegram messages. Any action already running may not stop immediately.',
+    telegramPauseButton: 'Pause Telegram',
+    telegramWorkspace: 'Telegram workspace',
+    telegramWorkspaceDescription:
+      'Telegram-driven tasks run in a dedicated workspace folder, separate from your other workspaces.',
     // About tab
     about: 'About',
     appTagline: 'Your AI assistant that just works.',

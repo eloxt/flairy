@@ -50,6 +50,12 @@ export const IPC = {
   ShellOpenExternal: 'shell:open-external',
   SecretsSet: 'secrets:set',
   SecretsHas: 'secrets:has',
+  TelegramGetStatus: 'telegram:get-status',
+  TelegramConnect: 'telegram:connect',
+  TelegramDisconnect: 'telegram:disconnect',
+  TelegramStartPairing: 'telegram:start-pairing',
+  TelegramUnpair: 'telegram:unpair',
+  TelegramPause: 'telegram:pause',
   AuthLogin: 'auth:login',
   AuthRegister: 'auth:register',
   AuthLogout: 'auth:logout',
@@ -65,6 +71,7 @@ export const IPC = {
   SettingsGetCloseToTray: 'settings:get-close-to-tray',
   SettingsSetCloseToTray: 'settings:set-close-to-tray',
   // event streams (send)
+  TelegramStatusChanged: 'telegram:status-changed',
   UpdateAvailable: 'update:available',
   AgentEvent: 'agent:event',
   ApprovalRequest: 'agent:approval-request',
@@ -187,6 +194,8 @@ export interface SessionMeta {
   cwd: string
   createdAt: number
   updatedAt: number
+  /** True if this session was created from Telegram — tagged + read-only on desktop. */
+  fromTelegram?: boolean
 }
 
 export interface SearchMessagesArgs {
@@ -371,6 +380,40 @@ export interface SessionTitleUpdatedPayload {
   title: string
 }
 
+/**
+ * Live status of the Telegram integration, pushed to the renderer whenever it
+ * changes. No token field anywhere renderer-facing.
+ */
+export interface TelegramStatus {
+  /** Whether the bot is configured to accept inbound messages. */
+  enabled: boolean
+  /** Whether the bot is currently polling Telegram successfully. */
+  connected: boolean
+  /** @BotUsername reported by Telegram after a successful connect. */
+  botUsername?: string
+  /** Whether a chat has completed the /pair handshake. */
+  paired: boolean
+  /** Display label for the bound chat (e.g. group name or "DM"). */
+  boundChatLabel?: string
+  /** Active pairing code + expiry (only present while a pairing is in progress). */
+  pairing?: { code: string; expiresAt: number }
+  /** Last error message surface (e.g. "invalid token", "connected on another device"). */
+  lastError?: string
+  /** Epoch ms of the most-recently processed inbound message (for diagnosing bot-privacy issues). */
+  lastInboundAt?: number
+}
+
+/** Args for the connectTelegram command. The token is the only renderer→main secret crossing. */
+export interface TelegramConnectArgs {
+  token: string
+}
+
+/** Returned by startTelegramPairing: a one-time code the user sends via /pair. */
+export interface TelegramPairing {
+  code: string
+  expiresAt: number
+}
+
 /** The surface exposed to the renderer via contextBridge as `window.api`. */
 export interface FlairyApi {
   prompt(args: PromptArgs): Promise<void>
@@ -439,6 +482,20 @@ export interface FlairyApi {
   pickDirectory(): Promise<string | null>
   setSecret(args: SetSecretArgs): Promise<void>
   hasSecret(provider: SetSecretArgs['provider']): Promise<boolean>
+  /** Current Telegram integration status (bot, pairing, binding). */
+  getTelegramStatus(): Promise<TelegramStatus>
+  /** Store the token, start polling, and return the new status. */
+  connectTelegram(args: TelegramConnectArgs): Promise<TelegramStatus>
+  /** Stop polling, wipe the stored token, and return the new status. */
+  disconnectTelegram(): Promise<TelegramStatus>
+  /** Generate a one-time pairing code and return it. */
+  startTelegramPairing(): Promise<TelegramPairing>
+  /** Clear the bound chat (unpair) and return the new status. */
+  unpairTelegram(): Promise<TelegramStatus>
+  /** Kill switch: abort all Telegram turns + stop accepting inbound, keep binding. */
+  pauseTelegram(): Promise<TelegramStatus>
+  /** Subscribe to Telegram status changes pushed from main. Returns an unsubscribe fn. */
+  onTelegramStatusChanged(cb: (s: TelegramStatus) => void): () => void
   login(args: LoginArgs): Promise<AuthStatus>
   register(args: RegisterArgs): Promise<AuthStatus>
   logout(): Promise<void>

@@ -1,10 +1,13 @@
 import { app } from "electron";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
 import { initDb } from "./store/db";
-import { registerIpcHandlers, disposeAllAgentServices } from "./ipc/handlers";
+import { registerIpcHandlers } from "./ipc/handlers";
 import { registerLocaleHandlers } from "./ipc/locale-handlers";
+import { registerTelegramHandlers } from "./ipc/telegram-handlers";
 import { ServerClient } from "./sync/server-client";
 import { McpManager } from "./agent/mcp";
+import { AgentManager } from "./agent/agent-manager";
+import { TelegramManager } from "./telegram/telegram-manager";
 import { UpdateManager } from "./update/update-checker";
 import { createMainWindow, markQuitting, showMainWindow } from "./windows";
 import { createTray, destroyTray } from "./tray";
@@ -42,10 +45,20 @@ if (!app.requestSingleInstanceLock()) {
     // config snapshot/delta. onConfig fires immediately if a cached config exists.
     const mcp = new McpManager();
     server.onConfig((config) => mcp.sync(config.mcpServers));
+    // Process-level owner of the per-session agent services, lifted out of the IPC
+    // layer so every front-end (desktop now, Telegram later) drives sessions
+    // through one seam.
+    const agents = new AgentManager(server, mcp);
+    // Telegram remote-chat front-end onto the same session runtime. Registers its
+    // interaction channel + outbound bus subscriber on construction; auto-starts
+    // below only if a stored token + enabled binding already exist.
+    const telegram = new TelegramManager(server, agents);
     // Polls GitHub for a newer release and badges the header when one exists.
     const updates = new UpdateManager();
     createMainWindow();
-    registerIpcHandlers(server, mcp, updates);
+    registerIpcHandlers(server, updates, agents, telegram);
+    registerTelegramHandlers(telegram);
+    telegram.maybeAutoStart();
     updates.start();
     createTray();
 
@@ -57,7 +70,8 @@ if (!app.requestSingleInstanceLock()) {
     // window actually close instead of hiding to the tray.
     app.on("before-quit", () => {
       markQuitting();
-      disposeAllAgentServices();
+      void telegram.stop();
+      agents.disposeAll();
       mcp.dispose();
       server.disconnect();
       destroyTray();

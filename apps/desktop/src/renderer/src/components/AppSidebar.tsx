@@ -24,7 +24,7 @@ import {
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
 import type { SessionMeta } from "@shared/ipc";
-import { LoaderCircle, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { LoaderCircle, Plus, Search, Send, Settings, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -298,6 +298,15 @@ function SessionRow({
           <span className="min-w-0 flex-1 truncate text-[0.8125rem]">
             {s.title || t('chat.untitled')}
           </span>
+          {s.fromTelegram && (
+            <span
+              className="shrink-0 text-muted-foreground"
+              aria-label={t('chat.fromTelegram')}
+              title={t('chat.fromTelegram')}
+            >
+              <Send className="size-3" />
+            </span>
+          )}
           {running && (
             <span className="ml-auto flex shrink-0" aria-label={t('chat.running')} title={t('chat.running')}>
               <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AppLanguage, Memory, RedactedConfigSnapshot } from '@shared/ipc'
+import type { AppLanguage, Memory, RedactedConfigSnapshot, TelegramStatus } from '@shared/ipc'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 
-type Tab = 'profile' | 'interface' | 'memory' | 'about'
+type Tab = 'profile' | 'interface' | 'memory' | 'telegram' | 'about'
 
 /**
  * End-user settings, split into tabs:
@@ -23,6 +24,7 @@ export function SettingsPage(): React.JSX.Element {
     { id: 'profile', label: t('settings.tabProfile') },
     { id: 'interface', label: t('settings.tabInterface') },
     { id: 'memory', label: t('settings.tabMemory') },
+    { id: 'telegram', label: t('settings.tabTelegram') },
     { id: 'about', label: t('settings.tabAbout') }
   ]
 
@@ -49,6 +51,7 @@ export function SettingsPage(): React.JSX.Element {
         {tab === 'profile' && <ProfileTab />}
         {tab === 'interface' && <InterfaceTab />}
         {tab === 'memory' && <MemoryTab />}
+        {tab === 'telegram' && <TelegramTab />}
         {tab === 'about' && <AboutTab />}
       </div>
     </div>
@@ -216,6 +219,225 @@ function MemoryTab(): React.JSX.Element {
             )}
           </div>
         )}
+      </Section>
+    </div>
+  )
+}
+
+/**
+ * Telegram remote-chat settings. Lets the user connect a bot token, pair their
+ * private chat with the bot (native Threaded Mode), and manage the kill switch —
+ * all in plain language.
+ * The token is write-only: the form sends it to main but never gets it back.
+ */
+function TelegramTab(): React.JSX.Element {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<TelegramStatus | null>(null)
+  const [tokenInput, setTokenInput] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  // Load initial status and subscribe to live updates.
+  useEffect(() => {
+    void window.api.getTelegramStatus().then(setStatus)
+    return window.api.onTelegramStatusChanged(setStatus)
+  }, [])
+
+  const onConnect = (): void => {
+    const tok = tokenInput.trim()
+    if (!tok || busy) return
+    setBusy(true)
+    void window.api
+      .connectTelegram({ token: tok })
+      .then((s) => {
+        setStatus(s)
+        if (s.connected) setTokenInput('') // clear on success; keep on error so user can fix
+      })
+      .finally(() => setBusy(false))
+  }
+
+  const onDisconnect = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api.disconnectTelegram().then(setStatus).finally(() => setBusy(false))
+  }
+
+  const onStartPairing = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api
+      .startTelegramPairing()
+      // The updated status (with the code) arrives via onTelegramStatusChanged.
+      .catch(() => undefined)
+      .finally(() => setBusy(false))
+  }
+
+  const onUnpair = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api.unpairTelegram().then(setStatus).finally(() => setBusy(false))
+  }
+
+  const onPause = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api.pauseTelegram().then(setStatus).finally(() => setBusy(false))
+  }
+
+  if (status === null) {
+    return (
+      <div className="space-y-6">
+        <Section title={t('settings.telegramConnection')}>
+          <p className="text-sm text-muted-foreground">{t('settings.loadingConfig')}</p>
+        </Section>
+      </div>
+    )
+  }
+
+  const connected = status.connected
+  // Paused = had a valid connection (botUsername known) but polling stopped.
+  const paused = !status.enabled && !status.connected && !!status.botUsername
+
+  return (
+    <div className="space-y-6">
+      {/* ── Connection ── */}
+      <Section title={t('settings.telegramConnection')}>
+        <p className="mb-3 text-sm text-muted-foreground">
+          {t('settings.telegramConnectionDescription')}
+        </p>
+
+        {connected ? (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm font-medium">
+              {t('settings.telegramStatusConnected', { username: status.botUsername ?? '' })}
+            </span>
+            <Button variant="outline" size="sm" onClick={onDisconnect} disabled={busy}>
+              {t('settings.telegramDisconnectButton')}
+            </Button>
+          </div>
+        ) : (
+          <>
+            {paused && (
+              <p className="mb-3 text-sm text-amber-600 dark:text-amber-400">
+                {t('settings.telegramStatusPaused')}
+              </p>
+            )}
+            {status.lastError && (
+              <p className="mb-3 text-sm text-destructive">
+                {t('settings.telegramStatusError', { error: status.lastError })}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder={t('settings.telegramTokenPlaceholder')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onConnect()
+                }}
+                disabled={busy}
+                className="flex-1"
+              />
+              <Button onClick={onConnect} disabled={busy || !tokenInput.trim()} size="sm">
+                {busy ? t('settings.telegramConnecting') : t('settings.telegramConnectButton')}
+              </Button>
+            </div>
+            {paused && (
+              <div className="mt-3 border-t border-border/60 pt-3">
+                <Button variant="outline" size="sm" onClick={onDisconnect} disabled={busy}>
+                  {t('settings.telegramDisconnectButton')}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+
+        {status.lastInboundAt !== undefined && connected && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('settings.telegramLastActive', {
+              time: new Date(status.lastInboundAt).toLocaleString()
+            })}
+          </p>
+        )}
+      </Section>
+
+      {/* ── Link your chat (shown only when connected) ── */}
+      {connected && (
+        <Section title={t('settings.telegramLinkGroup')}>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {t('settings.telegramLinkGroupDescription')}
+          </p>
+
+          {status.paired ? (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm font-medium">
+                {t('settings.telegramPaired', { chat: status.boundChatLabel ?? '' })}
+              </span>
+              <Button variant="outline" size="sm" onClick={onUnpair} disabled={busy}>
+                {t('settings.telegramUnpairButton')}
+              </Button>
+            </div>
+          ) : status.pairing ? (
+            <div className="space-y-4">
+              {/* Pairing code shown prominently so it's easy to copy */}
+              <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+                <p className="mb-1 text-xs text-muted-foreground">
+                  {t('settings.telegramPairingCodeLabel')}
+                </p>
+                <p className="font-mono text-2xl font-bold tracking-widest select-all">
+                  {status.pairing.code}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('settings.telegramPairingCodeExpiry', {
+                    time: new Date(status.pairing.expiresAt).toLocaleTimeString()
+                  })}
+                </p>
+              </div>
+              {/* Step-by-step setup instructions */}
+              <div>
+                <p className="mb-2 text-sm font-medium">
+                  {t('settings.telegramPairingStepsTitle')}
+                </p>
+                <ol className="space-y-1.5">
+                  {(
+                    [
+                      t('settings.telegramPairingStep1'),
+                      t('settings.telegramPairingStep2'),
+                      t('settings.telegramPairingStep3', { code: status.pairing.code })
+                    ] as string[]
+                  ).map((step) => (
+                    <li key={step} className="text-sm text-muted-foreground">
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={onStartPairing} disabled={busy}>
+              {t('settings.telegramPairButton')}
+            </Button>
+          )}
+        </Section>
+      )}
+
+      {/* ── Pause / kill switch (shown only when connected) ── */}
+      {connected && (
+        <Section title={t('settings.telegramKillSwitch')}>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {t('settings.telegramKillSwitchDescription')}
+          </p>
+          <Button variant="outline" size="sm" onClick={onPause} disabled={busy}>
+            {t('settings.telegramPauseButton')}
+          </Button>
+        </Section>
+      )}
+
+      {/* ── Telegram workspace info (always shown) ── */}
+      <Section title={t('settings.telegramWorkspace')}>
+        <p className="text-sm text-muted-foreground">
+          {t('settings.telegramWorkspaceDescription')}
+        </p>
       </Section>
     </div>
   )

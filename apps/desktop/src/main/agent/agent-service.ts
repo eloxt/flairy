@@ -23,8 +23,8 @@ import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import { createWebFetchTool } from "./tools/web-fetch";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
-import { approvals } from "./approvals";
 import { questions } from "./questions";
+import { desktopChannel, type InteractionChannel } from "./interaction";
 import { listMaterializedSkills, skillsRoot } from "./skill-materializer";
 import {
   saveMessages,
@@ -36,6 +36,11 @@ import {
 import { getMainWindow, broadcast } from "../windows";
 import { getLanguage } from "../locale";
 import type { ServerClient } from "../sync/server-client";
+import {
+  DESKTOP_ORIGIN,
+  type TurnOrigin,
+  type AgentEventInternalEnvelope,
+} from "./turn-origin";
 
 const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
 
@@ -74,11 +79,13 @@ export class AgentService {
    */
   private disposed = false;
   /**
-   * Tool names the user chose "Allow for this session". In-memory only and
-   * scoped to this AgentService (one per session), so it's discarded when the
-   * session ends — exactly "remember for this session, never persisted".
+   * Tool names the user chose "Allow for this session", PARTITIONED BY ORIGIN
+   * KIND. A desktop "Allow for this session" must not silently approve a
+   * Telegram-origin tool call on the same shared session (and vice versa) — each
+   * front-end's session-scoped approvals are tracked separately (see allowSet).
+   * In-memory only and per-session, so it's discarded when the session ends.
    */
-  private sessionAllowed = new Set<string>();
+  private sessionAllowed = new Map<TurnOrigin["kind"], Set<string>>();
   /**
    * Tool-approval posture. `'full'` ("Full access") bypasses the approval gate
    * entirely. In-memory only and per-session, so it resets to `'ask'` on
@@ -105,6 +112,42 @@ export class AgentService {
    * stub for a future auxiliary-call feature. See the constructor.
    */
   private toolModel: ReturnType<typeof getModel> | undefined;
+  /**
+   * Settle every pending interaction (approval + question) for this session.
+   * Injected so abort()/dispose() can reach the centralized fan-out in
+   * AgentManager without a circular dependency. Defaults to today's behavior
+   * (cancel open questions only) when constructed standalone; AgentManager
+   * supplies a callback that also rejects approvals (+ the Telegram channel).
+   */
+  private onRejectInteractions: (sessionId: string) => void;
+  /**
+   * The origin of the turn currently in flight (set when a fresh prompt starts;
+   * defaults to desktop). The event sink, interaction channel, and permission
+   * gate all follow this rather than the session — so a session driven by both
+   * desktop and Telegram routes each turn to the front-end that authored it.
+   */
+  private activeTurnOrigin: TurnOrigin = DESKTOP_ORIGIN;
+  /**
+   * True once any `telegram` origin has contributed to the running turn (started
+   * it, or steered it). Disables the desktop `full`-mode bypass for the rest of
+   * the turn (most-restrictive-origin-wins) so a Telegram-authored tool call can
+   * never ride a desktop "Full access" posture. Reset on `agent_end`.
+   */
+  private gatedByTelegram = false;
+  /**
+   * Where this service's (origin-tagged) event envelopes go. Injected so they can
+   * flow onto AgentManager's bus (window forwarder + Telegram subscriber);
+   * defaults to today's behavior — forward straight to the main window, origin
+   * stripped — when constructed standalone.
+   */
+  private emitEvent: (envelope: AgentEventInternalEnvelope) => void;
+  /**
+   * Resolve the interaction channel (approval + `ask`) for a turn's origin, at
+   * call time. Injected so AgentManager can route telegram turns to the Telegram
+   * channel; defaults to the desktop channel when constructed standalone.
+   */
+  private resolveChannel: (origin: TurnOrigin) => InteractionChannel;
+  private onTitleChanged?: (sessionId: string, title: string) => void;
 
   constructor(opts: {
     sessionId: string;
@@ -112,12 +155,27 @@ export class AgentService {
     server: ServerClient;
     mcp: McpManager;
     messages?: unknown[];
+    onRejectInteractions?: (sessionId: string) => void;
+    emitEvent?: (envelope: AgentEventInternalEnvelope) => void;
+    resolveChannel?: (origin: TurnOrigin) => InteractionChannel;
+    onTitleChanged?: (sessionId: string, title: string) => void;
   }) {
     const { sessionId, cwd, server, mcp } = opts;
     this.sessionId = sessionId;
     this.server = server;
     this.mcp = mcp;
     this.cwd = cwd;
+    this.onRejectInteractions =
+      opts.onRejectInteractions ?? ((id) => questions.rejectSession(id));
+    this.emitEvent =
+      opts.emitEvent ??
+      ((env) =>
+        getMainWindow()?.webContents.send(IPC.AgentEvent, {
+          sessionId: env.sessionId,
+          event: env.event,
+        }));
+    this.resolveChannel = opts.resolveChannel ?? (() => desktopChannel);
+    this.onTitleChanged = opts.onTitleChanged;
 
     const config = server.getConfig();
     if (!config || !config.llm.main) {
@@ -177,20 +235,35 @@ export class AgentService {
         // so it's inherently safe and exempt — gating it would nag for something
         // the assistant does silently and often while working.
         if (name === "todo_write") return undefined;
-        // "Full access" auto-approves everything, including mutating/MCP tools.
-        if (this.permissionMode === "full") return undefined;
+        const origin = this.activeTurnOrigin;
+        // "Full access" auto-approves everything — but only for a purely
+        // desktop-origin turn (most-restrictive-origin-wins). Any telegram
+        // contribution to the turn (start or steer) flips `gatedByTelegram`, so a
+        // Telegram-authored tool call can never ride a desktop "Full access".
+        if (
+          !this.gatedByTelegram &&
+          origin.kind === "desktop" &&
+          this.permissionMode === "full"
+        )
+          return undefined;
         if (isReadOnlyTool(name)) return undefined;
-        if (this.sessionAllowed.has(name)) return undefined;
+        // Session-scoped approvals are partitioned by origin, so a desktop
+        // "Allow for this session" never auto-approves a Telegram tool call.
+        if (this.allowSet(origin).has(name)) return undefined;
 
-        const decision = await approvals.request({
+        // Route the approval to the channel that owns this turn's origin (desktop
+        // window vs. Telegram chat), resolved at call time. Carry the cwd so the
+        // (remote) approval card can show where a command/file tool will run.
+        const decision = await this.resolveChannel(origin).requestApproval({
           sessionId,
+          origin,
           toolName: name,
           args,
-          reason: `Agent wants to run "${name}"`,
+          cwd: this.cwd,
         });
         if (!decision.approved)
           return { block: true, reason: "User denied the action" };
-        if (decision.scope === "session") this.sessionAllowed.add(name);
+        if (decision.scope === "session") this.allowSet(origin).add(name);
         return undefined;
       },
     });
@@ -243,7 +316,12 @@ export class AgentService {
         // New turn: restart per-turn web-search citation numbering.
         this.searchIdOffset = 0;
       }
-      if (event.type === "agent_end") this.running = false;
+      if (event.type === "agent_end") {
+        this.running = false;
+        // The turn is over: drop any Telegram gate-escalation so the next
+        // (possibly desktop-only) turn re-evaluates the gate from scratch.
+        this.gatedByTelegram = false;
+      }
       this.send(sessionId, normalizeEvent(event));
       // Persist on turn boundaries so a crash doesn't lose history.
       if (event.type === "turn_end" || event.type === "agent_end") {
@@ -261,7 +339,12 @@ export class AgentService {
   private buildTools(cwd: string): AgentTool<any>[] {
     const tools: AgentTool<any>[] = [
       ...createTools(cwd),
-      createAskTool(this.sessionId),
+      // Resolve origin + channel at CALL time (not here at build time) so an
+      // `ask` routes to the front-end that authored the turn currently running.
+      createAskTool(this.sessionId, () => ({
+        origin: this.activeTurnOrigin,
+        channel: this.resolveChannel(this.activeTurnOrigin),
+      })),
       createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
       createTodoTool(),
     ];
@@ -300,9 +383,12 @@ export class AgentService {
   }
 
   private send(sessionId: string, event: AgentStreamEvent): void {
-    // Resolve the live main window at send time — never a captured reference —
-    // so events still reach the renderer after a close→reopen on macOS.
-    getMainWindow()?.webContents.send(IPC.AgentEvent, { sessionId, event });
+    // Emit the envelope (tagged with this turn's origin) onto the injected sink
+    // instead of touching the window directly. The default sink reproduces the
+    // old behavior (forward to the live main window, resolved at send time so
+    // events still arrive after a close→reopen on macOS); the Telegram sink
+    // subscribes the same bus and filters by origin.
+    this.emitEvent({ sessionId, event, origin: this.activeTurnOrigin });
   }
 
   /** The agent's current in-memory message set (may be ahead of the last persist). */
@@ -372,17 +458,28 @@ export class AgentService {
    * re-starts the run — rather than leaving the text stranded in the steering
    * queue, which only drains while a run is active.
    */
-  async submit(text: string, attachments?: Attachment[]): Promise<void> {
+  async submit(
+    text: string,
+    attachments?: Attachment[],
+    origin: TurnOrigin = DESKTOP_ORIGIN,
+  ): Promise<void> {
     if (this.running) {
       // Inject as steering. Skip a truly empty submit (no text and no images) so we
       // don't push a blank user message into the running turn.
-      if (text.trim() || attachments?.length) this.steer(text, attachments);
+      if (text.trim() || attachments?.length) this.steer(text, attachments, origin);
       return;
     }
-    await this.prompt(text, attachments);
+    await this.prompt(text, attachments, origin);
   }
 
-  async prompt(text: string, attachments?: Attachment[]): Promise<void> {
+  async prompt(
+    text: string,
+    attachments?: Attachment[],
+    origin: TurnOrigin = DESKTOP_ORIGIN,
+  ): Promise<void> {
+    // A fresh run fixes the turn's routing origin: the event sink + gate read this
+    // for the rest of the turn.
+    this.activeTurnOrigin = origin;
     // First user message in a fresh session → generate a title from it. Capture
     // "is first" BEFORE agent.prompt mutates state.messages, and fire it off
     // before the await so it runs in parallel with (never blocks) the turn.
@@ -450,6 +547,7 @@ export class AgentService {
       updateSessionTitle(this.sessionId, title);
       this.emitTitle(title);
       this.syncTitle(title);
+      this.onTitleChanged?.(this.sessionId, title);
     } catch (err) {
       // Catches THROWN setup/network failures; soft errors handled above. Never
       // a chat error — just log.
@@ -481,7 +579,15 @@ export class AgentService {
     });
   }
 
-  steer(text: string, attachments?: Attachment[]): void {
+  steer(
+    text: string,
+    attachments?: Attachment[],
+    origin: TurnOrigin = DESKTOP_ORIGIN,
+  ): void {
+    // Most-restrictive-origin-wins: a telegram steer into a running turn keeps the
+    // approval gate on for the rest of that turn, even if it started desktop-origin
+    // in "Full access". The turn's routing origin stays whatever started it.
+    if (origin.kind === "telegram") this.gatedByTelegram = true;
     // pi's ImageContent and our Attachment are the same shape ({ type: 'image',
     // data, mimeType }), so images drop straight into the user message's content
     // array next to the text part — the same array agent.prompt() builds for an
@@ -495,6 +601,20 @@ export class AgentService {
       content,
       timestamp: Date.now(),
     } as any);
+  }
+
+  /**
+   * The set of "Allow for this session" tool names for a turn's origin kind,
+   * created on first use. Keeping desktop and Telegram grants in separate sets is
+   * what stops a desktop session-grant from ungating a later Telegram-origin call.
+   */
+  private allowSet(origin: TurnOrigin): Set<string> {
+    let set = this.sessionAllowed.get(origin.kind);
+    if (!set) {
+      set = new Set<string>();
+      this.sessionAllowed.set(origin.kind, set);
+    }
+    return set;
   }
 
   /** Switch the tool-approval posture for the rest of this session. */
@@ -531,9 +651,11 @@ export class AgentService {
     // otherwise a steer queued just before the stop would be injected into the
     // next prompt's run (pi drains the queues at run start).
     this.agent.clearAllQueues();
-    // Aborting the run won't settle a blocked `ask` Promise on its own, so
-    // cancel any open question for this session — otherwise the turn hangs.
-    questions.rejectSession(this.sessionId);
+    // Aborting the run won't settle a blocked approval/`ask` Promise on its own,
+    // so cancel every open interaction for this session — otherwise the turn
+    // hangs. Routed through the injected fan-out so it also settles approvals
+    // (and, later, the Telegram channel), not just questions.
+    this.onRejectInteractions(this.sessionId);
   }
 
   /**
@@ -545,9 +667,10 @@ export class AgentService {
     this.disposed = true;
     this.running = false;
     this.agent.abort();
-    // Settle any question still open for this session so its blocked Promise
-    // resolves and no registry entries leak.
-    questions.rejectSession(this.sessionId);
+    // Settle any interaction still open for this session so its blocked Promise
+    // resolves and no registry entries leak. Routed through the injected fan-out
+    // so it covers approvals + questions (+ the Telegram channel later).
+    this.onRejectInteractions(this.sessionId);
     this.unsubscribe?.();
     this.mcpUnsub?.();
   }

@@ -7,6 +7,7 @@ import {
   Folder,
   Paperclip,
   Plus,
+  Send,
   ShieldAlert,
   ShieldCheck,
   Square,
@@ -104,6 +105,9 @@ export function Composer(): React.JSX.Element {
   // The directory in effect (open session's, or the pending pick on home).
   const cwd = useChat(selectCwd) ?? undefined;
 
+  // Telegram-created sessions are read-only on desktop (driven only from Telegram).
+  const readOnly = useChat((s) => !!s.sessions.find((x) => x.id === s.sessionId)?.fromTelegram);
+
   // Publish the composer's live height so the message list can reserve matching
   // bottom space and never let content hide behind the floating composer.
   useLayoutEffect(() => {
@@ -182,6 +186,23 @@ export function Composer(): React.JSX.Element {
   // pictures before the request — otherwise they'd vanish with no explanation.
   const imageSupported = useImageInputSupported();
   const imagesIgnored = attachments.length > 0 && !imageSupported;
+
+  // Read-only Telegram session: show a notice instead of the input. rootRef stays
+  // so the message list still reserves matching bottom space.
+  if (readOnly) {
+    return (
+      <div ref={rootRef} className="pointer-events-none absolute bottom-0 left-0 right-0 pt-10">
+        <div className="pointer-events-auto mx-auto w-full max-w-200 px-6">
+          <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+              <Send className="size-4 shrink-0" />
+              <span>{t('composer.telegramReadOnly')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

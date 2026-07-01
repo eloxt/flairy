@@ -92,3 +92,30 @@ export function clearAuth(): void {
   delete all[AUTH_USER_KEY]
   saveAll(all)
 }
+
+/**
+ * The Telegram bot token is stored alongside the provider keys, under a reserved
+ * key that can never collide with a Provider value. Encrypted at rest the same
+ * way. MAIN-ONLY: the renderer never learns the token value (only a boolean).
+ */
+const TELEGRAM_TOKEN_KEY = '__telegram_token__'
+
+export function setTelegramToken(token: string): void {
+  const all = loadAll()
+  all[TELEGRAM_TOKEN_KEY] = token
+  saveAll(all)
+}
+
+export function getTelegramToken(): string | null {
+  return loadAll()[TELEGRAM_TOKEN_KEY] ?? null
+}
+
+export function hasTelegramToken(): boolean {
+  return Boolean(loadAll()[TELEGRAM_TOKEN_KEY])
+}
+
+export function clearTelegramToken(): void {
+  const all = loadAll()
+  delete all[TELEGRAM_TOKEN_KEY]
+  saveAll(all)
+}

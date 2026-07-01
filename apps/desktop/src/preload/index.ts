@@ -8,6 +8,7 @@ import {
   type QuestionRequestPayload,
   type RedactedConfigSnapshot,
   type SessionTitleUpdatedPayload,
+  type TelegramStatus,
   type UpdateInfo
 } from '@shared/ipc'
 
@@ -41,6 +42,12 @@ const api: FlairyApi = {
   pickDirectory: () => ipcRenderer.invoke(IPC.DialogPickDirectory),
   setSecret: (args) => ipcRenderer.invoke(IPC.SecretsSet, args),
   hasSecret: (provider) => ipcRenderer.invoke(IPC.SecretsHas, provider),
+  getTelegramStatus: () => ipcRenderer.invoke(IPC.TelegramGetStatus),
+  connectTelegram: (args) => ipcRenderer.invoke(IPC.TelegramConnect, args),
+  disconnectTelegram: () => ipcRenderer.invoke(IPC.TelegramDisconnect),
+  startTelegramPairing: () => ipcRenderer.invoke(IPC.TelegramStartPairing),
+  unpairTelegram: () => ipcRenderer.invoke(IPC.TelegramUnpair),
+  pauseTelegram: () => ipcRenderer.invoke(IPC.TelegramPause),
   login: (args) => ipcRenderer.invoke(IPC.AuthLogin, args),
   register: (args) => ipcRenderer.invoke(IPC.AuthRegister, args),
   logout: () => ipcRenderer.invoke(IPC.AuthLogout),
@@ -109,6 +116,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, info: UpdateInfo): void => cb(info)
     ipcRenderer.on(IPC.UpdateAvailable, listener)
     return () => ipcRenderer.removeListener(IPC.UpdateAvailable, listener)
+  },
+  onTelegramStatusChanged: (cb) => {
+    const listener = (_e: unknown, s: TelegramStatus): void => cb(s)
+    ipcRenderer.on(IPC.TelegramStatusChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.TelegramStatusChanged, listener)
   }
 }
 
