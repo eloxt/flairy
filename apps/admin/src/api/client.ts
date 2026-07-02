@@ -151,6 +151,19 @@ export function clearLlmRole(role: LlmRole): Promise<void> {
   return request<void>(`/api/llm-roles/${role}`, { method: 'DELETE' })
 }
 
+/** Override a role's model for one user. Replaces any existing override. */
+export function assignLlmUserRole(role: LlmRole, userId: string, modelId: string): Promise<void> {
+  return request<void>(`/api/llm-roles/${role}/users/${userId}`, {
+    method: 'PUT',
+    body: { modelId }
+  })
+}
+
+/** Remove one user's override for a role (they revert to the global model). */
+export function clearLlmUserRole(role: LlmRole, userId: string): Promise<void> {
+  return request<void>(`/api/llm-roles/${role}/users/${userId}`, { method: 'DELETE' })
+}
+
 /* ---------- MCP servers ---------- */
 
 export function createMcpServer(body: McpServerInput): Promise<McpServerConfig> {

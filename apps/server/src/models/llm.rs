@@ -262,3 +262,14 @@ pub struct LlmRoleAssignment {
     pub role: LlmRole,
     pub model_id: String,
 }
+
+/// A per-user role→model override in the admin read model. When present it
+/// replaces the global [`LlmRoleAssignment`] for that role in the user's
+/// snapshot; absent roles fall back to the global binding.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmUserRoleAssignment {
+    pub user_id: String,
+    pub role: LlmRole,
+    pub model_id: String,
+}

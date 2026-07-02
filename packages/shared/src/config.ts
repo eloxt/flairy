@@ -154,8 +154,20 @@ export interface RoleModels {
   tool: ActiveLlm | null
 }
 
-/** A single role→model binding in the admin read model. */
+/** A single global role→model binding in the admin read model. */
 export interface LlmRoleAssignment {
+  role: LlmRole
+  modelId: string
+}
+
+/**
+ * A per-user role→model override in the admin read model. When present it
+ * replaces the global {@link LlmRoleAssignment} for that role in the user's
+ * snapshot; roles without an override resolve to the global binding. Mirrors
+ * `LlmUserRoleAssignment` in `apps/server/src/models/llm.rs`.
+ */
+export interface LlmUserRoleAssignment {
+  userId: string
   role: LlmRole
   modelId: string
 }
@@ -497,8 +509,10 @@ export interface AdminConfigSnapshot {
   llmProviders: LlmProviderConfig[]
   /** All models across every provider. */
   llmModels: LlmModelConfig[]
-  /** Current role→model bindings (at most one per role). */
+  /** Current global role→model bindings (at most one per role). */
   llmRoleAssignments: LlmRoleAssignment[]
+  /** Per-user role→model overrides (at most one per user+role). */
+  llmUserRoleAssignments: LlmUserRoleAssignment[]
   /** MCP servers carrying their audience assignment (admin variant). */
   mcpServers: AdminMcpServerConfig[]
   skills: SkillListItem[]

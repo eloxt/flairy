@@ -1,19 +1,24 @@
-import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Loader2, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import type {
   LlmModelConfig,
   LlmModelInput,
   LlmProviderConfig,
   LlmProviderInput,
   LlmRole,
+  LlmUserRoleAssignment,
   Modality,
   ProviderApi,
   ThinkingLevel,
+  UserSummary,
 } from "@flairy/shared";
 import { useConfig } from "@/hooks/useConfig";
+import { useUsers } from "@/hooks/useUsers";
 import {
   assignLlmRole,
+  assignLlmUserRole,
   clearLlmRole,
+  clearLlmUserRole,
   createLlmModel,
   createLlmProvider,
   deleteLlmModel,
@@ -28,11 +33,13 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -79,6 +86,9 @@ const MODALITIES: { value: Modality; label: string }[] = [
  * through this token and map it back to `undefined` on save.
  */
 const THINKING_DEFAULT = "__default__";
+
+/** Sentinel Select value for "no override — the user gets the global model". */
+const OVERRIDE_DEFAULT = "__global__";
 
 const ROLES: {
   role: LlmRole;
@@ -264,10 +274,16 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
 
 export function LlmPage(): React.JSX.Element {
   const { config, loading, error, saving, mutate } = useConfig();
+  const {
+    users,
+    loading: usersLoading,
+    error: usersError,
+  } = useUsers();
   const [editingProvider, setEditingProvider] = useState<ProviderForm | null>(
     null,
   );
   const [editingModel, setEditingModel] = useState<ModelForm | null>(null);
+  const [overridesRole, setOverridesRole] = useState<LlmRole | null>(null);
 
   if (loading) return <PageLoading />;
   if (error && !config) return <PageError message={error} />;
@@ -279,6 +295,8 @@ export function LlmPage(): React.JSX.Element {
     providers.find((p) => p.id === id)?.name ?? "—";
   const assignedModelId = (role: LlmRole): string | null =>
     config.llmRoleAssignments.find((a) => a.role === role)?.modelId ?? null;
+  const overridesFor = (role: LlmRole): LlmUserRoleAssignment[] =>
+    config.llmUserRoleAssignments.filter((a) => a.role === role);
 
   async function run(
     fn: () => Promise<unknown>,
@@ -456,8 +474,8 @@ export function LlmPage(): React.JSX.Element {
         <div>
           <h2 className="text-sm font-semibold">Roles</h2>
           <p className="text-xs text-muted-foreground">
-            Which model each scenario uses. These assignments are delivered to
-            every client.
+            Which model each scenario uses. The selected model is the default
+            for every user; per-user overrides replace it for specific users.
           </p>
         </div>
         <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
@@ -468,6 +486,7 @@ export function LlmPage(): React.JSX.Element {
           ) : (
             ROLES.map(({ role, label, description, clearable }) => {
               const assigned = assignedModelId(role);
+              const overrideCount = overridesFor(role).length;
               return (
                 <div
                   key={role}
@@ -480,6 +499,17 @@ export function LlmPage(): React.JSX.Element {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setOverridesRole(role)}
+                      disabled={saving}
+                    >
+                      <Users className="size-4" />
+                      {overrideCount > 0
+                        ? `${overrideCount} override${overrideCount === 1 ? "" : "s"}`
+                        : "Overrides"}
+                    </Button>
                     {clearable && assigned && (
                       <Button
                         variant="ghost"
@@ -530,6 +560,34 @@ export function LlmPage(): React.JSX.Element {
         </div>
       </section>
 
+      {overridesRole && (
+        <RoleOverridesDialog
+          roleLabel={
+            ROLES.find((r) => r.role === overridesRole)?.label ?? overridesRole
+          }
+          models={models}
+          users={users}
+          usersLoading={usersLoading}
+          usersError={usersError}
+          overrides={overridesFor(overridesRole)}
+          defaultModelId={assignedModelId(overridesRole)}
+          saving={saving}
+          onAssign={(userId, modelId) =>
+            void run(
+              () => assignLlmUserRole(overridesRole, userId, modelId),
+              () => {},
+            )
+          }
+          onClear={(userId) =>
+            void run(
+              () => clearLlmUserRole(overridesRole, userId),
+              () => {},
+            )
+          }
+          onClose={() => setOverridesRole(null)}
+        />
+      )}
+
       {editingProvider && (
         <ProviderEditor
           form={editingProvider}
@@ -573,6 +631,172 @@ export function LlmPage(): React.JSX.Element {
         />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-user role overrides
+// ---------------------------------------------------------------------------
+
+/**
+ * Override one role's model for specific users. Every user is listed with a
+ * model select; "Default" means no override (the user gets the global model).
+ * Changes apply immediately, matching the role selects on the page.
+ */
+function RoleOverridesDialog({
+  roleLabel,
+  models,
+  users,
+  usersLoading,
+  usersError,
+  overrides,
+  defaultModelId,
+  saving,
+  onAssign,
+  onClear,
+  onClose,
+}: {
+  roleLabel: string;
+  models: LlmModelConfig[];
+  users: UserSummary[] | null;
+  usersLoading: boolean;
+  usersError: string | null;
+  overrides: LlmUserRoleAssignment[];
+  defaultModelId: string | null;
+  saving: boolean;
+  onAssign: (userId: string, modelId: string) => void;
+  onClear: (userId: string) => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [search, setSearch] = useState("");
+
+  const overrideByUser = useMemo(
+    () => new Map(overrides.map((o) => [o.userId, o.modelId])),
+    [overrides],
+  );
+
+  const filtered = useMemo(() => {
+    const list = users ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(
+      (u) =>
+        u.displayName.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q),
+    );
+  }, [users, search]);
+
+  const defaultModel = models.find((m) => m.id === defaultModelId);
+  const defaultLabel = defaultModel
+    ? `Default — ${defaultModel.name}`
+    : "Default — not set";
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 sm:max-w-lg">
+        <DialogHeader className="mb-4 shrink-0">
+          <DialogTitle>{roleLabel} — per-user overrides</DialogTitle>
+          <DialogDescription>
+            Pick a different model for specific users. Users on “Default” get
+            the model selected for this role.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="relative shrink-0">
+            <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <Input
+              aria-label="Search users"
+              placeholder="Search users..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+            {usersLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : usersError ? (
+              <div className="text-destructive py-8 text-center text-sm">
+                {usersError}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-muted-foreground py-8 text-center text-sm">
+                {search ? "No users match your search." : "No users yet."}
+              </div>
+            ) : (
+              <ScrollArea className="h-full">
+                <ul className="divide-y divide-border">
+                  {filtered.map((u) => {
+                    const overrideModelId = overrideByUser.get(u.id);
+                    return (
+                      <li
+                        key={u.id}
+                        className="flex items-center gap-3 px-3 py-2"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">
+                            {u.displayName}
+                          </span>
+                          <span className="text-muted-foreground block truncate text-xs">
+                            {u.email}
+                          </span>
+                        </span>
+                        <Select
+                          value={overrideModelId ?? OVERRIDE_DEFAULT}
+                          onValueChange={(v) => {
+                            if (!v || v === (overrideModelId ?? OVERRIDE_DEFAULT))
+                              return;
+                            if (v === OVERRIDE_DEFAULT) onClear(u.id);
+                            else onAssign(u.id, v);
+                          }}
+                          disabled={saving}
+                        >
+                          <SelectTrigger className="w-52 shrink-0">
+                            <SelectValue>
+                              {(value) => {
+                                if (value === OVERRIDE_DEFAULT)
+                                  return defaultLabel;
+                                const m = models.find((m) => m.id === value);
+                                return m ? m.name : "Unknown model";
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={OVERRIDE_DEFAULT}>
+                              {defaultLabel}
+                            </SelectItem>
+                            {models.map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} ({m.model})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </ScrollArea>
+            )}
+          </div>
+
+          <p className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
+            <Users className="size-3" />
+            {overrides.length} override{overrides.length === 1 ? "" : "s"}
+          </p>
+        </div>
+
+        <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border pt-4">
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

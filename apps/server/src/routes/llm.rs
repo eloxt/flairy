@@ -32,6 +32,10 @@ pub fn router() -> Router<AppState> {
             "/api/llm-roles/{role}",
             axum::routing::put(assign_role).delete(clear_role),
         )
+        .route(
+            "/api/llm-roles/{role}/users/{user_id}",
+            axum::routing::put(assign_user_role).delete(clear_user_role),
+        )
 }
 
 // --- Providers -------------------------------------------------------------
@@ -176,6 +180,37 @@ async fn clear_role(
     }
     let pool = state.pool()?;
     db::llm::clear_role(pool, &role).await?;
+    state.broadcast_config().await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- Per-user role overrides -------------------------------------------------
+
+async fn assign_user_role(
+    State(state): State<AppState>,
+    Path((role, user_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<RoleAssignInput>,
+) -> AppResult<StatusCode> {
+    authed_admin(&state, &headers)?;
+    LlmRole::from_str(&role).ok_or(AppError::NotFound)?;
+    let pool = state.pool()?;
+    db::llm::assign_user_role(pool, &role, &user_id, &body.model_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    state.broadcast_config().await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn clear_user_role(
+    State(state): State<AppState>,
+    Path((role, user_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> AppResult<StatusCode> {
+    authed_admin(&state, &headers)?;
+    LlmRole::from_str(&role).ok_or(AppError::NotFound)?;
+    let pool = state.pool()?;
+    db::llm::clear_user_role(pool, &role, &user_id).await?;
     state.broadcast_config().await;
     Ok(StatusCode::NO_CONTENT)
 }

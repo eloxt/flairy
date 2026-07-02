@@ -13,7 +13,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::announcement::AnnouncementConfig;
-use crate::models::llm::{LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, RoleModels};
+use crate::models::llm::{
+    LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, LlmUserRoleAssignment, RoleModels,
+};
 use crate::models::mcp::{AdminMcpServer, McpServerConfig};
 use crate::models::service::{AdminServiceConfig, ServiceConfig};
 use crate::models::skill::{SkillListItem, SkillSummary};
@@ -98,8 +100,11 @@ impl From<&ConfigSnapshot> for ConfigUpdate {
 pub struct AdminConfigSnapshot {
     pub llm_providers: Vec<LlmProviderConfig>,
     pub llm_models: Vec<LlmModelConfig>,
-    /// Current role→model bindings (at most one per role).
+    /// Current global role→model bindings (at most one per role).
     pub llm_role_assignments: Vec<LlmRoleAssignment>,
+    /// Per-user role→model overrides (at most one per user+role); a user's
+    /// snapshot resolves these over the global bindings.
+    pub llm_user_role_assignments: Vec<LlmUserRoleAssignment>,
     /// MCP rows carrying audience + assigned users (admin-only fields).
     pub mcp_servers: Vec<AdminMcpServer>,
     /// Admin list rows (no body/files; full skill fetched via REST). Carry

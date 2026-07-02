@@ -9,7 +9,8 @@ use super::{config::bump_version, parse_uuid};
 use crate::error::{AppError, AppResult};
 use crate::models::llm::{
     ActiveLlm, LlmModelConfig, LlmModelInput, LlmProviderConfig, LlmProviderInput, LlmRole,
-    LlmRoleAssignment, Modality, ModelCost, ProviderApi, RoleModels, ThinkingLevel,
+    LlmRoleAssignment, LlmUserRoleAssignment, Modality, ModelCost, ProviderApi, RoleModels,
+    ThinkingLevel,
 };
 
 /// Parse the nullable `thinking_level` TEXT column into the enum. An unknown
@@ -378,8 +379,10 @@ fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
     })
 }
 
-/// The model (joined with its provider) bound to each role, for the client snapshot.
-pub async fn role_models(pool: &PgPool) -> AppResult<RoleModels> {
+/// The model (joined with its provider) resolved for each role for one user's
+/// snapshot: the user's override when present, else the global binding.
+pub async fn role_models_for_user(pool: &PgPool, user_id: &str) -> AppResult<RoleModels> {
+    let uid = super::parse_uuid(user_id)?;
     let rows = sqlx::query(
         "SELECT
             r.role        AS r_role,
@@ -400,13 +403,22 @@ pub async fn role_models(pool: &PgPool) -> AppResult<RoleModels> {
             p.api         AS p_api,
             p.credential  AS p_credential,
             p.base_url    AS p_base_url
-         FROM llm_role_assignments r
+         FROM (
+            SELECT role, model_id, 0 AS prio FROM llm_role_assignments
+            UNION ALL
+            SELECT role, model_id, 1 AS prio FROM llm_user_role_assignments
+            WHERE user_id = $1
+         ) r
          JOIN llm_models m ON m.id = r.model_id
-         JOIN llm_providers p ON p.id = m.provider_id",
+         JOIN llm_providers p ON p.id = m.provider_id
+         ORDER BY r.prio ASC",
     )
+    .bind(uid)
     .fetch_all(pool)
     .await?;
 
+    // Rows arrive global-first (prio 0), so a user override (prio 1) simply
+    // overwrites the slot.
     let mut roles = RoleModels {
         main: None,
         tool: None,
@@ -477,6 +489,91 @@ pub async fn clear_role(pool: &PgPool, role: &str) -> AppResult<i64> {
     let mut tx = pool.begin().await?;
 
     sqlx::query("DELETE FROM llm_role_assignments WHERE role = $1")
+        .bind(role)
+        .execute(&mut *tx)
+        .await?;
+
+    let version = bump_version(&mut tx).await?;
+    tx.commit().await?;
+    Ok(version)
+}
+
+// ---------------------------------------------------------------------------
+// Per-user role overrides
+// ---------------------------------------------------------------------------
+
+/// All per-user role→model overrides, for the admin read model.
+pub async fn list_user_role_assignments(pool: &PgPool) -> AppResult<Vec<LlmUserRoleAssignment>> {
+    let rows = sqlx::query(
+        "SELECT user_id, role, model_id FROM llm_user_role_assignments
+         ORDER BY created_at ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let role_str: String = row.get("role");
+        let role = LlmRole::from_str(&role_str)
+            .ok_or_else(|| AppError::Internal(format!("unknown role in db: {role_str}")))?;
+        out.push(LlmUserRoleAssignment {
+            user_id: row.get::<Uuid, _>("user_id").to_string(),
+            role,
+            model_id: row.get::<Uuid, _>("model_id").to_string(),
+        });
+    }
+    Ok(out)
+}
+
+/// Override `role` with `model_id` for one user (upsert). Returns the new
+/// version, or `None` if the user or model does not exist.
+pub async fn assign_user_role(
+    pool: &PgPool,
+    role: &str,
+    user_id: &str,
+    model_id: &str,
+) -> AppResult<Option<i64>> {
+    let user_uid = parse_uuid(user_id)?;
+    let model_uid = parse_uuid(model_id)?;
+    let mut tx = pool.begin().await?;
+
+    let both_exist: bool = sqlx::query(
+        "SELECT exists(SELECT 1 FROM users WHERE id = $1)
+            AND exists(SELECT 1 FROM llm_models WHERE id = $2) AS e",
+    )
+    .bind(user_uid)
+    .bind(model_uid)
+    .fetch_one(&mut *tx)
+    .await?
+    .get("e");
+    if !both_exist {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    sqlx::query(
+        "INSERT INTO llm_user_role_assignments (user_id, role, model_id) VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, role) DO UPDATE SET model_id = excluded.model_id, updated_at = now()",
+    )
+    .bind(user_uid)
+    .bind(role)
+    .bind(model_uid)
+    .execute(&mut *tx)
+    .await?;
+
+    let version = bump_version(&mut tx).await?;
+    tx.commit().await?;
+    Ok(Some(version))
+}
+
+/// Remove one user's override for `role` (the user reverts to the global
+/// binding). Returns the new version.
+pub async fn clear_user_role(pool: &PgPool, role: &str, user_id: &str) -> AppResult<i64> {
+    let user_uid = parse_uuid(user_id)?;
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("DELETE FROM llm_user_role_assignments WHERE user_id = $1 AND role = $2")
+        .bind(user_uid)
         .bind(role)
         .execute(&mut *tx)
         .await?;
