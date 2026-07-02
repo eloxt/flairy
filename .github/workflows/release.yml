@@ -123,3 +123,27 @@ jobs:
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Fill the draft release's body with GitHub's auto-generated notes (built
+  # from the commits/PRs between this tag and the previous one). Runs after
+  # both build jobs so the draft they create/update already exists. The draft
+  # is looked up by listing releases — the by-tag endpoint only returns
+  # published releases — and PATCHed directly so it stays a draft.
+  notes:
+    needs: [build, server]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and attach release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes=$(gh api "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body)
+          release_id=$(gh api "repos/$REPO/releases" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1)
+          if [ -z "$release_id" ]; then
+            echo "No release found for tag $TAG" >&2
+            exit 1
+          fi
+          gh api -X PATCH "repos/$REPO/releases/$release_id" -f body="$notes"
