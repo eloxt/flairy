@@ -1,28 +1,37 @@
 import { useEffect, useState } from 'react'
 import type { RedactedConfigSnapshot } from '@shared/ipc'
 
-/** Does the given config's active `main` model accept image input? */
-function supportsImages(config: RedactedConfigSnapshot | null): boolean {
+/**
+ * How attached images will be handled by the active configuration:
+ * - `native` — the `main` model accepts image input directly.
+ * - `extract` — `main` can't see images, but a `visual` model is assigned: it
+ *   will describe them before the turn, with possible loss of detail.
+ * - `unsupported` — no model can read images; pi drops them from the request.
+ */
+export type ImageInputSupport = 'native' | 'extract' | 'unsupported'
+
+function imageSupportOf(config: RedactedConfigSnapshot | null): ImageInputSupport {
   const input = config?.llm.main?.model.input
-  // Unknown (no config/model yet) → assume yes, so we never flash a false
-  // "images unsupported" warning before the snapshot has loaded.
-  if (!input) return true
-  return input.includes('image')
+  // Unknown (no config/model yet) → assume native, so we never flash a false
+  // warning before the snapshot has loaded.
+  if (!input) return 'native'
+  if (input.includes('image')) return 'native'
+  return config?.llm.visual ? 'extract' : 'unsupported'
 }
 
 /**
- * Whether the active `main` model can be sent images, tracked live off the
- * server-pushed config (initial snapshot + later `config:updated` deltas). Drives
- * the composer's "this model ignores images" reminder. Defaults to `true` until
- * the first snapshot arrives so the warning never flashes on cold start.
+ * How the active config handles image input, tracked live off the server-pushed
+ * config (initial snapshot + later `config:updated` deltas). Drives the
+ * composer's image warnings. Defaults to `native` until the first snapshot
+ * arrives so no warning ever flashes on cold start.
  */
-export function useImageInputSupported(): boolean {
-  const [supported, setSupported] = useState(true)
+export function useImageInputSupport(): ImageInputSupport {
+  const [support, setSupport] = useState<ImageInputSupport>('native')
 
   useEffect(() => {
-    void window.api.getConfig().then((c) => setSupported(supportsImages(c)))
-    return window.api.onConfigChanged((c) => setSupported(supportsImages(c)))
+    void window.api.getConfig().then((c) => setSupport(imageSupportOf(c)))
+    return window.api.onConfigChanged((c) => setSupport(imageSupportOf(c)))
   }, [])
 
-  return supported
+  return support
 }

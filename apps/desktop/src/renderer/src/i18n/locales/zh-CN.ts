@@ -136,6 +136,7 @@ const zhCN: typeof En = {
     addImage: '添加图片',
     imageUnsupported: '当前模型无法识别图片',
     imagesIgnored: '当前模型无法识别图片，发送时附带的图片会被忽略。',
+    imagesExtracted: '当前模型无法直接识别图片，将由辅助模型提取图片内容，细节可能有遗漏或不准确。',
     removeAttachment: '移除附件',
     workingDirectory: '工作目录',
     workingDirectoryTitle: '工作目录：{{path}}',

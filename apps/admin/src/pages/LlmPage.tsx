@@ -109,6 +109,13 @@ const ROLES: {
     description: "Auxiliary / cheaper model for tool-related work. Optional.",
     clearable: true,
   },
+  {
+    role: "visual",
+    label: "Visual model",
+    description:
+      "Auxiliary vision model. When the main model does not accept images, it extracts text from image attachments before the main model runs. Optional.",
+    clearable: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------

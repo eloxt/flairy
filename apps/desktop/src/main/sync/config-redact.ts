@@ -17,7 +17,9 @@ export function redactConfig(config: ConfigSnapshot | null): RedactedConfigSnaps
   return {
     llm: {
       main: redactLlm(config.llm.main),
-      tool: redactLlm(config.llm.tool)
+      tool: redactLlm(config.llm.tool),
+      // Default to null so a pre-visual-role cached snapshot redacts cleanly.
+      visual: redactLlm(config.llm.visual ?? null)
     },
     mcpServers: config.mcpServers.map(redactMcpServer),
     skills: config.skills,

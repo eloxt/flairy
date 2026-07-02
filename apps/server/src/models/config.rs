@@ -47,6 +47,7 @@ impl ConfigSnapshot {
             llm: RoleModels {
                 main: None,
                 tool: None,
+                visual: None,
             },
             mcp_servers: Vec::new(),
             skills: Vec::new(),

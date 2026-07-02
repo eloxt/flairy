@@ -16,6 +16,7 @@ import {
   type SearchSource
 } from '@shared/web-search'
 import { parseTodos, type TodoItem } from '@shared/todo'
+import { stripImageDescriptions } from '@shared/image-description'
 import { toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
 import i18n from '@/i18n'
 
@@ -893,7 +894,9 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
     }
     switch (m.role) {
       case 'user': {
-        const text = partsToText(m.content)
+        // Strip any injected visual-model image description (a sentinel text
+        // part riding on the message) — the bubble shows only what was typed.
+        const text = stripImageDescriptions(partsToText(m.content))
         const images = partsToImages(m.content)
         if (text || images.length)
           out.push({

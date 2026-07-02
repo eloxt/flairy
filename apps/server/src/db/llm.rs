@@ -422,12 +422,14 @@ pub async fn role_models_for_user(pool: &PgPool, user_id: &str) -> AppResult<Rol
     let mut roles = RoleModels {
         main: None,
         tool: None,
+        visual: None,
     };
     for row in &rows {
         let role_str: String = row.get("r_role");
         match LlmRole::from_str(&role_str) {
             Some(LlmRole::Main) => roles.main = Some(map_active(row)?),
             Some(LlmRole::Tool) => roles.tool = Some(map_active(row)?),
+            Some(LlmRole::Visual) => roles.visual = Some(map_active(row)?),
             None => {}
         }
     }

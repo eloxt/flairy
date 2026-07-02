@@ -149,6 +149,8 @@ const en = {
     imageUnsupported: "The current model can't read images",
     imagesIgnored:
       "The current model can't read images, so attached pictures will be ignored.",
+    imagesExtracted:
+      "The current model can't view images directly — a helper model will describe them for it, so some details may be missed or inaccurate.",
     removeAttachment: 'Remove attachment',
     workingDirectory: 'Working directory',
     workingDirectoryTitle: 'Working directory: {{path}}',

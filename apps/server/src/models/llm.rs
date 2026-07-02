@@ -119,11 +119,14 @@ fn default_input_modalities() -> Vec<Modality> {
 /// A scenario slot a model can be assigned to.
 /// - `Main` — the primary agent loop (required for the client to run).
 /// - `Tool` — an auxiliary / cheaper model.
+/// - `Visual` — an auxiliary vision model; the client uses it to extract text
+///   from image attachments when the main model does not accept image input.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LlmRole {
     Main,
     Tool,
+    Visual,
 }
 
 impl LlmRole {
@@ -132,6 +135,7 @@ impl LlmRole {
         match self {
             LlmRole::Main => "main",
             LlmRole::Tool => "tool",
+            LlmRole::Visual => "visual",
         }
     }
 
@@ -139,6 +143,7 @@ impl LlmRole {
         match s {
             "main" => Some(LlmRole::Main),
             "tool" => Some(LlmRole::Tool),
+            "visual" => Some(LlmRole::Visual),
             _ => None,
         }
     }
@@ -253,6 +258,7 @@ pub struct ActiveLlm {
 pub struct RoleModels {
     pub main: Option<ActiveLlm>,
     pub tool: Option<ActiveLlm>,
+    pub visual: Option<ActiveLlm>,
 }
 
 /// A single role→model binding in the admin read model.

@@ -17,7 +17,7 @@ import {
 import type { Attachment, PermissionMode } from "@shared/ipc";
 import { cn } from "@/lib/utils";
 import { useChat, selectCwd } from "@/store/chat-store";
-import { useImageInputSupported } from "@/hooks/use-image-input-supported";
+import { useImageInputSupport } from "@/hooks/use-image-input-supported";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -181,11 +181,15 @@ export function Composer(): React.JSX.Element {
   // turn — a steer carries images too (AgentService.steer), so the rule is the same.
   const canSend = text.trim().length > 0 || attachments.length > 0;
 
-  // The active model's image capability (server-driven). When it can't take
-  // images we still let the user attach + send, but warn that pi will drop the
-  // pictures before the request — otherwise they'd vanish with no explanation.
-  const imageSupported = useImageInputSupported();
-  const imagesIgnored = attachments.length > 0 && !imageSupported;
+  // The active config's image capability (server-driven). When the main model
+  // can't take images we still let the user attach + send, but warn: with a
+  // visual model assigned the pictures are described by it (lossy), and with
+  // none they're dropped from the request — otherwise they'd silently vanish
+  // or degrade with no explanation.
+  const imageSupport = useImageInputSupport();
+  const imageSupported = imageSupport !== "unsupported";
+  const imagesIgnored = attachments.length > 0 && imageSupport === "unsupported";
+  const imagesExtracted = attachments.length > 0 && imageSupport === "extract";
 
   // Read-only Telegram session: show a notice instead of the input. rootRef stays
   // so the message list still reserves matching bottom space.
@@ -252,6 +256,13 @@ export function Composer(): React.JSX.Element {
               <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesIgnored")}</span>
+              </div>
+            )}
+
+            {imagesExtracted && (
+              <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-600 dark:text-amber-500">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                <span>{t("composer.imagesExtracted")}</span>
               </div>
             )}
 

@@ -136,12 +136,15 @@ export interface LlmModelInput {
  * A scenario slot a model can be assigned to.
  * - `main` — the primary agent loop (required for the client to run).
  * - `tool` — an auxiliary / cheaper model (delivered, not yet consumed).
+ * - `visual` — an auxiliary vision model: when the main model does not accept
+ *   image input, the client runs it over image attachments to extract a text
+ *   description before the main-model turn.
  *
  * Roles are a fixed enum here; adding one is a small, localized change (this
  * union + the Rust enum + the `CHECK` constraint + {@link RoleModels} + consumers),
- * never a DB migration. Mirrors `LlmRole` in `apps/server/src/models/llm.rs`.
+ * never a schema change. Mirrors `LlmRole` in `apps/server/src/models/llm.rs`.
  */
-export type LlmRole = 'main' | 'tool'
+export type LlmRole = 'main' | 'tool' | 'visual'
 
 /**
  * The active model (resolved with its provider) for each role, delivered to
@@ -152,6 +155,7 @@ export type LlmRole = 'main' | 'tool'
 export interface RoleModels {
   main: ActiveLlm | null
   tool: ActiveLlm | null
+  visual: ActiveLlm | null
 }
 
 /** A single global role→model binding in the admin read model. */
@@ -461,6 +465,15 @@ export const MAIN_PROMPT_NAME = 'main'
  * case-insensitively, trimmed) rather than folded into the agent's own prompt.
  */
 export const TITLE_GENERATION_PROMPT_NAME = 'title_generation'
+
+/**
+ * Reserved {@link SystemPromptConfig.name} the client treats specially: its body
+ * overrides the built-in instruction given to the `visual`-role model when it
+ * extracts text descriptions from image attachments (matched case-insensitively,
+ * trimmed). Unlike `title_generation` there is a client-side default, so the
+ * visual role works without this prompt being configured.
+ */
+export const IMAGE_DESCRIPTION_PROMPT_NAME = 'image_description'
 
 /**
  * Minimal skill descriptor shipped to clients in `config:snapshot` /

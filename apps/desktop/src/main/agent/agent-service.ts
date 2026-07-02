@@ -1,6 +1,7 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel, streamSimple } from "@earendil-works/pi-ai";
 import {
+  IMAGE_DESCRIPTION_PROMPT_NAME,
   MAIN_PROMPT_NAME,
   TITLE_GENERATION_PROMPT_NAME,
   type ActiveLlm,
@@ -8,6 +9,10 @@ import {
   type Memory,
   type SyncMessage,
 } from "@flairy/shared";
+import {
+  encodeImageDescriptions,
+  stripImageDescriptions,
+} from "@shared/image-description";
 import { platform } from "node:os";
 import {
   IPC,
@@ -43,6 +48,19 @@ import {
 } from "./turn-origin";
 
 const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
+
+/**
+ * Built-in instruction for the `visual`-role model when it extracts image
+ * descriptions on behalf of a text-only main model. An admin can override it
+ * with a system prompt named `image_description`; unlike title generation this
+ * has a default, so assigning a visual model alone is enough to make it work.
+ */
+const BASE_IMAGE_DESCRIPTION_PROMPT =
+  "You describe images on behalf of a model that cannot see them. " +
+  "For each attached image, describe it thoroughly: transcribe any visible " +
+  "text verbatim, and describe layout, UI elements, charts, diagrams, code, " +
+  "and anything else relevant. Number the descriptions when there are several " +
+  "images. Output plain text only — no preamble, no commentary.";
 
 /**
  * One AgentService instance per session. Wraps a pi-agent-core Agent, forwards
@@ -491,7 +509,24 @@ export class AgentService {
     // reports as running; agent_start/agent_end keep it accurate thereafter.
     this.running = true;
     try {
-      await this.agent.prompt(text, attachments as any);
+      // With a text-only main model + an assigned `visual` model, extract a text
+      // description of the images first and ride it on the same user message
+      // (see maybeDescribeImages). Adds latency before the turn starts, but
+      // that's inherent: the description must exist before the main model runs.
+      const description = await this.maybeDescribeImages(attachments);
+      if (description && attachments?.length) {
+        await this.agent.prompt({
+          role: "user",
+          content: [
+            { type: "text", text },
+            ...attachments,
+            { type: "text", text: encodeImageDescriptions(description) },
+          ],
+          timestamp: Date.now(),
+        } as any);
+      } else {
+        await this.agent.prompt(text, attachments as any);
+      }
     } catch (err) {
       this.running = false;
       // A rejected run (bad credential, provider/baseUrl, network) would
@@ -592,15 +627,97 @@ export class AgentService {
     // data, mimeType }), so images drop straight into the user message's content
     // array next to the text part — the same array agent.prompt() builds for an
     // image prompt. With no attachments, keep the plain-string content form.
-    const content =
-      attachments && attachments.length > 0
-        ? [{ type: "text", text }, ...attachments]
-        : text;
+    const timestamp = Date.now();
+    if (attachments && attachments.length > 0) {
+      // Best-effort visual extraction first (resolves undefined when the main
+      // model can see images itself, no visual model is assigned, or the call
+      // fails — never rejects). Queuing the steer after it resolves is safe: pi
+      // drains steers at turn boundaries anyway, so the delay only risks
+      // reordering against a steer sent moments later — acceptable for a
+      // mid-turn redirect.
+      void this.maybeDescribeImages(attachments).then((description) => {
+        this.agent.steer({
+          role: "user",
+          content: [
+            { type: "text", text },
+            ...attachments,
+            ...(description
+              ? [{ type: "text", text: encodeImageDescriptions(description) }]
+              : []),
+          ],
+          timestamp,
+        } as any);
+      });
+      return;
+    }
     this.agent.steer({
       role: "user",
-      content,
-      timestamp: Date.now(),
+      content: text,
+      timestamp,
     } as any);
+  }
+
+  /**
+   * Extract a text description of image attachments with the server-assigned
+   * `visual`-role model, for a main model that cannot see images (pi would strip
+   * them with an "(image omitted)" note). Returns undefined whenever extraction
+   * doesn't apply (no images, main model accepts images, no visual model) or
+   * fails — best-effort like title generation: the turn then proceeds exactly as
+   * it does today, and this never surfaces a chat error.
+   */
+  private async maybeDescribeImages(
+    attachments: Attachment[] | undefined,
+  ): Promise<string | undefined> {
+    if (!attachments?.length) return undefined;
+    const config = this.server.getConfig();
+    const visual = config?.llm.visual;
+    if (!config || !visual) return undefined;
+    // Mirror buildModel's fallback: a snapshot omitting `input` means text-only.
+    const mainInput = config.llm.main?.model.input;
+    const mainSeesImages = (mainInput?.length ? mainInput : ["text"]).includes(
+      "image",
+    );
+    if (mainSeesImages) return undefined;
+    const sysPrompt =
+      findPromptBody(config, IMAGE_DESCRIPTION_PROMPT_NAME) ??
+      BASE_IMAGE_DESCRIPTION_PROMPT;
+    try {
+      const stream = streamSimple(
+        buildModel(visual),
+        {
+          systemPrompt: sysPrompt,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Describe the attached image(s) for a model that cannot see them.",
+                },
+                ...attachments,
+              ],
+              timestamp: Date.now(),
+            },
+          ] as any,
+        },
+        { apiKey: visual.provider.credential, maxTokens: 2048 },
+      );
+      const result = await stream.result();
+      // .result() resolves even on a SOFT stream error (an AssistantMessage with
+      // stopReason 'error'/'aborted'); bail before injecting that as a description.
+      if (result.stopReason === "error" || result.stopReason === "aborted")
+        return undefined;
+      const text = result.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("")
+        .trim();
+      return text || undefined;
+    } catch (err) {
+      // Catches THROWN setup/network failures; soft errors handled above.
+      console.warn("[visual-extract] failed:", err);
+      return undefined;
+    }
   }
 
   /**
@@ -1050,7 +1167,13 @@ function normalizeEvent(event: any): AgentStreamEvent {
         type: "message_end",
         messageId: event.message?.id ?? "",
         role,
-        text: projectText(event.message?.content),
+        // A user message may carry an injected visual-model image description
+        // (see maybeDescribeImages); strip it so a remotely-authored bubble
+        // shows only what the user typed.
+        text:
+          role === "user"
+            ? stripImageDescriptions(projectText(event.message?.content))
+            : projectText(event.message?.content),
         thinking: projectThinking(event.message?.content),
         // Forward a user message's attached images so a remotely-authored turn can
         // render its thumbnails live (assistant turns carry none).
