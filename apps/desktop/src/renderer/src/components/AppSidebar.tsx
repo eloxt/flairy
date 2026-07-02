@@ -95,7 +95,7 @@ export function AppSidebar(): React.JSX.Element {
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="app-no-drag h-9 rounded-lg border border-border bg-card font-medium hover:bg-accent"
+              className="app-no-drag h-9 rounded-lg border border-border bg-card/50 font-medium hover:bg-accent"
               onClick={() => {
                 void newChat();
                 navigate("/");
@@ -109,7 +109,7 @@ export function AppSidebar(): React.JSX.Element {
             <SidebarMenuButton
               render={<NavLink to="/search" />}
               isActive={onSearch}
-              className="app-no-drag h-9 rounded-lg text-muted-foreground"
+              className="app-no-drag h-9 rounded-lg"
             >
               <Search className="size-4" />
               <span>{t('chat.search')}</span>

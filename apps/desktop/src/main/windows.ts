@@ -118,7 +118,7 @@ export function createMainWindow(): BrowserWindow {
     // real desktop behind it (no blur, but actually see-through).
     ...(isMac
       ? {
-          vibrancy: "sidebar" as const,
+          vibrancy: "popover" as const,
           visualEffectState: "active" as const,
           backgroundColor: "#00000000",
         }
