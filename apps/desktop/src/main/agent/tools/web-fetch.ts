@@ -31,10 +31,10 @@ export function createWebFetchTool(resolve: () => ExaRuntimeConfig | null): Agen
   return {
     name: 'web_fetch',
     label: 'web_fetch',
-    description: `Fetch the full, clean text content of a specific web page URL.
+    description: `Read a webpage's full content as clean markdown. Use after web_search_exa when highlights are insufficient or to read any URL.
 
-      Best for: reading a page in depth after web_search returned only short highlights, or when the user gives you a URL to read.
-      Returns: the page title and its main text content (truncated for very long pages).`,
+Best for: Extracting full content from known URLs. Batch multiple URLs in one call.
+Returns: Clean text content and metadata from the page(s).`,
     parameters: Type.Object(
       {
         url: Type.String({

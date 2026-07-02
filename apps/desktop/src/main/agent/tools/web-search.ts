@@ -85,16 +85,16 @@ export function createWebSearchTool(
     name: 'web_search',
     label: 'web_search',
     description: `Search the web for any topic and get clean, ready-to-use content. Each result is numbered [1], [2], etc.
-      When citing information from search results in your response, use these numbers as inline citations like [1], [2], or [1,2] for multiple sources.
-      This helps users identify the source of information.
+When citing information from search results in your response, use these numbers as inline citations like [1], [2], or [1,2] for multiple sources.
+This helps users identify the source of information.
 
-      Best for: Finding current information, news, facts, people, companies, or answering questions about any topic.
-      Returns: Clean text content from top search results.
+Best for: Finding current information, news, facts, people, companies, or answering questions about any topic.
+Returns: Clean text content from top search results.
 
-      Query tips:
-      describe the ideal page, not keywords. "blog post comparing React and Vue performance" not "React vs Vue".
-      Use category:people / category:company to search through Linkedin profiles / companies respectively.
-      If highlights are insufficient, follow up with web_fetch on the best URLs.`,
+Query tips:
+describe the ideal page, not keywords. "blog post comparing React and Vue performance" not "React vs Vue".
+Use category:people / category:company to search through Linkedin profiles / companies respectively.
+If highlights are insufficient, follow up with web_fetch on the best URLs.`,
     parameters: Type.Object(
       {
         query: Type.String({
