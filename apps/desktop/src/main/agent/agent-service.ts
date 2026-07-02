@@ -14,6 +14,7 @@ import {
   stripImageDescriptions,
 } from "@shared/image-description";
 import { platform } from "node:os";
+import { app } from "electron";
 import {
   IPC,
   type AgentStreamEvent,
@@ -884,14 +885,16 @@ function uiLanguage(): string {
 
 /**
  * Substitute runtime context placeholders in a prompt body. Admins write
- * `{{os}}` / `{{date}}` / `{{skill}}` / `{{language}}` / `{{cwd}}` in the prompt;
- * unknown placeholders are left untouched.
+ * `{{os}}` / `{{date}}` / `{{skill}}` / `{{language}}` / `{{cwd}}` /
+ * `{{model}}` / `{{version}}` in the prompt; unknown placeholders are left
+ * untouched.
  */
 function injectContext(
   prompt: string,
   config: ConfigSnapshot,
   cwd: string,
 ): string {
+  const mainModel = config.llm.main?.model;
   const values: Record<string, string> = {
     os: osName(),
     date: new Date().toISOString().slice(0, 10),
@@ -899,6 +902,11 @@ function injectContext(
     memory: buildMemoryBlock(),
     language: uiLanguage(),
     cwd,
+    // The active `main`-role model, preferring its admin-facing display name
+    // over the raw provider id (mirrors buildModel's naming).
+    model: mainModel ? mainModel.name || mainModel.model : "",
+    // The running Flairy app version (same source as the About tab).
+    version: app.getVersion(),
   };
   return prompt.replace(/\{\{(\w+)\}\}/g, (match, key) => values[key] ?? match);
 }
