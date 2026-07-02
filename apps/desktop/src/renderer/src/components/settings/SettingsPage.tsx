@@ -283,6 +283,12 @@ function TelegramTab(): React.JSX.Element {
     void window.api.pauseTelegram().then(setStatus).finally(() => setBusy(false))
   }
 
+  const onResume = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api.resumeTelegram().then(setStatus).finally(() => setBusy(false))
+  }
+
   if (status === null) {
     return (
       <div className="space-y-6">
@@ -314,13 +320,29 @@ function TelegramTab(): React.JSX.Element {
               {t('settings.telegramDisconnectButton')}
             </Button>
           </div>
-        ) : (
+        ) : paused ? (
+          // Paused: the token is still stored, so offer a one-click Resume (no
+          // re-entry) with Disconnect as the secondary "forget the token" action.
           <>
-            {paused && (
-              <p className="mb-3 text-sm text-amber-600 dark:text-amber-400">
-                {t('settings.telegramStatusPaused')}
+            <p className="mb-3 text-sm text-amber-600 dark:text-amber-400">
+              {t('settings.telegramStatusPaused')}
+            </p>
+            {status.lastError && (
+              <p className="mb-3 text-sm text-destructive">
+                {t('settings.telegramStatusError', { error: status.lastError })}
               </p>
             )}
+            <div className="flex gap-2">
+              <Button onClick={onResume} disabled={busy} size="sm">
+                {busy ? t('settings.telegramConnecting') : t('settings.telegramResumeButton')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={onDisconnect} disabled={busy}>
+                {t('settings.telegramDisconnectButton')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
             {status.lastError && (
               <p className="mb-3 text-sm text-destructive">
                 {t('settings.telegramStatusError', { error: status.lastError })}
@@ -342,13 +364,6 @@ function TelegramTab(): React.JSX.Element {
                 {busy ? t('settings.telegramConnecting') : t('settings.telegramConnectButton')}
               </Button>
             </div>
-            {paused && (
-              <div className="mt-3 border-t border-border/60 pt-3">
-                <Button variant="outline" size="sm" onClick={onDisconnect} disabled={busy}>
-                  {t('settings.telegramDisconnectButton')}
-                </Button>
-              </div>
-            )}
           </>
         )}
 

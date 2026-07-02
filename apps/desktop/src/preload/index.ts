@@ -48,6 +48,7 @@ const api: FlairyApi = {
   startTelegramPairing: () => ipcRenderer.invoke(IPC.TelegramStartPairing),
   unpairTelegram: () => ipcRenderer.invoke(IPC.TelegramUnpair),
   pauseTelegram: () => ipcRenderer.invoke(IPC.TelegramPause),
+  resumeTelegram: () => ipcRenderer.invoke(IPC.TelegramResume),
   login: (args) => ipcRenderer.invoke(IPC.AuthLogin, args),
   register: (args) => ipcRenderer.invoke(IPC.AuthRegister, args),
   logout: () => ipcRenderer.invoke(IPC.AuthLogout),

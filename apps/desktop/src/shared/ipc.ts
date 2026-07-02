@@ -56,6 +56,7 @@ export const IPC = {
   TelegramStartPairing: 'telegram:start-pairing',
   TelegramUnpair: 'telegram:unpair',
   TelegramPause: 'telegram:pause',
+  TelegramResume: 'telegram:resume',
   AuthLogin: 'auth:login',
   AuthRegister: 'auth:register',
   AuthLogout: 'auth:logout',
@@ -318,6 +319,10 @@ export type AgentStreamEvent =
       role: string
       text: string
       thinking?: string
+      // Images attached to a `user` message (Telegram photos). Carried so a
+      // remotely-authored user turn — which the desktop never optimistically
+      // rendered — can show its thumbnails live, mirroring the replay path.
+      images?: { data: string; mimeType: string }[]
       // Only assistant turns carry usage; the per-message timestamp pi stamps lets
       // the timeline tab show real times.
       usage?: MessageUsage
@@ -494,6 +499,8 @@ export interface FlairyApi {
   unpairTelegram(): Promise<TelegramStatus>
   /** Kill switch: abort all Telegram turns + stop accepting inbound, keep binding. */
   pauseTelegram(): Promise<TelegramStatus>
+  /** Undo Pause: re-enable the binding and restart polling from the stored token. */
+  resumeTelegram(): Promise<TelegramStatus>
   /** Subscribe to Telegram status changes pushed from main. Returns an unsubscribe fn. */
   onTelegramStatusChanged(cb: (s: TelegramStatus) => void): () => void
   login(args: LoginArgs): Promise<AuthStatus>

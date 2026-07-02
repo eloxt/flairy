@@ -696,6 +696,14 @@ export function setTelegramBinding({
   ).run(chatId, title, userId, enabled ? 1 : 0, Date.now())
 }
 
+/** Flip only the binding's `enabled` flag (pause / resume). No-op if unpaired. */
+export function setTelegramBindingEnabled(enabled: boolean): void {
+  db.prepare('UPDATE telegram_binding SET enabled = ?, updated_at = ? WHERE id = 0').run(
+    enabled ? 1 : 0,
+    Date.now()
+  )
+}
+
 /** Remove the binding row (unpair or sign-out). No-op if already absent. */
 export function clearTelegramBinding(): void {
   db.prepare('DELETE FROM telegram_binding WHERE id = 0').run()

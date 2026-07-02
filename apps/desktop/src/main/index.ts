@@ -15,8 +15,12 @@ import { buildAppMenu } from "./menu";
 
 // Set the app name before `ready` so it propagates to the macOS menu, the
 // userData path, and the name shown on desktop notifications (otherwise it
-// defaults to "Electron").
-app.setName("Flairy");
+// defaults to "Electron"). In dev we suffix the name so the userData path
+// diverges from the installed build — otherwise both point at the same
+// ~/Library/Application Support/Flairy dir and the SQLite db, secrets, and
+// config get tangled between dev and production. Separate dirs also give each
+// its own single-instance lock, so dev and prod can run side by side.
+app.setName(app.isPackaged ? "Flairy" : "Flairy Dev");
 
 // Single-instance lock: now that Flairy can live in the tray with no window, a
 // second launch must focus the existing instance instead of spawning a second

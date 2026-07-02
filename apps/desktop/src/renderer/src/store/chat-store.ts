@@ -134,6 +134,14 @@ export interface SessionRuntime {
    * exactly what used to clobber an in-flight stream on switch-back.
    */
   hydrated: boolean
+  /**
+   * True for a Telegram-created session (read-only on desktop). Its user turns are
+   * authored remotely, so the desktop never adds an optimistic user bubble on send
+   * — instead `applyEvent` builds the user bubble from the `message_end(role:user)`
+   * event. Gating on this is safe: desktop sessions never receive Telegram turns,
+   * so a false value keeps their optimistic-bubble path untouched (no duplicates).
+   */
+  fromTelegram: boolean
 }
 
 /** A blank runtime for a brand-new session (or the home screen before send). */
@@ -144,7 +152,8 @@ function emptyRuntime(): SessionRuntime {
     liveBatchId: null,
     approvalQueue: [],
     questionQueue: [],
-    hydrated: true
+    hydrated: true,
+    fromTelegram: false
   }
 }
 
@@ -335,7 +344,8 @@ export const useChat = create<ChatState>((set, get) => ({
     const rt: SessionRuntime = {
       ...emptyRuntime(),
       messages: hydrateMessages(messages),
-      running
+      running,
+      fromTelegram: Boolean(meta.fromTelegram)
     }
     set((s) => ({
       sessionId: meta.id,
@@ -691,10 +701,40 @@ function applyEvent(
     case 'message_end':
       // pi emits message_end for the user prompt too; only assistant turns echo.
       if (e.role !== 'assistant') {
-        updateRuntime(set, get, sessionId, (rt) => ({
-          ...rt,
-          messages: rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
-        }))
+        updateRuntime(set, get, sessionId, (rt) => {
+          const cleared = rt.messages.some((m) => m.streaming)
+            ? rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+            : rt.messages
+          // A desktop turn already rendered its user bubble optimistically in
+          // send(); a Telegram (read-only) session never did — its user turn is
+          // authored remotely, so build the bubble here from the message_end. Only
+          // for `user` (not toolResult, which also ends here) and only when
+          // there's real content, so an empty prompt doesn't spawn a blank bubble.
+          // Skip if the tail is already this exact user bubble: a cold open can
+          // hydrate the message from live state right before its message_end lands,
+          // and we must not render it twice.
+          const last = cleared[cleared.length - 1]
+          const alreadyShown =
+            last?.role === 'user' &&
+            last.text === (e.text ?? '') &&
+            (last.images?.length ?? 0) === (e.images?.length ?? 0)
+          if (rt.fromTelegram && e.role === 'user' && (e.text || e.images?.length) && !alreadyShown) {
+            return {
+              ...rt,
+              messages: [
+                ...cleared,
+                {
+                  id: e.messageId || crypto.randomUUID(),
+                  role: 'user',
+                  text: e.text ?? '',
+                  images: e.images?.length ? e.images : undefined,
+                  timestamp: e.timestamp ?? Date.now()
+                }
+              ]
+            }
+          }
+          return { ...rt, messages: cleared }
+        })
         break
       }
       updateRuntime(set, get, sessionId, (rt) => {

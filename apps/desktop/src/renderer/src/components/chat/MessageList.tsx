@@ -38,6 +38,7 @@ import {
   SourcesList,
 } from "./Citations";
 import { ApprovalCard } from "./ApprovalCard";
+import { MessageActions } from "./MessageActions";
 import { QuestionCard } from "./QuestionCard";
 import { Onboarding } from "./Onboarding";
 import { Announcements } from "./Announcements";
@@ -167,7 +168,9 @@ export function MessageList({
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
   // Row keys already present, so only genuinely new rows play the slide-up
   // entrance — never the whole thread on open. Reset per session (below).
-  const seenRef = useRef<{ sid: string | null; keys: Set<string> } | null>(null);
+  const seenRef = useRef<{ sid: string | null; keys: Set<string> } | null>(
+    null,
+  );
 
   // Fade the highlight out after a short beat.
   useEffect(() => {
@@ -222,7 +225,9 @@ export function MessageList({
                   // users, via the CSS @media guard) render straight to rest.
                   animate={!seenKeys.has(row.key)}
                   sources={
-                    row.kind === "msg" ? sourcesByMessage.get(row.m.id) : undefined
+                    row.kind === "msg"
+                      ? sourcesByMessage.get(row.m.id)
+                      : undefined
                   }
                   showSources={row.kind === "msg" && footerIds.has(row.m.id)}
                 />
@@ -300,7 +305,13 @@ function ScrollController({
       clearPendingScroll();
     });
     return () => cancelAnimationFrame(raf);
-  }, [pendingScrollIndex, rows, clearPendingScroll, scrollToMessage, onHighlight]);
+  }, [
+    pendingScrollIndex,
+    rows,
+    clearPendingScroll,
+    scrollToMessage,
+    onHighlight,
+  ]);
 
   useEffect(() => {
     if (pendingScrollId == null || rows.length === 0) return;
@@ -509,6 +520,11 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
               {t("chat.queued")}
             </span>
           )}
+          {/* Copy the sent prompt + send time. Right-aligned to match the
+              bubble; skipped while queued so it doesn't sit under the dim chip. */}
+          {m.text && !m.queued && (
+            <MessageActions text={m.text} timestamp={m.timestamp} />
+          )}
         </MessageContent>
       </Message>
     </div>
@@ -546,6 +562,7 @@ function AssistantRow({
           {hasText && (
             <CitationsProvider sources={cites}>
               <Streamdown
+                animated
                 isAnimating={Boolean(m.streaming)}
                 caret="circle"
                 plugins={STREAMDOWN_PLUGINS}
@@ -562,6 +579,11 @@ function AssistantRow({
                 <SourcesList sources={cites} />
               )}
             </CitationsProvider>
+          )}
+          {/* Message actions (copy) + reply time: only once the answer has
+              fully streamed, so there's a complete, stable payload to copy. */}
+          {hasText && !m.streaming && (
+            <MessageActions text={m.text} timestamp={m.timestamp} />
           )}
         </MessageContent>
       </Message>
@@ -637,7 +659,11 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
     <div className="py-0.5">
       <Marker
         render={
-          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          />
         }
         className="rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
       >
@@ -740,7 +766,11 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
     <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
       <Marker
         render={
-          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          />
         }
         className="rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
       >

@@ -20,6 +20,7 @@ import { broadcast } from '../windows'
 import {
   getTelegramBinding,
   setTelegramBinding,
+  setTelegramBindingEnabled,
   clearTelegramBinding,
   getTelegramThread,
   getTelegramThreadBySession,
@@ -203,7 +204,12 @@ export class TelegramManager implements InteractionChannel {
    */
   async connect(token: string): Promise<TelegramStatus> {
     await this.start(token)
-    if (this.connected) setTelegramToken(token)
+    if (this.connected) {
+      setTelegramToken(token)
+      // Reconnecting an existing (paused/disconnected) binding must restore the
+      // enabled intent so it auto-starts on the next boot; no-op if unpaired.
+      setTelegramBindingEnabled(true)
+    }
     return this.getStatus()
   }
 
@@ -292,7 +298,25 @@ export class TelegramManager implements InteractionChannel {
    */
   async pause(): Promise<TelegramStatus> {
     for (const id of [...this.owned]) this.agents.get(id)?.abort()
+    // Persist the paused intent BEFORE stop() so its emitStatus broadcasts the
+    // final state (connected=false + enabled=false) and maybeAutoStart() won't
+    // silently re-start Telegram on the next launch. Token + binding are kept so
+    // resume() can restart without a token re-entry.
+    setTelegramBindingEnabled(false)
     await this.stop()
+    return this.getStatus()
+  }
+
+  /**
+   * Renderer "Resume" (undo Pause): re-enable the binding and restart polling from
+   * the stored token — no token re-entry, since pause() kept it. No-op if the token
+   * was since forgotten (e.g. the user hit Disconnect while paused).
+   */
+  async resume(): Promise<TelegramStatus> {
+    const token = getTelegramToken()
+    if (!token) return this.getStatus()
+    setTelegramBindingEnabled(true)
+    await this.start(token)
     return this.getStatus()
   }
 

@@ -27,4 +27,6 @@ export function registerTelegramHandlers(tg: TelegramManager): void {
   ipcMain.handle(IPC.TelegramUnpair, (): Promise<TelegramStatus> => tg.unpair())
 
   ipcMain.handle(IPC.TelegramPause, (): Promise<TelegramStatus> => tg.pause())
+
+  ipcMain.handle(IPC.TelegramResume, (): Promise<TelegramStatus> => tg.resume())
 }

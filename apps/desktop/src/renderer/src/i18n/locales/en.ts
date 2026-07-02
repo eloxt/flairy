@@ -67,7 +67,9 @@ const en = {
     running: 'Running',
     reasoning: 'Reasoning',
     reasoningLive: 'Reasoning…',
-    error: 'Error'
+    error: 'Error',
+    copy: 'Copy',
+    copied: 'Copied'
   },
   /** Right-side details panel: timeline of the conversation + spend summary. */
   panel: {
@@ -203,6 +205,7 @@ const en = {
     telegramConnectButton: 'Connect',
     telegramConnecting: 'Connecting…',
     telegramDisconnectButton: 'Disconnect',
+    telegramResumeButton: 'Resume',
     telegramStatusConnected: 'Connected as @{{username}}',
     telegramStatusNotConnected: 'Not connected',
     telegramStatusPaused: 'Paused — not accepting new messages',

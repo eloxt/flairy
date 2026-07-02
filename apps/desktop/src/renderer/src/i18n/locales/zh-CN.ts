@@ -63,7 +63,9 @@ const zhCN: typeof En = {
     running: '运行中',
     reasoning: '思考过程',
     reasoningLive: '正在思考…',
-    error: '出错了'
+    error: '出错了',
+    copy: '复制',
+    copied: '已复制'
   },
   /** 右侧详情面板：对话时间线 + 花费汇总。 */
   panel: {
@@ -185,6 +187,7 @@ const zhCN: typeof En = {
     telegramConnectButton: '连接',
     telegramConnecting: '连接中…',
     telegramDisconnectButton: '断开连接',
+    telegramResumeButton: '恢复',
     telegramStatusConnected: '已连接为 @{{username}}',
     telegramStatusNotConnected: '未连接',
     telegramStatusPaused: '已暂停 — 不接受新消息',

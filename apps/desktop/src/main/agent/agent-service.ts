@@ -969,6 +969,32 @@ function projectText(content: unknown): string {
 }
 
 /**
+ * Pull the image content parts out of a pi message into the wire image shape
+ * ({ data, mimeType }). pi's ImageContent and our Attachment share this shape, so
+ * a user message's attached pictures forward straight to the renderer's live
+ * bubble — the same shape hydrateMessages rebuilds on replay. Returns undefined
+ * when there are no images so the payload stays lean for the common text-only case.
+ */
+function projectImages(
+  content: unknown,
+): { data: string; mimeType: string }[] | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const images = content
+    .filter(
+      (part): part is { data?: unknown; mimeType?: unknown } =>
+        Boolean(part) &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "image",
+    )
+    .map((part) => ({
+      data: String(part.data ?? ""),
+      mimeType: String(part.mimeType ?? "image/png"),
+    }))
+    .filter((img) => img.data);
+  return images.length ? images : undefined;
+}
+
+/**
  * Flatten the `thinking` blocks of a pi assistant message into plain text. pi
  * represents reasoning as content parts of type `thinking` (`{ type: 'thinking',
  * thinking: string }`), distinct from `text` parts — kept separate so reasoning
@@ -1013,22 +1039,30 @@ function normalizeEvent(event: any): AgentStreamEvent {
         thinkingDelta,
       };
     }
-    case "message_end":
+    case "message_end": {
       // Carry the authoritative full message text + reasoning so the renderer can
       // finalize (or build, for non-streaming responses) the assistant bubble even
       // if the incremental deltas never accumulated. pi also emits message_end for
-      // the user prompt, so role lets the renderer ignore those.
+      // the user prompt; role lets the renderer ignore those for desktop turns and
+      // build the user bubble for remotely-authored (Telegram) ones.
+      const role = event.message?.role ?? "assistant";
       return {
         type: "message_end",
         messageId: event.message?.id ?? "",
-        role: event.message?.role ?? "assistant",
+        role,
         text: projectText(event.message?.content),
         thinking: projectThinking(event.message?.content),
+        // Forward a user message's attached images so a remotely-authored turn can
+        // render its thumbnails live (assistant turns carry none).
+        ...(role === "user"
+          ? { images: projectImages(event.message?.content) }
+          : {}),
         // pi's AssistantMessage carries the turn's token usage (with computed
         // dollar cost) and a timestamp; forward both for the timeline/cost tabs.
         usage: event.message?.usage,
         timestamp: event.message?.timestamp,
       };
+    }
     case "tool_execution_start":
       return {
         type: "tool_execution_start",
