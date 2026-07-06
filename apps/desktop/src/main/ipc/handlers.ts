@@ -193,6 +193,12 @@ export function registerIpcHandlers(
     broadcast(IPC.ConfigChanged, redactConfig(config))
   })
 
+  // Main-process socket.io connection status for a small renderer indicator.
+  // No socket object, token, or server details cross the bridge.
+  server.onSocketStatus((status) => {
+    broadcast(IPC.SocketStatusChanged, status)
+  })
+
   // If we already have a stored token from a previous run, connect immediately.
   const existingToken = getAuthToken()
   if (existingToken) server.connect(existingToken)
@@ -512,6 +518,8 @@ export function registerIpcHandlers(
 
   // Debug/settings view: return the current config with secrets masked.
   ipcMain.handle(IPC.ConfigGet, () => redactConfig(server.getConfig()))
+
+  ipcMain.handle(IPC.SocketStatusGet, () => server.getSocketStatus())
 
   // Open the standalone Settings window (from the sidebar).
   ipcMain.handle(IPC.WindowOpenSettings, () => openSettingsWindow())

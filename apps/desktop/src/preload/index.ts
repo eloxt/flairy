@@ -8,6 +8,7 @@ import {
   type QuestionRequestPayload,
   type RedactedConfigSnapshot,
   type SessionTitleUpdatedPayload,
+  type SocketConnectionStatus,
   type TelegramStatus,
   type UpdateInfo
 } from '@shared/ipc'
@@ -54,6 +55,7 @@ const api: FlairyApi = {
   logout: () => ipcRenderer.invoke(IPC.AuthLogout),
   authStatus: () => ipcRenderer.invoke(IPC.AuthStatus),
   getConfig: () => ipcRenderer.invoke(IPC.ConfigGet),
+  getSocketStatus: () => ipcRenderer.invoke(IPC.SocketStatusGet),
   openSettings: () => ipcRenderer.invoke(IPC.WindowOpenSettings),
   growWindowWidth: (delta) => ipcRenderer.invoke(IPC.WindowGrowWidth, delta),
   openExternal: (url) => ipcRenderer.invoke(IPC.ShellOpenExternal, url),
@@ -87,6 +89,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, config: RedactedConfigSnapshot): void => cb(config)
     ipcRenderer.on(IPC.ConfigChanged, listener)
     return () => ipcRenderer.removeListener(IPC.ConfigChanged, listener)
+  },
+  onSocketStatusChanged: (cb) => {
+    const listener = (_e: unknown, status: SocketConnectionStatus): void => cb(status)
+    ipcRenderer.on(IPC.SocketStatusChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.SocketStatusChanged, listener)
   },
   onSessionTitleUpdated: (cb) => {
     const listener = (_e: unknown, payload: SessionTitleUpdatedPayload): void => cb(payload)

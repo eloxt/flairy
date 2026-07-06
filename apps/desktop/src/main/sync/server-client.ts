@@ -22,6 +22,7 @@ import {
 import { getAuthToken } from '../store/secrets'
 import { saveCachedConfig, loadCachedConfig, clearCachedConfig } from '../store/config-cache'
 import { materializeSkills } from '../agent/skill-materializer'
+import type { SocketConnectionStatus } from '@shared/ipc'
 
 /**
  * Where to reach the Flairy server.
@@ -43,6 +44,7 @@ type SessionRemoteDeleteListener = (payload: SessionRemoteDeletePayload) => void
 type SessionsPulledListener = (sessions: SessionWithMessages[]) => void
 type MemoryRemoteListener = (memories: Memory[]) => void
 type MemoriesPulledListener = (memories: Memory[]) => void
+type SocketStatusListener = (status: SocketConnectionStatus) => void
 
 /**
  * Thin wrapper around a typed socket.io connection to the Flairy server.
@@ -68,6 +70,8 @@ export class ServerClient {
   private sessionsPulledListeners = new Set<SessionsPulledListener>()
   private memoryRemoteListeners = new Set<MemoryRemoteListener>()
   private memoriesPulledListeners = new Set<MemoriesPulledListener>()
+  private socketStatusListeners = new Set<SocketStatusListener>()
+  private socketStatus: SocketConnectionStatus = 'disconnected'
   /** JWT used for the active socket; reused for REST skill materialization. */
   private token: string | undefined
 
@@ -81,6 +85,7 @@ export class ServerClient {
   connect(token: string): void {
     this.disconnect()
     this.token = token
+    this.setSocketStatus('connecting')
 
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SERVER_URL, {
       auth: { token } satisfies SocketAuth,
@@ -129,24 +134,32 @@ export class ServerClient {
     // after sign-in — so a fresh device (or a relogin) gets its history back.
     // socket.io fires `connect` on the initial handshake and on every reconnect.
     socket.on('connect', () => {
+      if (this.socket !== socket) return
       console.log('[sync] socket connected; pulling sessions + memories')
+      this.setSocketStatus('connected')
       this.pullSessions()
       this.pullMemories()
     })
 
     socket.on('connect_error', (err) => {
+      if (this.socket !== socket) return
       console.error('[sync] socket connect_error:', err.message)
+      this.setSocketStatus(socket.active ? 'connecting' : 'disconnected')
     })
 
     socket.on('disconnect', (reason) => {
+      if (this.socket !== socket) return
       console.log('[sync] socket disconnected:', reason)
+      this.setSocketStatus(socket.active ? 'connecting' : 'disconnected')
     })
 
     // Manager-level reconnection events: log each backoff attempt so the retry
     // cadence is observable. (`socket.io` is the shared Manager; these don't fire
     // on the Socket itself.)
     socket.io.on('reconnect_attempt', (attempt) => {
+      if (this.socket !== socket) return
       console.log('[sync] reconnect attempt', attempt)
+      this.setSocketStatus('connecting')
     })
 
     this.socket = socket
@@ -189,6 +202,7 @@ export class ServerClient {
       this.socket.disconnect()
       this.socket = null
     }
+    this.setSocketStatus('disconnected')
   }
 
   /**
@@ -211,6 +225,18 @@ export class ServerClient {
     this.configListeners.add(cb)
     if (this.config) cb(this.config)
     return () => this.configListeners.delete(cb)
+  }
+
+  /** Current socket.io connection status for renderer indicators. */
+  getSocketStatus(): SocketConnectionStatus {
+    return this.socketStatus
+  }
+
+  /** Subscribe to socket connection status. Fires immediately with the current state. */
+  onSocketStatus(cb: SocketStatusListener): () => void {
+    this.socketStatusListeners.add(cb)
+    cb(this.socketStatus)
+    return () => this.socketStatusListeners.delete(cb)
   }
 
   /** Subscribe to sessions changed on the user's other devices. */
@@ -266,6 +292,12 @@ export class ServerClient {
   private emitConfig(): void {
     if (!this.config) return
     for (const cb of this.configListeners) cb(this.config)
+  }
+
+  private setSocketStatus(status: SocketConnectionStatus): void {
+    if (this.socketStatus === status) return
+    this.socketStatus = status
+    for (const cb of this.socketStatusListeners) cb(status)
   }
 
   /**

@@ -62,6 +62,7 @@ export const IPC = {
   AuthLogout: 'auth:logout',
   AuthStatus: 'auth:status',
   ConfigGet: 'config:get',
+  SocketStatusGet: 'socket:status',
   WindowOpenSettings: 'window:open-settings',
   WindowGrowWidth: 'window:grow-width',
   AppGetVersion: 'app:get-version',
@@ -78,6 +79,7 @@ export const IPC = {
   ApprovalRequest: 'agent:approval-request',
   QuestionRequest: 'agent:question-request',
   ConfigChanged: 'config:changed',
+  SocketStatusChanged: 'socket:status-changed',
   AuthChanged: 'auth:changed',
   SessionTitleUpdated: 'session:title-updated',
   SessionsChanged: 'session:changed',
@@ -413,6 +415,9 @@ export interface TelegramConnectArgs {
   token: string
 }
 
+/** Main server socket connection state, renderer-safe and credential-free. */
+export type SocketConnectionStatus = 'disconnected' | 'connecting' | 'connected'
+
 /** Returned by startTelegramPairing: a one-time code the user sends via /pair. */
 export interface TelegramPairing {
   code: string
@@ -509,6 +514,8 @@ export interface FlairyApi {
   authStatus(): Promise<AuthStatus>
   /** Latest server-pushed config (secrets masked), or null before first snapshot. */
   getConfig(): Promise<RedactedConfigSnapshot | null>
+  /** Current main server socket connection state. */
+  getSocketStatus(): Promise<SocketConnectionStatus>
   /** Open (or focus) the standalone Settings window. */
   openSettings(): Promise<void>
   /**
@@ -551,6 +558,8 @@ export interface FlairyApi {
   onQuestionRequest(cb: (req: QuestionRequestPayload) => void): () => void
   /** Fires whenever the server delivers new config (snapshot or delta). */
   onConfigChanged(cb: (config: RedactedConfigSnapshot) => void): () => void
+  /** Fires whenever the main server socket connects, reconnects, or disconnects. */
+  onSocketStatusChanged(cb: (status: SocketConnectionStatus) => void): () => void
   /** Fires when a session's title changes (auto-generated locally or synced from another device). */
   onSessionTitleUpdated(cb: (payload: SessionTitleUpdatedPayload) => void): () => void
   /** Fires when the local session list changes wholesale (e.g. pulled from the server on login). */

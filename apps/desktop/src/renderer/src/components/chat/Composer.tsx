@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUp,
@@ -14,7 +14,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { Attachment, PermissionMode } from "@shared/ipc";
+import type { Attachment, PermissionMode, RedactedConfigSnapshot } from "@shared/ipc";
 import { cn } from "@/lib/utils";
 import { useChat, selectCwd } from "@/store/chat-store";
 import { useImageInputSupport } from "@/hooks/use-image-input-supported";
@@ -86,6 +86,7 @@ export function Composer(): React.JSX.Element {
   const { t } = useTranslation();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [mainModelName, setMainModelName] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -123,6 +124,20 @@ export function Composer(): React.JSX.Element {
     const ro = new ResizeObserver(publish);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const updateMainModel = (config: RedactedConfigSnapshot | null): void => {
+      const model = config?.llm.main?.model;
+      if (!model) {
+        setMainModelName(null);
+        return;
+      }
+      setMainModelName(model.name.trim() || null);
+    };
+
+    void window.api.getConfig().then(updateMainModel);
+    return window.api.onConfigChanged(updateMainModel);
   }, []);
 
   const submit = (): void => {
@@ -439,6 +454,12 @@ export function Composer(): React.JSX.Element {
               </DropdownMenu>
 
               <div className="flex-1" />
+
+              {mainModelName && (
+                <div className="flex h-8 max-w-40 items-center px-2 text-xs text-muted-foreground">
+                  <span className="truncate">{mainModelName}</span>
+                </div>
+              )}
 
               {running && !canSend ? (
                 // Running with an empty composer → Stop. Add text or an image and

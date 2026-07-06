@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
-import type { SessionMeta } from "@shared/ipc";
+import type { SessionMeta, SocketConnectionStatus } from "@shared/ipc";
 import { LoaderCircle, Plus, Search, Send, Settings, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -43,7 +43,13 @@ export function AppSidebar(): React.JSX.Element {
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>("disconnected");
   const selectedCount = selectedIds.size;
+
+  useEffect(() => {
+    void window.api.getSocketStatus().then(setSocketStatus);
+    return window.api.onSocketStatusChanged(setSocketStatus);
+  }, []);
 
   useEffect(() => {
     setSelectedIds((cur) => {
@@ -178,11 +184,19 @@ export function AppSidebar(): React.JSX.Element {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="app-no-drag h-9 rounded-lg text-muted-foreground"
+              className="app-no-drag relative h-9 rounded-lg pr-8 text-muted-foreground"
               onClick={() => void window.api.openSettings()}
             >
               <Settings className="size-4" />
-              <span>{t('common.settings')}</span>
+              <span className="min-w-0 flex-1 truncate">{t('common.settings')}</span>
+              <i
+                aria-hidden="true"
+                className={cn(
+                  "absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full",
+                  socketStatus === "connecting" && "bg-amber-500",
+                  socketStatus === "disconnected" && "bg-destructive",
+                )}
+              />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
