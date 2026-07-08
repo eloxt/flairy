@@ -133,15 +133,25 @@ export function MessageList({
   // follow it) must not show the list mid-turn — it belongs at the end. The active
   // turn (still running) is left out entirely until it ends, so the footer only
   // appears once the turn is done; completed earlier turns always get theirs.
-  const { sourcesByMessage, footerIds } = useMemo(() => {
+  //
+  // `footerCopyIds` mirrors this for the copy action: a single user prompt may
+  // fan out into several tool-call turns, each leaving its own assistant bubble,
+  // but the copy affordance belongs on the turn's LAST answer only — not under
+  // every intermediate answer. Same finalize-at-user-boundary / finalize-when-
+  // done rules so the button never appears mid-turn.
+  const { sourcesByMessage, footerIds, footerCopyIds } = useMemo(() => {
     const map = new Map<string, SearchSource[]>();
     const footers = new Set<string>();
+    const copyFooters = new Set<string>();
     let acc: SearchSource[] = [];
     let seen = new Set<number>();
     let lastSourcedId: string | null = null;
+    let lastAssistantTextId: string | null = null;
     const finalizeTurn = (): void => {
       if (lastSourcedId) footers.add(lastSourcedId);
       lastSourcedId = null;
+      if (lastAssistantTextId) copyFooters.add(lastAssistantTextId);
+      lastAssistantTextId = null;
     };
     for (const m of messages) {
       if (m.role === "user") {
@@ -154,15 +164,22 @@ export function MessageList({
           seen.add(s.i);
           acc.push(s);
         }
-      } else if (m.role === "assistant" && acc.length) {
-        map.set(m.id, acc.slice());
-        lastSourcedId = m.id;
+      } else if (m.role === "assistant") {
+        if (acc.length) {
+          map.set(m.id, acc.slice());
+          lastSourcedId = m.id;
+        }
+        if (m.text.trim()) lastAssistantTextId = m.id;
       }
     }
     // The last turn closes here — but only attach its footer once it's no longer
     // running, so a mid-turn answer doesn't show the list before the turn ends.
     if (!running) finalizeTurn();
-    return { sourcesByMessage: map, footerIds: footers };
+    return {
+      sourcesByMessage: map,
+      footerIds: footers,
+      footerCopyIds: copyFooters,
+    };
   }, [messages, running]);
   // The row key to flash after a search/timeline jump; cleared once it fades.
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
@@ -230,6 +247,9 @@ export function MessageList({
                       : undefined
                   }
                   showSources={row.kind === "msg" && footerIds.has(row.m.id)}
+                  showActions={
+                    row.kind === "msg" && footerCopyIds.has(row.m.id)
+                  }
                 />
               </MessageScrollerItem>
             ))}
@@ -340,12 +360,14 @@ function RowView({
   animate,
   sources,
   showSources,
+  showActions,
 }: {
   row: Row;
   highlight?: boolean;
   animate?: boolean;
   sources?: SearchSource[];
   showSources?: boolean;
+  showActions?: boolean;
 }): React.JSX.Element {
   const inner =
     row.kind === "group" ? (
@@ -353,7 +375,12 @@ function RowView({
     ) : row.kind === "tool" ? (
       <SingleTool m={row.m} />
     ) : (
-      <MessageRow m={row.m} sources={sources} showSources={showSources} />
+      <MessageRow
+        m={row.m}
+        sources={sources}
+        showSources={showSources}
+        showActions={showActions}
+      />
     );
   // `animate-message-in`: a one-shot slide-up + fade as the row enters (the
   // shared keyframe — transform + opacity only, so it never fights the scroller's
@@ -464,13 +491,22 @@ function MessageRow({
   m,
   sources,
   showSources,
+  showActions,
 }: {
   m: UiMessage;
   sources?: SearchSource[];
   showSources?: boolean;
+  showActions?: boolean;
 }): React.JSX.Element {
   if (m.role === "user") return <UserRow m={m} />;
-  return <AssistantRow m={m} sources={sources} showSources={showSources} />;
+  return (
+    <AssistantRow
+      m={m}
+      sources={sources}
+      showSources={showSources}
+      showActions={showActions}
+    />
+  );
 }
 
 /** User turn: a quiet, right-aligned chip. Restraint over a loud bubble. */
@@ -536,10 +572,12 @@ function AssistantRow({
   m,
   sources,
   showSources,
+  showActions,
 }: {
   m: UiMessage;
   sources?: SearchSource[];
   showSources?: boolean;
+  showActions?: boolean;
 }): React.JSX.Element {
   const hasText = Boolean(m.text.trim());
   const cites = sources ?? [];
@@ -580,9 +618,11 @@ function AssistantRow({
               )}
             </CitationsProvider>
           )}
-          {/* Message actions (copy) + reply time: only once the answer has
-              fully streamed, so there's a complete, stable payload to copy. */}
-          {hasText && !m.streaming && (
+          {/* Message actions (copy) + reply time: only on the turn's final
+              answer, once it has fully streamed — a single user prompt can fan
+              out into several tool-call turns, but the copy affordance belongs
+              at the very end, not under every intermediate answer. */}
+          {hasText && !m.streaming && showActions && (
             <MessageActions text={m.text} timestamp={m.timestamp} />
           )}
         </MessageContent>
