@@ -65,8 +65,8 @@ const en = {
     imagesIgnored: "Not seen — this model can't read images",
     working: 'Working…',
     running: 'Running',
-    reasoning: 'Reasoning',
-    reasoningLive: 'Reasoning…',
+    reasoning: 'Thinking...',
+    reasoningLive: 'Thinking...',
     error: 'Error',
     copy: 'Copy',
     copied: 'Copied'

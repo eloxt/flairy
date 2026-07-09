@@ -61,8 +61,8 @@ const zhCN: typeof En = {
     imagesIgnored: '未被读取 — 当前模型无法识别图片',
     working: '处理中…',
     running: '运行中',
-    reasoning: '思考过程',
-    reasoningLive: '正在思考…',
+    reasoning: '思考中...',
+    reasoningLive: '思考中...',
     error: '出错了',
     copy: '复制',
     copied: '已复制'

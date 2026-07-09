@@ -88,16 +88,31 @@ function toRows(messages: UiMessage[]): Row[] {
       rows.push({ kind: "group", key: `group-${run[0].id}`, tools: run });
     run = [];
   };
-  for (const m of messages) {
+  const hasFollowingVisibleWork = (from: number): boolean => {
+    for (let i = from + 1; i < messages.length; i++) {
+      const next = messages[i];
+      if (next.role === "tool" || next.role === "user") return true;
+      if (next.text.trim() || next.thinking?.trim()) return true;
+    }
+    return false;
+  };
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
     if (m.role === "tool") {
       run.push(m);
       continue;
     }
     // A tools-only turn leaves an empty assistant bubble in the live store (the
     // stream opens the message before its tool calls); replay drops it. Skip it
-    // so the two paths render identically and it adds no blank row — unless it
-    // carries reasoning, which is worth showing on its own.
-    if (m.role === "assistant" && !m.text.trim() && !m.thinking?.trim())
+    // so the two paths render identically and it adds no blank row. Reasoning is
+    // only a live status indicator, not persisted transcript content.
+    if (
+      m.role === "assistant" &&
+      !m.text.trim() &&
+      (!m.streaming ||
+        !m.thinking?.trim() ||
+        hasFollowingVisibleWork(i))
+    )
       continue;
     flush();
     rows.push({ kind: "msg", key: m.id, m });
@@ -587,11 +602,8 @@ function AssistantRow({
     <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
       <Message align="start">
         <MessageContent className="gap-2">
-          {m.thinking?.trim() && (
-            <ReasoningBlock
-              text={m.thinking}
-              streaming={m.streaming && !hasText}
-            />
+          {m.streaming && !hasText && m.thinking?.trim() && (
+            <ReasoningStatus />
           )}
           {hasText && (
             <CitationsProvider sources={cites}>
@@ -627,55 +639,18 @@ function AssistantRow({
   );
 }
 
-/**
- * The model's reasoning for a turn: a quiet, collapsible disclosure above the
- * answer. Auto-expands while reasoning is still streaming and no answer has
- * arrived yet (so it's visible live); collapses once reasoning stops, whether
- * the next row is answer text or a tool call. Mirrors the tool-row disclosure
- * pattern.
- */
-function ReasoningBlock({
-  text,
-  streaming,
-}: {
-  text: string;
-  streaming?: boolean;
-}): React.JSX.Element {
+/** Live reasoning state only; never reveals or persists the reasoning text. */
+function ReasoningStatus(): React.JSX.Element {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(Boolean(streaming));
-  // Auto-collapse once the reasoning stream ends, whether the model moves on to
-  // answer text or to tool calls, while still letting the user toggle it back.
-  const wasStreaming = useRef(Boolean(streaming));
-  useEffect(() => {
-    if (wasStreaming.current && !streaming) setOpen(false);
-    wasStreaming.current = Boolean(streaming);
-  }, [streaming]);
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="group flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
-      >
-        <ChevronRight
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
-            open && "rotate-90",
-          )}
-        />
-        <Sparkle
-          className={cn("size-3.5 shrink-0", streaming && "animate-pulse")}
-        />
-        <span className={cn("text-xs font-medium", streaming && "shimmer")}>
-          {streaming ? t("chat.reasoningLive") : t("chat.reasoning")}
-        </span>
-      </button>
-      {open && (
-        <div className="mt-1 whitespace-pre-wrap border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
-          {text}
-        </div>
-      )}
+    <div
+      className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-muted-foreground"
+      aria-live="polite"
+    >
+      <Sparkle className="size-3.5 shrink-0 animate-pulse" />
+      <span className="shimmer text-xs font-medium">
+        {t("chat.reasoningLive")}
+      </span>
     </div>
   );
 }
