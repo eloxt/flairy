@@ -48,8 +48,6 @@ import {
   type AgentEventInternalEnvelope,
 } from "./turn-origin";
 
-const BASE_SYSTEM_PROMPT = "You are Flairy, a helpful desktop coding agent.";
-
 /**
  * Built-in instruction for the `visual`-role model when it extracts image
  * descriptions on behalf of a text-only main model. An admin can override it
@@ -795,67 +793,19 @@ export class AgentService {
 }
 
 /**
- * Assemble the agent system prompt: the configured base prompt followed by a
- * `<skills_instructions>` block that ADVERTISES the available skills (name +
- * description + on-disk path) rather than inlining their bodies.
- *
- * The config snapshot only carries lightweight `SkillSummary` rows (no body),
- * and skills can be large — so instead of pasting every SKILL.md into the
- * prompt, we follow progressive disclosure: list each materialized skill and let
- * the model `read` the SKILL.md on demand when a task matches. The skills dir is
- * exposed to the read-only tools as an extra root (see tools/index.ts), so the
- * `r0`-aliased paths below are readable regardless of the session cwd.
+ * Resolve the agent's system prompt from the server-delivered `main` prompt,
+ * applying runtime variable substitution ({{os}}, {{date}}, {{skill}}, …) to
+ * the body. The client does NOT assemble or append anything — the server is the
+ * sole source of the prompt.
  */
 function buildSystemPrompt(config: ConfigSnapshot, cwd: string): string {
-  // The reserved `main` prompt is the agent's base prompt; fall back to the
-  // built-in default when it's absent or disabled. Runtime context (OS, date,
-  // skills, language, cwd) is injected via placeholder substitution.
-  const base = findPromptBody(config, MAIN_PROMPT_NAME) ?? BASE_SYSTEM_PROMPT;
-  // Always append the todo guidance: `todo_write` is a built-in tool present in
-  // every session (unlike web search), so the agent should know when to plan.
-  let prompt = `${injectContext(base, config, cwd)}\n\n${TODO_INSTRUCTIONS}`;
-  // Append web-search citation guidance only when the tool is actually available,
-  // so a config without web search doesn't carry dead instructions. Kept out of
-  // the admin-editable prompt body (no placeholder needed) since it's tied to a
-  // built-in capability, not to admin copy.
-  if (resolveExaService(config)) prompt = `${prompt}\n\n${WEB_SEARCH_INSTRUCTIONS}`;
-  return prompt;
+  // The server is the single source of the system prompt: take the reserved
+  // `main` prompt body verbatim and apply runtime variable substitution only.
+  // No client-side assembly, appending, or built-in fallback — if `main` is not
+  // delivered the prompt is empty.
+  const body = findPromptBody(config, MAIN_PROMPT_NAME) ?? "";
+  return injectContext(body, config, cwd);
 }
-
-/**
- * How and when the agent should use `todo_write` to plan. The renderer turns the
- * latest call into an inline checklist + a Plan tab, so a good plan is also the
- * user's progress view. Tied to the built-in tool, not admin copy, so it lives
- * here rather than in the editable prompt body.
- */
-const TODO_INSTRUCTIONS = `<task_planning>
-For non-trivial, multi-step work, use the \`todo_write\` tool to plan and track your progress — it gives the user a live checklist of what you're doing.
-- At the start of such a task, call \`todo_write\` with the full ordered list of steps (each \`status: "pending"\`).
-- Pass the COMPLETE list every time you call it: it replaces the previous list, it does not append.
-- Keep EXACTLY ONE item \`"in_progress"\` at a time, and flip an item to \`"completed"\` the moment it's done — before starting the next.
-- Skip it entirely for trivial single-step requests, greetings, or pure questions; only plan when it genuinely helps.
-</task_planning>`;
-
-/**
- * How the agent should use `web_search` and cite its results. The renderer turns
- * the bracketed `[n]` markers into citation chips + a Sources list, resolving
- * each number against the turn's merged search results — so the numbers MUST
- * match what the tool returned. Ids are unique across a turn (a second search
- * continues numbering, it does not restart at 1).
- */
-const WEB_SEARCH_INSTRUCTIONS = `<web_search>
-You can search the live web with the \`web_search\` tool. Use it whenever the answer depends on current events, recent facts, prices, releases, or anything you're not confident is up to date.
-
-CITING SOURCES — REQUIRED. Whenever your answer uses information from web_search results, you MUST add inline citation markers using the id of each result you used. This is not optional — write the literal characters \`[1]\`, \`[2]\`, etc. directly in your prose, immediately after the sentence or fact each one supports. Example:
-
-  GTA 6 will cost $79.99 for the standard edition[1], with an Ultimate Edition at $99.99[2][3].
-
-Rules:
-- Use the exact number shown for each result in the tool output (the leading \`[1]\`, \`[2]\`, …). Ids stay unique across your whole reply: a later search keeps counting up (e.g. \`[11]\`, \`[12]\`), it does NOT restart at 1 — always cite the number actually shown.
-- Place each marker right after the specific claim it backs — never collect them all at the end, and never invent a "Sources" section yourself (the app renders one).
-- Combine markers like \`[1][2]\` when several results support the same point.
-- Only cite numbers that actually appear in the results you received.
-</web_search>`;
 
 /** Human-readable name for the current OS, for prompt injection. */
 function osName(): string {
