@@ -68,16 +68,16 @@ const STREAMDOWN_COMPONENTS = { sup: CitationChip };
 /**
  * A render unit for the thread. We fold the store's flat message list into rows
  * at render time (the store stays one-message-per-tool-call, so hydration and
- * sync are untouched): the tool calls of one assistant turn — a parallel batch,
- * tagged with a shared `batchId` — collapse into one `group`; a lone call stays
- * a `tool` line; everything else is a `msg`.
+ * sync are untouched): adjacent tool calls with no visible text between them
+ * collapse into one `group`; a lone call stays a `tool` line; everything else is
+ * a `msg`.
  */
 type Row =
   | { kind: "msg"; key: string; m: UiMessage }
   | { kind: "tool"; key: string; m: UiMessage }
   | { kind: "group"; key: string; tools: UiMessage[] };
 
-/** Group adjacent tool calls that share a batch; pass other messages through. */
+/** Group adjacent tool calls until a visible non-tool message breaks the run. */
 function toRows(messages: UiMessage[]): Row[] {
   const rows: Row[] = [];
   let run: UiMessage[] = [];
@@ -88,12 +88,8 @@ function toRows(messages: UiMessage[]): Row[] {
       rows.push({ kind: "group", key: `group-${run[0].id}`, tools: run });
     run = [];
   };
-  const batchOf = (m: UiMessage): string => m.batchId ?? m.id;
   for (const m of messages) {
     if (m.role === "tool") {
-      // A new batch (a different assistant turn) starts its own group, even when
-      // it sits right after the previous turn's calls with no text between.
-      if (run.length && batchOf(m) !== batchOf(run[0])) flush();
       run.push(m);
       continue;
     }
