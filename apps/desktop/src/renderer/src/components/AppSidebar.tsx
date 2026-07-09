@@ -10,6 +10,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
@@ -18,16 +23,66 @@ import {
     SidebarGroupLabel,
     SidebarHeader,
     SidebarMenu,
+    SidebarMenuAction,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarMenuSub,
 } from "@/components/ui/sidebar";
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
 import type { SessionMeta, SocketConnectionStatus } from "@shared/ipc";
-import { LoaderCircle, Plus, Search, Send, Settings, Trash2, X } from "lucide-react";
+import {
+  Folder,
+  LoaderCircle,
+  Plus,
+  Search,
+  Send,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
+
+interface WorkspaceGroup {
+  path: string;
+  label: string;
+  sessions: SessionMeta[];
+}
+
+function normalizeWorkspace(path: string): string {
+  return path.replace(/\/+$/, "") || path;
+}
+
+function workspaceLabel(path: string): string {
+  const normalized = normalizeWorkspace(path);
+  return normalized.slice(normalized.lastIndexOf("/") + 1) || normalized;
+}
+
+function groupSessions(sessions: SessionMeta[]): {
+  projects: WorkspaceGroup[];
+  chats: SessionMeta[];
+} {
+  const workspaces = new Map<string, WorkspaceGroup>();
+  const chats: SessionMeta[] = [];
+  for (const session of sessions) {
+    if (!session.workspacePath) {
+      chats.push(session);
+      continue;
+    }
+    const path = normalizeWorkspace(session.workspacePath);
+    const group = workspaces.get(path) ?? { path, label: workspaceLabel(path), sessions: [] };
+    group.sessions.push(session);
+    workspaces.set(path, group);
+  }
+  return {
+    projects: [...workspaces.values()].sort(
+      (a, b) => (b.sessions[0]?.updatedAt ?? 0) - (a.sessions[0]?.updatedAt ?? 0)
+    ),
+    chats
+  };
+}
 
 /**
  * Left navigation: New Chat, Search (its own page at /search), then the session
@@ -44,7 +99,8 @@ export function AppSidebar(): React.JSX.Element {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>("disconnected");
-  const selectedCount = selectedIds.size;
+  const hasSelection = selectedIds.size > 0;
+  const grouped = groupSessions(sessions);
 
   useEffect(() => {
     void window.api.getSocketStatus().then(setSocketStatus);
@@ -128,17 +184,14 @@ export function AppSidebar(): React.JSX.Element {
           scroll (scroll-driven, so no fade when it all fits). */}
       <SidebarContent className="px-1 scroll-fade-y">
         <SidebarGroup>
-          <SidebarGroupLabel className="eyebrow px-2">
-            {selecting ? (
-              <div className="flex w-full min-w-0 items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate">
-                  {t('chat.selectedCount', { count: selectedCount })}
-                </span>
+          {selecting && (
+            <SidebarGroupLabel className="eyebrow px-2">
+              <div className="flex w-full min-w-0 items-center justify-end gap-1.5">
                 <button
                   type="button"
-                  className="app-no-drag inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+                  className="app-no-drag inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
                   aria-label={t('chat.deleteSelected')}
-                  disabled={selectedCount === 0}
+                  disabled={!hasSelection}
                   onClick={() => setConfirmBulkDelete(true)}
                 >
                   <Trash2 className="size-3.5" />
@@ -152,10 +205,8 @@ export function AppSidebar(): React.JSX.Element {
                   <X className="size-3.5" />
                 </button>
               </div>
-            ) : (
-              t('chat.history')
-            )}
-          </SidebarGroupLabel>
+            </SidebarGroupLabel>
+          )}
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               {sessions.length === 0 ? (
@@ -163,17 +214,74 @@ export function AppSidebar(): React.JSX.Element {
                   {t('chat.chatsWillAppearHere')}
                 </p>
               ) : (
-                sessions.map((s) => (
-                  <SessionRow
-                    key={s.id}
-                    s={s}
-                    active={s.id === sessionId}
-                    selecting={selecting}
-                    selected={selectedIds.has(s.id)}
-                    onEnterSelectionMode={enterSelectionMode}
-                    onToggleSelected={toggleSelected}
-                  />
-                ))
+                <>
+                  {grouped.projects.length > 0 && (
+                    <Section
+                      label={t('chat.projects')}
+                      triggerClassName="font-semibold text-sidebar-foreground"
+                    >
+                      <SidebarMenu className="gap-0.5">
+                        {grouped.projects.map((group) => (
+                          <Section
+                            key={group.path}
+                            label={group.label}
+                            icon={Folder}
+                            title={group.path}
+                            triggerClassName="text-muted-foreground/90"
+                            action={
+                              <SidebarMenuAction
+                                showOnHover
+                                title={t('chat.newInProject', { project: group.label })}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void newChat(group.path);
+                                  navigate("/");
+                                }}
+                              >
+                                <Plus className="text-sidebar-foreground"/>
+                              </SidebarMenuAction>
+                            }
+                          >
+                            <SidebarMenuSub>
+                              {group.sessions.map((s) => (
+                                <SessionRow
+                                  key={s.id}
+                                  s={s}
+                                  active={s.id === sessionId}
+                                  selecting={selecting}
+                                  selected={selectedIds.has(s.id)}
+                                  onEnterSelectionMode={enterSelectionMode}
+                                  onToggleSelected={toggleSelected}
+                                />
+                              ))}
+                            </SidebarMenuSub>
+                          </Section>
+                        ))}
+                      </SidebarMenu>
+                    </Section>
+                  )}
+                  {grouped.chats.length > 0 && (
+                    <Section
+                      label={t('chat.chats')}
+                      triggerClassName="font-semibold text-sidebar-foreground"
+                    >
+                      <SidebarMenuSub>
+                        {grouped.chats.map((s) => (
+                          <SessionRow
+                            key={s.id}
+                            s={s}
+                            active={s.id === sessionId}
+                            selecting={selecting}
+                            selected={selectedIds.has(s.id)}
+                            onEnterSelectionMode={enterSelectionMode}
+                            onToggleSelected={toggleSelected}
+                          />
+                        ))}
+                      </SidebarMenuSub>
+                    </Section>
+                  )}
+                </>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -207,7 +315,7 @@ export function AppSidebar(): React.JSX.Element {
           <AlertDialogHeader>
             <AlertDialogTitle>{t('chat.deleteSelectedTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('chat.deleteSelectedDescription', { count: selectedCount })}
+              {t('chat.deleteSelectedDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -219,6 +327,46 @@ export function AppSidebar(): React.JSX.Element {
         </AlertDialogContent>
       </AlertDialog>
     </Sidebar>
+  );
+}
+
+function Section({
+  label,
+  icon: Icon,
+  title,
+  triggerClassName,
+  action,
+  children,
+}: {
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  title?: string;
+  triggerClassName?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  // When an action (e.g. the "+" new-session button) pins to the row's far
+  // right, the chevron hugs the label instead of being pushed to the edge.
+  const hugText = !!action;
+  return (
+    <Collapsible defaultOpen>
+      <SidebarMenuItem>
+        <CollapsibleTrigger
+          render={
+            <SidebarMenuButton
+              size="sm"
+              title={title}
+              className={cn("group/collapsible", triggerClassName)}
+            />
+          }
+        >
+          {Icon && <Icon className="shrink-0 opacity-80" />}
+          <span className={cn("min-w-0 truncate", !hugText && "flex-1")}>{label}</span>
+        </CollapsibleTrigger>
+        {action}
+        <CollapsibleContent>{children}</CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   );
 }
 

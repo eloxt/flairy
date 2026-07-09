@@ -444,7 +444,7 @@ export class AgentService {
    */
   private syncToServer(messages: unknown[]): void {
     const meta = getSession(this.sessionId);
-    if (!meta) return;
+    if (!meta || meta.kind !== "chat") return;
     const synced = messages.map(toSyncMessage);
     const updatedAt = Date.now();
 
@@ -605,6 +605,7 @@ export class AgentService {
    */
   private syncTitle(title: string): void {
     if (!this.upserted) return;
+    if (getSession(this.sessionId)?.kind !== "chat") return;
     this.server.sendSessionPatch({
       sessionId: this.sessionId,
       appendMessages: [],

@@ -216,9 +216,9 @@ interface ChatState {
   /** Clear the queued scroll target (called by MessageList after scrolling). */
   clearPendingScroll: () => void
   /**
-   * Return to the home screen. By default the working directory in effect
-   * (`selectCwd`) carries over so the next chat opens where this one left off;
-   * pass an explicit `cwd` to start elsewhere, or `null` to reset to home.
+   * Return to the home screen. By default, only an open project carries its
+   * workspace into the next lazy-created session; chats and the blank page reset
+   * to a normal synced chat.
    */
   newChat: (cwd?: string | null) => Promise<void>
   send: (
@@ -246,6 +246,11 @@ interface ChatState {
  */
 export const selectCwd = (s: ChatState): string | null =>
   s.sessionId ? (s.sessions.find((m) => m.id === s.sessionId)?.cwd ?? s.pendingCwd) : s.pendingCwd
+
+function currentProjectWorkspace(s: ChatState): string | null {
+  if (!s.sessionId) return null
+  return s.sessions.find((m) => m.id === s.sessionId)?.workspacePath ?? null
+}
 
 export const useChat = create<ChatState>((set, get) => ({
   sessionId: null,
@@ -376,8 +381,7 @@ export const useChat = create<ChatState>((set, get) => ({
       // stay intact so any running session keeps streaming into its own runtime.
       ...mirror(null),
       pendingScrollIndex: null,
-      // Inherit the directory in effect by default; an explicit arg overrides.
-      pendingCwd: cwd === undefined ? selectCwd(s) : cwd
+      pendingCwd: cwd === undefined ? currentProjectWorkspace(s) : cwd
     }))
   },
 
@@ -388,7 +392,11 @@ export const useChat = create<ChatState>((set, get) => ({
     // to land) and switch to it before sending.
     let sessionId = get().sessionId
     if (!sessionId) {
-      const meta = await window.api.createSession({ cwd: get().pendingCwd ?? '~' })
+      const pendingWorkspace = get().pendingCwd
+      const meta = await window.api.createSession({
+        cwd: pendingWorkspace ?? '~',
+        workspacePath: pendingWorkspace
+      })
       // The approval posture is global (main applies it to every new service), so
       // there's nothing session-specific to carry over here.
       sessionId = meta.id
@@ -525,7 +533,11 @@ export const useChat = create<ChatState>((set, get) => ({
     const sessionId = get().sessionId
     if (sessionId) {
       set((s) => ({
-        sessions: s.sessions.map((m) => (m.id === sessionId ? { ...m, cwd: path } : m)),
+        sessions: s.sessions.map((m) =>
+          m.id === sessionId
+            ? { ...m, cwd: path, workspacePath: path, kind: 'project' as const }
+            : m
+        )
       }))
     } else {
       set({ pendingCwd: path })

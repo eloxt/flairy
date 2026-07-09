@@ -518,7 +518,8 @@ export class TelegramManager implements InteractionChannel {
         // Orphaned mapping → recreate + rebind.
         deleteTelegramThread(existing.sessionId)
         this.owned.delete(existing.sessionId)
-        const healed = createSession({ cwd: this.workspaceDir() })
+        const workspace = this.workspaceDir()
+        const healed = createSession({ cwd: workspace, workspacePath: workspace })
         createTelegramThread({
           sessionId: healed.id,
           chatId,
@@ -529,7 +530,8 @@ export class TelegramManager implements InteractionChannel {
         broadcast(IPC.SessionsChanged)
         return healed.id
       }
-      const meta = createSession({ cwd: this.workspaceDir() })
+      const workspace = this.workspaceDir()
+      const meta = createSession({ cwd: workspace, workspacePath: workspace })
       createTelegramThread({ sessionId: meta.id, chatId, threadKey })
       this.owned.add(meta.id)
       broadcast(IPC.SessionsChanged)
@@ -565,7 +567,8 @@ export class TelegramManager implements InteractionChannel {
           // are kept; the topic just re-maps to the fresh session below.
           this.agents.delete(existing.sessionId)
         }
-        const meta = createSession({ cwd: this.workspaceDir() })
+        const workspace = this.workspaceDir()
+        const meta = createSession({ cwd: workspace, workspacePath: workspace })
         createTelegramThread({ sessionId: meta.id, chatId, threadKey })
         this.owned.add(meta.id)
         broadcast(IPC.SessionsChanged)
@@ -584,7 +587,7 @@ export class TelegramManager implements InteractionChannel {
         const sessionId = existing.sessionId
         this.agents.delete(sessionId, true)
         this.agents.rejectInteractions(sessionId)
-        this.server.sendSessionDelete({ sessionId })
+        if (getSession(sessionId)?.kind === 'chat') this.server.sendSessionDelete({ sessionId })
         deleteSession(sessionId)
         broadcast(IPC.SessionsChanged)
         return true

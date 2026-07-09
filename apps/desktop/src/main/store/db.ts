@@ -29,6 +29,7 @@ export function initDb(): void {
       id        TEXT PRIMARY KEY,
       title     TEXT NOT NULL,
       cwd       TEXT NOT NULL,
+      workspacePath TEXT,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
@@ -111,6 +112,22 @@ export function initDb(): void {
   // Skills are no longer cached in SQLite — they're materialized straight to
   // userData/skills with an on-disk manifest. Drop the legacy table if present.
   db.exec('DROP TABLE IF EXISTS skill_cache;')
+
+  // Idempotent migration: project/chat is local-only. A null workspacePath means
+  // a synced chat; a path means a local project grouped by that workspace.
+  {
+    const cols = (db.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).map(
+      (c) => c.name
+    )
+    if (!cols.includes('workspacePath')) {
+      db.exec('ALTER TABLE sessions ADD COLUMN workspacePath TEXT')
+      db.prepare(
+        `UPDATE sessions
+         SET workspacePath = cwd
+         WHERE cwd NOT IN ('~', ?)`
+      ).run(app.getPath('home'))
+    }
+  }
 
   // Idempotent migration: existing installs created telegram_binding before the
   // bound_user_id column existed. Add it if missing so a paired chat can pin
@@ -207,17 +224,20 @@ export function setCloseToTrayPref(value: boolean): void {
   setSetting('closeToTray', value ? '1' : '0')
 }
 
-export function createSession({ title, cwd }: CreateSessionArgs): SessionMeta {
+export function createSession({ title, cwd, workspacePath }: CreateSessionArgs): SessionMeta {
   const now = Date.now()
+  const normalizedWorkspace = normalizeWorkspacePath(workspacePath ?? workspaceFromCwd(cwd))
   const meta: SessionMeta = {
     id: randomUUID(),
     title: title ?? t('defaultSessionTitle'),
     cwd,
+    workspacePath: normalizedWorkspace,
+    kind: normalizedWorkspace ? 'project' : 'chat',
     createdAt: now,
     updatedAt: now
   }
   db.prepare(
-    'INSERT INTO sessions (id, title, cwd, createdAt, updatedAt) VALUES (@id, @title, @cwd, @createdAt, @updatedAt)'
+    'INSERT INTO sessions (id, title, cwd, workspacePath, createdAt, updatedAt) VALUES (@id, @title, @cwd, @workspacePath, @createdAt, @updatedAt)'
   ).run(meta)
   reindexTitle(meta.id, meta.title)
   return meta
@@ -231,18 +251,38 @@ const SESSION_SELECT =
 
 // SQLite returns `fromTelegram` as 0/1; SessionMeta types it as a boolean, so omit
 // it from the base before intersecting to avoid a `boolean & number` (never) clash.
-type RawSessionRow = Omit<SessionMeta, 'fromTelegram'> & { fromTelegram: number }
+type RawSessionRow = Omit<SessionMeta, 'fromTelegram' | 'kind'> & { fromTelegram: number }
+
+function normalizeWorkspacePath(path: string | null | undefined): string | null {
+  if (!path || path === '~') return null
+  const normalized = normalizeDir(path)
+  return normalized === app.getPath('home') ? null : normalized
+}
+
+function workspaceFromCwd(cwd: string): string | null {
+  return normalizeWorkspacePath(cwd)
+}
+
+function mapSessionRow(r: RawSessionRow): SessionMeta {
+  const workspacePath = normalizeWorkspacePath(r.workspacePath)
+  return {
+    ...r,
+    workspacePath,
+    kind: workspacePath ? 'project' : 'chat',
+    fromTelegram: !!r.fromTelegram
+  }
+}
 
 export function listSessions(): SessionMeta[] {
   const rows = db.prepare(`${SESSION_SELECT} ORDER BY updatedAt DESC`).all() as RawSessionRow[]
-  return rows.map((r) => ({ ...r, fromTelegram: !!r.fromTelegram }))
+  return rows.map(mapSessionRow)
 }
 
 export function getSession(id: string): SessionMeta | undefined {
   const row = db.prepare(`${SESSION_SELECT} WHERE sessions.id = ?`).get(id) as
     | RawSessionRow
     | undefined
-  return row ? { ...row, fromTelegram: !!row.fromTelegram } : undefined
+  return row ? mapSessionRow(row) : undefined
 }
 
 /**
@@ -251,7 +291,11 @@ export function getSession(id: string): SessionMeta | undefined {
  * change shouldn't reorder the sidebar.
  */
 export function updateSessionCwd(id: string, cwd: string): SessionMeta | undefined {
-  db.prepare('UPDATE sessions SET cwd = ? WHERE id = ?').run(cwd, id)
+  db.prepare('UPDATE sessions SET cwd = ?, workspacePath = ? WHERE id = ?').run(
+    cwd,
+    workspaceFromCwd(cwd),
+    id
+  )
   return getSession(id)
 }
 
@@ -391,24 +435,25 @@ export async function saveMessages(sessionId: string, messages: unknown[]): Prom
 }
 
 /**
- * Apply a session pushed from another device. Upserts the session row (cwd is a
- * local-only concept the server doesn't carry, so we keep any existing value and
- * fall back to the home dir for brand-new sessions) and replaces its messages
- * with the rehydrated pi payloads (SyncMessage.raw).
+ * Apply a chat pushed from another device. Project sessions are local-only; if a
+ * local project has the same id (e.g. converted while offline), ignore the stale
+ * remote chat so it cannot overwrite the project row on reconnect.
  */
-export function upsertRemoteSession(payload: SessionRemotePayload): void {
+export function upsertRemoteSession(payload: SessionRemotePayload): boolean {
   const { session, messages } = payload
   const existing = getSession(session.id)
-  const cwd = existing?.cwd ?? app.getPath('home')
+  if (existing?.kind === 'project') return false
+  const cwd = existing?.cwd ?? '~'
   const raw = messages.map((m) => m.raw)
 
   // Atomic so the session/messages write and the FTS reindex commit together.
   db.transaction(() => {
     db.prepare(
-      `INSERT INTO sessions (id, title, cwd, createdAt, updatedAt)
-       VALUES (@id, @title, @cwd, @createdAt, @updatedAt)
+      `INSERT INTO sessions (id, title, cwd, workspacePath, createdAt, updatedAt)
+       VALUES (@id, @title, @cwd, NULL, @createdAt, @updatedAt)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
+         workspacePath = NULL,
          updatedAt = excluded.updatedAt`
     ).run({
       id: session.id,
@@ -426,6 +471,7 @@ export function upsertRemoteSession(payload: SessionRemotePayload): void {
     reindexTitle(session.id, session.title)
     reindexMessages(session.id, raw)
   })()
+  return true
 }
 
 /* ---------- Long-term agent memory ---------- */

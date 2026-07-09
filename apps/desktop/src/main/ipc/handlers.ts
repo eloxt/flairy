@@ -135,7 +135,8 @@ export function registerIpcHandlers(
 
   // Sessions changed on another device land in the local db so the UI sees them.
   server.onSessionRemote((payload) => {
-    upsertRemoteSession(payload)
+    const changed = upsertRemoteSession(payload)
+    if (!changed) return
     // Reflect a remotely-changed title in the sidebar live (e.g. a title another
     // device auto-generated). Scoped to title; full remote-session live refresh
     // is out of scope.
@@ -148,6 +149,7 @@ export function registerIpcHandlers(
   // A session deleted on another device: tear down any live service, remove the
   // local rows, and tell every window to refresh its sidebar.
   server.onSessionRemoteDelete(({ sessionId }) => {
+    if (getSession(sessionId)?.kind === 'project') return
     agents.delete(sessionId, true) // also delete the mapped Telegram topic
     agents.rejectInteractions(sessionId)
     deleteSession(sessionId)
@@ -285,8 +287,10 @@ export function registerIpcHandlers(
     const dir = await pickDirectory()
     if (!dir) return null
     addRecentDirectory(dir)
+    const before = getSession(args.sessionId)
     const meta = updateSessionCwd(args.sessionId, dir)
     agents.get(args.sessionId)?.setCwd(dir)
+    if (before?.kind === 'chat') server.sendSessionDelete({ sessionId: args.sessionId })
     return meta ?? null
   })
 
@@ -324,8 +328,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SessionChooseDir, (_e, args: ChooseDirArgs) => {
     addRecentDirectory(args.path)
     if (!args.sessionId) return null
+    const before = getSession(args.sessionId)
     const meta = updateSessionCwd(args.sessionId, args.path)
     agents.get(args.sessionId)?.setCwd(args.path)
+    if (before?.kind === 'chat') server.sendSessionDelete({ sessionId: args.sessionId })
     return meta ?? null
   })
 
@@ -343,7 +349,7 @@ export function registerIpcHandlers(
     // doesn't reorder the sidebar) and let the server's patch apply title only.
     // No-op if offline or if the session was never synced (server patch is
     // UPDATE-only — and an unsynced session can't be resurrected by a pull).
-    if (meta) {
+    if (meta?.kind === 'chat') {
       server.sendSessionPatch({
         sessionId: args.sessionId,
         appendMessages: [],
@@ -363,7 +369,9 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SessionDelete, (_e, args: DeleteSessionArgs) => {
     agents.delete(args.sessionId, true) // also delete the mapped Telegram topic
     agents.rejectInteractions(args.sessionId)
-    server.sendSessionDelete({ sessionId: args.sessionId })
+    if (getSession(args.sessionId)?.kind === 'chat') {
+      server.sendSessionDelete({ sessionId: args.sessionId })
+    }
     return deleteSession(args.sessionId)
   })
 

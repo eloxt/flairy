@@ -174,6 +174,7 @@ export interface ChooseDirArgs {
 export interface CreateSessionArgs {
   title?: string
   cwd: string
+  workspacePath?: string | null
 }
 
 export interface RenameSessionArgs {
@@ -195,6 +196,9 @@ export interface SessionMeta {
   id: string
   title: string
   cwd: string
+  /** Null means a synced chat; a path means a local-only project session. */
+  workspacePath: string | null
+  kind: 'chat' | 'project'
   createdAt: number
   updatedAt: number
   /** True if this session was created from Telegram — tagged + read-only on desktop. */

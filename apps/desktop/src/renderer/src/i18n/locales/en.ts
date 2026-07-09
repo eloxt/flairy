@@ -27,6 +27,7 @@ const en = {
   },
   chat: {
     newChat: 'New chat',
+    newInProject: 'New chat in {{project}}',
     search: 'Search',
     searchPlaceholder: 'Search chats and messages…',
     searchTitle: 'Search',
@@ -34,7 +35,8 @@ const en = {
     noResults: 'No results found',
     resultCount_one: '{{count}} result',
     resultCount_other: '{{count}} results',
-    history: 'History',
+    projects: 'Projects',
+    chats: 'Chats',
     chatsWillAppearHere: 'Your chats will appear here',
     untitled: 'Untitled chat',
     fromTelegram: 'From Telegram',
@@ -42,15 +44,10 @@ const en = {
     deleteDescription:
       'This action cannot be undone. The chat and its messages will be permanently deleted.',
     deleteSelectedTitle: 'Delete selected chats?',
-    deleteSelectedDescription_one:
-      'This action cannot be undone. 1 chat and its messages will be permanently deleted.',
-    deleteSelectedDescription_other:
-      'This action cannot be undone. {{count}} chats and their messages will be permanently deleted.',
+    deleteSelectedDescription:
+      'This action cannot be undone. The selected chats and their messages will be permanently deleted.',
     cancel: 'Cancel',
     delete: 'Delete',
-    deleteSelected: 'Delete selected',
-    selectedCount_one: '{{count}} selected',
-    selectedCount_other: '{{count}} selected',
     rename: 'Rename chat',
     emptyTitle: 'What can I help you with?',
     emptySubtitle: 'Ask in plain words. Flairy handles the rest.',
