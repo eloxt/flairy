@@ -1,16 +1,24 @@
 /**
  * Resolve a favicon URL for a citation source. Prefers the favicon the search
- * provider returned (Exa includes one per result); falls back to Google's public
- * favicon service keyed by domain. Returns undefined when neither is available,
- * so callers can render a generic icon instead.
+ * provider returned (Exa includes one per result — usually the site's own);
+ * falls back to the conventional `/favicon.ico` at the source URL's own origin
+ * (NOT a third-party favicon service, so lookups don't leak browsing to Google).
+ * Returns undefined when neither is derivable, so callers render a generic icon.
  *
- * The favicon is hot-linked (remote `<img>`), same as any other remote image the
- * app already renders — acceptable for a desktop client.
+ * The fallback misses sites that only declare their icon via `<link rel>` —
+ * the `Favicon` component swaps to a globe glyph when the image fails to load.
  */
-export function getFaviconUrl(favicon?: string, domain?: string): string | undefined {
+export function getFaviconUrl(favicon?: string | null, sourceUrl?: string): string | undefined {
   if (favicon && favicon.trim()) return favicon
-  if (domain && domain.trim()) {
-    return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`
+  if (sourceUrl) {
+    try {
+      const origin = new URL(sourceUrl).origin
+      // CSP only allows https: images; a derived http origin would just 404 the
+      // chip into its globe fallback, so don't bother emitting it.
+      if (origin.startsWith('https://')) return `${origin}/favicon.ico`
+    } catch {
+      // Unparseable source URL — nothing to derive.
+    }
   }
   return undefined
 }

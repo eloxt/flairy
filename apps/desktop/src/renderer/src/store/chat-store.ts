@@ -802,6 +802,15 @@ function applyEvent(
       updateRuntime(set, get, sessionId, (rt) => {
         // Defensive: ensure the batch id is set even if message_start was missed.
         const liveBatchId = e.messageId || rt.liveBatchId
+        // The turn is over: NO bubble may stay `streaming`. The finalize path
+        // below only reaches the bubble when it's still the LAST message, but a
+        // steer submitted mid-stream appends its optimistic user bubble after
+        // it — leaving `streaming: true` stuck forever on the earlier bubble
+        // (Streamdown then keeps its text wrapped in entrance-animation spans,
+        // which broke citation chips until the session was reopened).
+        const cleared = rt.messages.some((m) => m.streaming)
+          ? rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+          : rt.messages
         const last = rt.messages[rt.messages.length - 1]
         // Finalize the streamed bubble with the authoritative full text +
         // reasoning (deltas win; fall back to the end payload if they were empty).
@@ -814,7 +823,7 @@ function applyEvent(
             usage: e.usage ?? last.usage,
             timestamp: e.timestamp ?? last.timestamp
           }
-          return { ...rt, liveBatchId, messages: [...rt.messages.slice(0, -1), finalized] }
+          return { ...rt, liveBatchId, messages: [...cleared.slice(0, -1), finalized] }
         }
         // …or build it now if deltas never produced a visible bubble
         // (non-streaming response, empty/garbled deltas).
@@ -823,7 +832,7 @@ function applyEvent(
             ...rt,
             liveBatchId,
             messages: [
-              ...rt.messages,
+              ...cleared,
               {
                 id: e.messageId || crypto.randomUUID(),
                 role: 'assistant',
@@ -838,7 +847,7 @@ function applyEvent(
         // No visible assistant bubble (e.g. a tools-only turn). Still attach this
         // turn's usage/timestamp to its first bubble (the first tool call shares
         // batchId === liveBatchId) so the cost tab counts every turn.
-        const stamped = rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+        const stamped = [...cleared]
         if (e.usage || e.timestamp) {
           const idx = stamped.findIndex((m) => m.batchId === liveBatchId || m.id === e.messageId)
           if (idx >= 0)

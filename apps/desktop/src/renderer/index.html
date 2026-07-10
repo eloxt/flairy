@@ -3,9 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- img-src allows https: so citation favicons (Exa-provided URLs + the
+         Google s2 fallback) can hot-link. Scoped to this window only — the
+         settings and image-viewer pages keep the tighter 'self' data: policy. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
     />
     <title>Flairy</title>
   </head>

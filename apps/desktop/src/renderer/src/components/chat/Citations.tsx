@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  isValidElement,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Globe } from "lucide-react";
 import type { SearchSource } from "@shared/web-search";
@@ -37,10 +43,19 @@ function openSource(url: string): void {
   void window.api.openExternal(url);
 }
 
-/** Flatten a React children value (string | array | nested) to its text. */
+/**
+ * Flatten a React children value (string | array | element | nested) to its
+ * text. MUST recurse into elements: while a message streams, Streamdown's
+ * entrance animation (a rehype pass) wraps every text run — including the
+ * number inside our citation `<sup>` — in animated `<span>`s, so the chip's
+ * children arrive as elements, not strings. Without unwrapping, every chip in
+ * a streaming answer degrades to a plain superscript number.
+ */
 function childrenText(c: unknown): string {
   if (typeof c === "string" || typeof c === "number") return String(c);
   if (Array.isArray(c)) return c.map(childrenText).join("");
+  if (isValidElement(c))
+    return childrenText((c.props as { children?: unknown }).children);
   return "";
 }
 
@@ -80,7 +95,10 @@ export function remarkCitations() {
           // Render as a STANDARD <sup> element (not a custom tag): react-markdown
           // only applies a `components` override for known elements, so a custom
           // <citation> tag would fall through and leak its children as plain text.
-          // The number rides as the text child (always forwarded) + a data-attr.
+          // The number MUST ride as the text child — it's the only channel that
+          // reaches the component. The data-attr below is belt-and-braces only:
+          // Streamdown's sanitize pass strips unknown attributes, so it never
+          // actually arrives in props (verified empirically against 2.5.0).
           data: { hName: "sup", hProperties: { "data-cite": num } },
           children: [{ type: "text", value: num }],
         });
@@ -126,8 +144,9 @@ export function remarkCitations() {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function CitationChip(props: any): React.JSX.Element {
   const sources = useContext(CitationsContext);
-  // Prefer the rendered children (the number we put there); fall back to the
-  // data-attr. Robust to however react-markdown forwards props.
+  // The number lives in the rendered children (possibly wrapped in animation
+  // spans — childrenText unwraps those). The data-attr read is a fallback that
+  // today never fires: Streamdown's sanitizer strips unknown attributes.
   const raw = (
     childrenText(props.children) || String(props["data-cite"] ?? "")
   ).trim();
@@ -157,7 +176,11 @@ export function CitationChip(props: any): React.JSX.Element {
   );
 }
 
-/** Favicon image with a graceful fallback to a generic globe icon. */
+/**
+ * Favicon image with a graceful fallback to a generic globe icon — both when no
+ * URL is derivable and when the derived `/favicon.ico` fails to load (sites
+ * that only declare their icon via `<link rel>` 404 the conventional path).
+ */
 function Favicon({
   source,
   className,
@@ -165,18 +188,17 @@ function Favicon({
   source: SearchSource;
   className?: string;
 }): React.JSX.Element {
-  const url = getFaviconUrl(source.favicon, source.domain);
-  if (!url) return <Globe className={cn("text-muted-foreground", className)} />;
+  const [failed, setFailed] = useState(false);
+  const url = getFaviconUrl(source.favicon, source.url);
+  if (!url || failed)
+    return <Globe className={cn("text-muted-foreground", className)} />;
   return (
     <img
       src={url}
       alt=""
       loading="lazy"
       className={cn("rounded-[3px] object-contain", className)}
-      onError={(e) => {
-        // Drop a broken favicon rather than showing a torn-image glyph.
-        e.currentTarget.style.display = "none";
-      }}
+      onError={() => setFailed(true)}
     />
   );
 }
@@ -199,11 +221,11 @@ function SourceCardBody({
         <Favicon source={source} className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate">{source.domain}</span>
       </span>
-      <span className="line-clamp-2 w-full break-words text-sm font-medium leading-snug text-foreground">
+      <span className="line-clamp-2 w-full wrap-break-word text-sm font-medium leading-snug text-foreground">
         {source.title}
       </span>
       {source.snippet && (
-        <span className="line-clamp-3 w-full break-words text-xs leading-relaxed text-muted-foreground">
+        <span className="line-clamp-3 w-full wrap-break-word text-xs leading-relaxed text-muted-foreground">
           {source.snippet}
         </span>
       )}
