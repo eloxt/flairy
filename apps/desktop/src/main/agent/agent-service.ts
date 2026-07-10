@@ -151,6 +151,8 @@ export class AgentService {
   private cwd: string;
   /** Unsubscribe handle for the MCP tool-set subscription, called on dispose(). */
   private mcpUnsub?: () => void;
+  /** Unsubscribe handle for the server-config subscription, called on dispose(). */
+  private configUnsub?: () => void;
   /** True once we've pushed the initial full session; later saves use patch. */
   private upserted = false;
   /**
@@ -419,6 +421,23 @@ export class AgentService {
     // config. Re-merge the live tool set onto the running agent whenever it
     // changes (assigning state.tools is pi's sanctioned injection point).
     this.mcpUnsub = this.mcp.onToolsChanged(() => {
+      this.agent.state.tools = this.buildTools(this.cwd);
+    });
+
+    // Config values baked into initialState (model, system prompt, thinking
+    // level, config-gated tools like web_search) would otherwise freeze at
+    // construction time — only getApiKey resolves live. Re-apply them whenever
+    // the server pushes a new snapshot/delta so long-lived sessions pick up
+    // admin changes; pi reads state at each turn start, so mid-run assignment
+    // simply takes effect from the next turn. (onConfig fires immediately with
+    // the current snapshot; re-applying identical values is harmless.)
+    this.configUnsub = server.onConfig((cfg) => {
+      const llm = cfg.llm.main;
+      if (!llm) return; // keep the last working config rather than break the agent
+      this.agent.state.model = buildModel(llm);
+      if (llm.model.thinkingLevel)
+        this.agent.state.thinkingLevel = llm.model.thinkingLevel;
+      this.agent.state.systemPrompt = buildSystemPrompt(cfg, this.cwd);
       this.agent.state.tools = this.buildTools(this.cwd);
     });
 
@@ -1253,6 +1272,7 @@ export class AgentService {
     this.onRejectInteractions(this.sessionId);
     this.unsubscribe?.();
     this.mcpUnsub?.();
+    this.configUnsub?.();
   }
 }
 
