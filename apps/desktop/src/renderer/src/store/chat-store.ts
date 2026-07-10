@@ -131,6 +131,11 @@ export interface SessionRuntime {
   messages: UiMessage[]
   running: boolean
   /**
+   * True while a context-compression auxiliary call is in flight for this
+   * session. Drives the message-list shimmer row. Per-session, like `running`.
+   */
+  compressing: boolean
+  /**
    * The assistant turn currently streaming in THIS session, used to stamp a
    * shared `batchId` onto the turn's tool calls. Per-session (not a module
    * global) so two concurrently-running sessions never cross-stamp batches.
@@ -159,6 +164,7 @@ function emptyRuntime(): SessionRuntime {
   return {
     messages: [],
     running: false,
+    compressing: false,
     liveBatchId: null,
     approvalQueue: [],
     questionQueue: [],
@@ -186,6 +192,8 @@ interface ChatState {
   runningSessions: string[]
   messages: UiMessage[]
   running: boolean
+  /** Mirror of the foreground session's compression-in-flight flag. */
+  compressing: boolean
   /** Pending approval requests, oldest first; the dialog shows the head. */
   approvalQueue: ApprovalRequestPayload[]
   /** Pending `ask` questions for the open session, oldest first; each renders a card. */
@@ -236,6 +244,7 @@ interface ChatState {
     opts?: { imagesIgnored?: boolean }
   ) => Promise<void>
   abort: () => void
+  compressContext: () => Promise<void>
   respondApproval: (approvalId: string, approved: boolean, scope?: ApprovalScope) => void
   /** Submit the user's answers for an `ask` question and drop it from the queue. */
   respondQuestion: (questionId: string, answers: QuestionAnswer[]) => void
@@ -268,6 +277,7 @@ export const useChat = create<ChatState>((set, get) => ({
   runningSessions: [],
   messages: [],
   running: false,
+  compressing: false,
   approvalQueue: [],
   questionQueue: [],
   permissionMode: 'ask',
@@ -294,6 +304,9 @@ export const useChat = create<ChatState>((set, get) => ({
         ...rt,
         questionQueue: [...rt.questionQueue, req]
       }))
+    })
+    const offCompress = window.api.onCompressStatus(({ sessionId, active }) => {
+      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, compressing: active }))
     })
     // Live-update the sidebar when a session title changes (auto-generated
     // locally or synced from another device).
@@ -330,6 +343,7 @@ export const useChat = create<ChatState>((set, get) => ({
       offEvent()
       offApproval()
       offQuestion()
+      offCompress()
       offTitle()
       offSessions()
     }
@@ -355,11 +369,12 @@ export const useChat = create<ChatState>((set, get) => ({
     // Cold open: seed from the main process's LIVE state (in-memory messages +
     // running flag for a session running in the background; persisted snapshot
     // otherwise). Permission mode is per-session in-memory, defaulting to 'ask'.
-    const { messages, running } = await window.api.loadSessionLive(meta.id)
+    const { messages, running, compressing } = await window.api.loadSessionLive(meta.id)
     const rt: SessionRuntime = {
       ...emptyRuntime(),
       messages: hydrateMessages(messages),
       running,
+      compressing,
       fromTelegram: Boolean(meta.fromTelegram)
     }
     set((s) => ({
@@ -476,6 +491,12 @@ export const useChat = create<ChatState>((set, get) => ({
       approvalQueue: [],
       questionQueue: []
     }))
+  },
+
+  compressContext: async () => {
+    const sessionId = get().sessionId
+    if (!sessionId) return
+    await window.api.compressContext({ sessionId })
   },
 
   respondApproval: (approvalId, approved, scope = 'once') => {
@@ -604,12 +625,14 @@ export const useChat = create<ChatState>((set, get) => ({
 function mirror(rt: SessionRuntime | null): {
   messages: UiMessage[]
   running: boolean
+  compressing: boolean
   approvalQueue: ApprovalRequestPayload[]
   questionQueue: QuestionRequestPayload[]
 } {
   return {
     messages: rt?.messages ?? [],
     running: rt?.running ?? false,
+    compressing: rt?.compressing ?? false,
     approvalQueue: rt?.approvalQueue ?? [],
     questionQueue: rt?.questionQueue ?? []
   }

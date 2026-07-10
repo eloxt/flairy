@@ -28,6 +28,7 @@ export const IPC = {
   AgentApprovalResponse: 'agent:approval-response',
   AgentQuestionResponse: 'agent:question-response',
   AgentSetPermissionMode: 'agent:set-permission-mode',
+  AgentCompressContext: 'agent:compress-context',
   SessionList: 'session:list',
   SessionLoad: 'session:load',
   SessionLoadLive: 'session:load-live',
@@ -84,7 +85,8 @@ export const IPC = {
   SessionTitleUpdated: 'session:title-updated',
   SessionsChanged: 'session:changed',
   MemoriesChanged: 'memory:changed',
-  LanguageChanged: 'settings:language-changed'
+  LanguageChanged: 'settings:language-changed',
+  AgentCompressStatus: 'agent:compress-status'
 } as const
 
 /** UI language. The single source of truth for both renderer and main catalogs. */
@@ -135,6 +137,20 @@ export interface SteerArgs {
 
 export interface AbortArgs {
   sessionId: string
+}
+
+/** Manual context-compression trigger (the ModelPanel button). */
+export interface CompressContextArgs {
+  sessionId: string
+}
+
+/**
+ * Pushed from main → renderer when a context-compression auxiliary call starts
+ * or ends, so the message list can show a shimmer status row while it runs.
+ */
+export interface CompressStatusPayload {
+  sessionId: string
+  active: boolean
 }
 
 /**
@@ -438,6 +454,13 @@ export interface FlairyApi {
   respondQuestion(args: QuestionResponseArgs): Promise<void>
   /** Set the GLOBAL tool-approval posture (persisted; applies to every session). */
   setPermissionMode(mode: PermissionMode): Promise<void>
+  /**
+   * Manually compress the open session's context now (folds older messages into
+   * the rolling summary). Best-effort: resolves once the auxiliary call finishes
+   * (or is skipped). No-op if there's nothing to compress or no compression
+   * prompt is configured.
+   */
+  compressContext(args: CompressContextArgs): Promise<void>
   listSessions(): Promise<SessionMeta[]>
   loadSession(sessionId: string): Promise<{ meta: SessionMeta; messages: unknown[] }>
   /**
@@ -445,9 +468,12 @@ export interface FlairyApi {
    * (ahead of the last persist) plus whether a turn is currently in flight. Falls
    * back to the persisted snapshot for a session with no live agent service.
    */
-  loadSessionLive(
-    sessionId: string
-  ): Promise<{ meta: SessionMeta; messages: unknown[]; running: boolean }>
+  loadSessionLive(sessionId: string): Promise<{
+    meta: SessionMeta
+    messages: unknown[]
+    running: boolean
+    compressing: boolean
+  }>
   /** Full-text search over message content + session titles. */
   searchMessages(args: SearchMessagesArgs): Promise<SearchHit[]>
   createSession(args: CreateSessionArgs): Promise<SessionMeta>
@@ -576,4 +602,6 @@ export interface FlairyApi {
   onLanguageChanged(cb: (lng: AppLanguage) => void): () => void
   /** Fires when the app detects a newer release is available. */
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void
+  /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */
+  onCompressStatus(cb: (payload: CompressStatusPayload) => void): () => void
 }

@@ -62,6 +62,7 @@ const zhCN: typeof En = {
     running: '运行中',
     reasoning: '思考中...',
     reasoningLive: '思考中...',
+    compressingContext: '正在整理较早的消息...',
     error: '出错了',
     copy: '复制',
     copied: '已复制'

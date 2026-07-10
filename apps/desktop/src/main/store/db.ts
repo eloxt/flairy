@@ -38,6 +38,18 @@ export function initDb(): void {
       json      TEXT NOT NULL,
       updatedAt INTEGER NOT NULL
     );
+    -- Context-compression summary, one row per session. The agent keeps the full
+    -- message history intact (display + sync); this summary only replaces the
+    -- OLDER prefix in the LLM-bound view (convertToLlm). upTo is the count of
+    -- conversational messages (user/assistant/toolResult, in filtered order)
+    -- already folded into summary. Kept separate from the messages blob so the
+    -- blob's atomic write/sync stays untouched.
+    CREATE TABLE IF NOT EXISTS context_compression (
+      sessionId TEXT PRIMARY KEY,
+      summary   TEXT NOT NULL DEFAULT '',
+      upTo      INTEGER NOT NULL DEFAULT 0,
+      updatedAt INTEGER NOT NULL
+    );
     -- Last server-pushed ConfigSnapshot, kept so the client stays usable when the
     -- server is unreachable. Single row (id = 0). The blob is the snapshot JSON
     -- ENCRYPTED via safeStorage (it carries the LLM credential) — never plaintext.
@@ -380,6 +392,7 @@ export function deleteSession(id: string): boolean {
   return db.transaction((sid: string): boolean => {
     db.prepare('DELETE FROM messages WHERE sessionId = ?').run(sid)
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts WHERE sessionId = ?').run(sid)
+    db.prepare('DELETE FROM context_compression WHERE sessionId = ?').run(sid)
     const res = db.prepare('DELETE FROM sessions WHERE id = ?').run(sid)
     return res.changes > 0
   })(id)
@@ -401,6 +414,7 @@ export function clearAllSessions(): void {
     db.prepare('DELETE FROM messages').run()
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts').run()
     db.prepare('DELETE FROM sessions').run()
+    db.prepare('DELETE FROM context_compression').run()
     db.prepare('DELETE FROM telegram_threads').run()
   })()
 }
@@ -435,6 +449,49 @@ export async function saveMessages(sessionId: string, messages: unknown[]): Prom
 }
 
 /**
+ * Load the persisted context-compression summary for a session, if any. Returns
+ * null for a session that has never been compressed (so callers default cleanly).
+ * `upTo` counts conversational messages (user/assistant/toolResult) in the
+ * filtered order `convertToLlm` sees.
+ */
+export function loadCompression(
+  sessionId: string
+): { summary: string; upTo: number } | null {
+  const row = db
+    .prepare('SELECT summary, upTo FROM context_compression WHERE sessionId = ?')
+    .get(sessionId) as { summary: string; upTo: number } | undefined
+  return row ?? null
+}
+
+/**
+ * Persist (or clear, when `summary` is empty) the context-compression summary.
+ * One row per session, upserted atomically.
+ */
+export function saveCompression(
+  sessionId: string,
+  summary: string,
+  upTo: number
+): void {
+  const now = Date.now()
+  db.prepare(
+    `INSERT INTO context_compression (sessionId, summary, upTo, updatedAt)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(sessionId) DO UPDATE SET
+       summary = excluded.summary,
+       upTo = excluded.upTo,
+       updatedAt = excluded.updatedAt`
+  ).run(sessionId, summary, upTo, now)
+}
+
+/**
+ * Drop a session's compression row. Called when a remote sync replaces the
+ * message history the summary was bound to (see upsertRemoteSession).
+ */
+export function clearCompression(sessionId: string): void {
+  db.prepare('DELETE FROM context_compression WHERE sessionId = ?').run(sessionId)
+}
+
+/**
  * Apply a chat pushed from another device. Project sessions are local-only; if a
  * local project has the same id (e.g. converted while offline), ignore the stale
  * remote chat so it cannot overwrite the project row on reconnect.
@@ -445,9 +502,19 @@ export function upsertRemoteSession(payload: SessionRemotePayload): boolean {
   if (existing?.kind === 'project') return false
   const cwd = existing?.cwd ?? '~'
   const raw = messages.map((m) => m.raw)
+  const json = JSON.stringify(raw)
 
   // Atomic so the session/messages write and the FTS reindex commit together.
   db.transaction(() => {
+    // The compression summary is bound to the exact history it folded (upTo is
+    // a message index). If the remote payload rewrites that history, drop it —
+    // keeping it would slice the wrong messages out of the LLM view on next
+    // open. An identical blob (routine reconnect pull) keeps it.
+    const prev = db
+      .prepare('SELECT json FROM messages WHERE sessionId = ?')
+      .get(session.id) as { json: string } | undefined
+    if (prev?.json !== json) clearCompression(session.id)
+
     db.prepare(
       `INSERT INTO sessions (id, title, cwd, workspacePath, createdAt, updatedAt)
        VALUES (@id, @title, @cwd, NULL, @createdAt, @updatedAt)
@@ -466,7 +533,7 @@ export function upsertRemoteSession(payload: SessionRemotePayload): boolean {
     db.prepare(
       `INSERT INTO messages (sessionId, json, updatedAt) VALUES (?, ?, ?)
        ON CONFLICT(sessionId) DO UPDATE SET json = excluded.json, updatedAt = excluded.updatedAt`
-    ).run(session.id, JSON.stringify(raw), session.updatedAt)
+    ).run(session.id, json, session.updatedAt)
 
     reindexTitle(session.id, session.title)
     reindexMessages(session.id, raw)

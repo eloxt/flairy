@@ -233,6 +233,7 @@ export function MessageList({
 }): React.JSX.Element {
   const approvalCount = useChat((s) => s.approvalQueue.length);
   const questionCount = useChat((s) => s.questionQueue.length);
+  const compressing = useChat((s) => s.compressing);
   const running = useChat((s) => s.running);
   const sessionId = useChat((s) => s.sessionId);
   const rows = useMemo(() => foldTurns(toRows(messages)), [messages]);
@@ -314,7 +315,7 @@ export function MessageList({
 
   // Pending approvals and questions render inline in the footer, so keep the
   // list mounted whenever there's a message, an approval, OR a question to show.
-  if (messages.length === 0 && approvalCount === 0 && questionCount === 0)
+  if (messages.length === 0 && approvalCount === 0 && questionCount === 0 && !compressing)
     return <EmptyState />;
 
   // Reset the "seen" set whenever the session changes so a reopened/switched
@@ -552,6 +553,7 @@ const ApprovalFooter = (): React.JSX.Element => {
   // constant div, these rows' churn is invisible to the observer.
   return (
     <div>
+      <CompressionRow />
       <ThinkingRow />
       {approvalQueue.map((req) => (
         <ApprovalCard key={req.approvalId} payload={req} />
@@ -564,6 +566,20 @@ const ApprovalFooter = (): React.JSX.Element => {
   );
 };
 
+/** Transient, non-persisted status row shown while context compression runs. */
+function CompressionRow(): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const show = useChat((s) => s.compressing);
+  if (!show) return null;
+  return (
+    <div className="animate-message-in mx-auto w-full max-w-3xl px-6 py-2.5">
+      <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+        <span className="shimmer text-sm font-medium">{t("chat.compressingContext")}</span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The pause between sending and the first token. Three dots breathing in place —
  * the only signal the agent is awake. Shown only in that gap: once text streams
@@ -571,6 +587,7 @@ const ApprovalFooter = (): React.JSX.Element => {
  */
 function ThinkingRow(): React.JSX.Element | null {
   const show = useChat((s) => {
+    if (s.compressing) return false;
     if (!s.running) return false;
     const last = s.messages[s.messages.length - 1];
     return last?.role === "user";

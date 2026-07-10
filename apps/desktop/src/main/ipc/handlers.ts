@@ -4,6 +4,7 @@ import {
   type PromptArgs,
   type SteerArgs,
   type AbortArgs,
+  type CompressContextArgs,
   type ApprovalResponseArgs,
   type QuestionResponseArgs,
   type PermissionMode,
@@ -248,6 +249,19 @@ export function registerIpcHandlers(
     agents.setDesktopPermissionMode(mode)
   })
 
+  // Manually compress the session's context (the ModelPanel button). Force-creates
+  // the service so the button works even before the first message; the service
+  // constructor still requires a `main` model, so guard the no-config case.
+  ipcMain.handle(IPC.AgentCompressContext, (_e, args: CompressContextArgs) => {
+    try {
+      return agents.getOrCreate(args.sessionId).compressContextNow()
+    } catch {
+      // No LLM config yet — nothing to compress. Swallow; the button is disabled
+      // in the UI until config arrives anyway.
+      return undefined
+    }
+  })
+
   ipcMain.handle(IPC.SessionList, () => listSessions())
 
   ipcMain.handle(IPC.SessionLoad, (_e, sessionId: string) => {
@@ -271,7 +285,8 @@ export function registerIpcHandlers(
     return {
       meta,
       messages: svc ? svc.getLiveMessages() : loadMessages(sessionId),
-      running: svc?.isRunning() ?? false
+      running: svc?.isRunning() ?? false,
+      compressing: svc?.isCompressing() ?? false
     }
   })
 

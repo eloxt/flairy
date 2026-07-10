@@ -4,6 +4,7 @@ import {
   IMAGE_DESCRIPTION_PROMPT_NAME,
   MAIN_PROMPT_NAME,
   TITLE_GENERATION_PROMPT_NAME,
+  COMPRESSION_PROMPT_NAME,
   type ActiveLlm,
   type ConfigSnapshot,
   type Memory,
@@ -38,6 +39,8 @@ import {
   updateSessionTitle,
   upsertMemory,
   listActiveMemoriesForPrompt,
+  loadCompression,
+  saveCompression,
 } from "../store/db";
 import { getMainWindow, broadcast } from "../windows";
 import { getLanguage } from "../locale";
@@ -60,6 +63,20 @@ const BASE_IMAGE_DESCRIPTION_PROMPT =
   "text verbatim, and describe layout, UI elements, charts, diagrams, code, " +
   "and anything else relevant. Number the descriptions when there are several " +
   "images. Output plain text only — no preamble, no commentary.";
+
+/**
+ * Context-compression tunables.
+ *   - `KEEP_RECENT`: the most recent N conversational messages are NEVER folded
+ *     into the summary, so the active working context stays intact for the next
+ *     turn (incl. any in-flight/paired tool results, since compression only runs
+ *     while no turn is active).
+ *   - `COMPRESS_TRIGGER_RATIO`: auto-compress once the last turn's provider-
+ *     reported prompt size reaches this fraction of the main model's context
+ *     window. Real usage (not an estimate) — the same number the renderer's
+ *     context meter shows, so the trigger and the UI can never disagree.
+ */
+const KEEP_RECENT = 12;
+const COMPRESS_TRIGGER_RATIO = 0.7;
 
 /**
  * One AgentService instance per session. Wraps a pi-agent-core Agent, forwards
@@ -124,11 +141,25 @@ export class AgentService {
    */
   private searchIdOffset = 0;
   /**
-   * Resolved model for the server-assigned `tool` role, or undefined when no tool
-   * model is assigned. Delivered + resolved but NOT yet wired into the loop — a
-   * stub for a future auxiliary-call feature. See the constructor.
+   * Compressed summary of the conversation's OLDER messages, applied only in the
+   * LLM-bound view (convertToLlm) — `agent.state.messages` stays fully intact for
+   * display, persistence, and multi-device sync. Empty until the first
+   * compression; hydrated from SQLite on construction.
    */
-  private toolModel: ReturnType<typeof getModel> | undefined;
+  private compressedSummary = "";
+  /**
+   * Count of conversational messages (user/assistant/toolResult, in the filtered
+   * order `convertToLlm` sees) already folded into {@link compressedSummary}.
+   * `convertToLlm` drops this many leading messages and prepends the summary.
+   */
+  private compressedUpTo = 0;
+  /** True while a compression auxiliary call is in flight (drives the UI shimmer). */
+  private compressing = false;
+  /**
+   * Aborts the in-flight compression stream. abort()/dispose() fire it so a user
+   * stop cancels compression too (it's otherwise an unabortable side stream).
+   */
+  private compressAbort: AbortController | null = null;
   /**
    * Settle every pending interaction (approval + question) for this session.
    * Injected so abort()/dispose() can reach the centralized fan-out in
@@ -194,6 +225,15 @@ export class AgentService {
     this.resolveChannel = opts.resolveChannel ?? (() => desktopChannel);
     this.onTitleChanged = opts.onTitleChanged;
 
+    // Hydrate any persisted compression summary so it survives reload/restart.
+    // Kept independent of agent.state.messages (the summary replaces the older
+    // prefix only in the LLM view; the full transcript is rehydrated verbatim).
+    const compression = loadCompression(sessionId);
+    if (compression) {
+      this.compressedSummary = compression.summary;
+      this.compressedUpTo = compression.upTo;
+    }
+
     const config = server.getConfig();
     if (!config || !config.llm.main) {
       // Mirrors the old "no key configured" guard: without a `main` role model we
@@ -203,11 +243,6 @@ export class AgentService {
       );
     }
     const mainLlm = config.llm.main;
-
-    // The `tool` role is delivered and resolved but has no consumer yet — kept as
-    // a stub so a future auxiliary-call feature (e.g. a cheaper tool/summarizer
-    // model) can pick it up without re-plumbing config. See getToolModel().
-    this.toolModel = config.llm.tool ? buildModel(config.llm.tool) : undefined;
 
     this.agent = new Agent({
       // Credential is resolved per-request from the latest server config — never
@@ -230,11 +265,34 @@ export class AgentService {
         tools: this.buildTools(cwd),
         messages: (opts.messages ?? []) as AgentMessage[],
       },
-      // Only forward roles the LLM should see.
-      convertToLlm: (messages: any[]) =>
-        messages.filter((m) =>
+      // Only forward roles the LLM should see, and — when a compression summary
+      // exists — replace the already-summarized older prefix with a single
+      // synthetic summary message. The summary is LLM-only: agent.state.messages
+      // stays fully intact for display, persistence, and multi-device sync.
+      convertToLlm: (messages: any[]) => {
+        const convo = messages.filter((m) =>
           ["user", "assistant", "toolResult"].includes(m.role),
-        ),
+        );
+        if (!this.compressedSummary || this.compressedUpTo <= 0)
+          return convo;
+        // Clamp to the current length: a remote session-restore could shrink the
+        // history below the persisted upTo, in which case we compress nothing.
+        const upTo = safeCompressionBoundary(convo, this.compressedUpTo);
+        if (upTo <= 0) return convo;
+        const kept = convo.slice(upTo);
+        return [
+          {
+            role: "user",
+            content:
+              "<context_summary>\nThe following is a summary of the earlier " +
+              "part of this conversation, provided to conserve context:\n\n" +
+              this.compressedSummary +
+              "\n</context_summary>",
+            timestamp: kept[0]?.timestamp ?? Date.now(),
+          },
+          ...kept,
+        ];
+      },
       // Approval gate: every tool runs through here. Read-only tools (read/grep/
       // find/ls) pass silently; everything else — mutating local tools and all
       // MCP/remote tools — needs user confirmation, unless already approved for
@@ -504,10 +562,21 @@ export class AgentService {
     if (isFirst && !this.titleGenerated && text.trim()) {
       void this.maybeGenerateTitle(text);
     }
-    // Mark running up front so a session reopened before the first event still
-    // reports as running; agent_start/agent_end keep it accurate thereafter.
+    // Mark running BEFORE the (potentially seconds-long) compression await:
+    // submit() routes on this flag, so a second send arriving mid-compression
+    // must land in the steering queue (drained at run start) rather than a
+    // concurrent prompt(), which pi forbids. Also keeps a session reopened
+    // before the first event reporting as running; agent_start/agent_end keep
+    // it accurate thereafter.
     this.running = true;
     try {
+      // Auto context-compression: fold older messages into a rolling summary
+      // before the turn if the conversation nears the model's context window.
+      // Awaits so the compressed view is in place for this very turn.
+      await this.maybeCompressContext(false, true);
+      // abort() during the compression await flips `running` off — the user
+      // asked to stop, so don't start the turn compression was preparing.
+      if (!this.running) return;
       // With a text-only main model + an assigned `visual` model, extract a text
       // description of the images first and ride it on the same user message
       // (see maybeDescribeImages). Adds latency before the turn starts, but
@@ -739,13 +808,162 @@ export class AgentService {
     this.permissionMode = mode;
   }
 
+  /** Whether a compression auxiliary call is currently in flight. */
+  isCompressing(): boolean {
+    return this.compressing;
+  }
+
   /**
-   * The resolved `tool`-role model, if the server assigned one. Stub accessor: no
-   * caller consumes it yet (see constructor). Exposed so a future auxiliary-call
-   * feature can use a separate, server-configured model without re-plumbing.
+   * Manually trigger context compression on demand (the ModelPanel button). Runs
+   * the same path as the auto trigger but bypasses the threshold check — there
+   * must still be enough compressible history (older than the keep-recent window)
+   * to actually fold. Best-effort: never throws to the renderer.
    */
-  getToolModel(): ReturnType<typeof getModel> | undefined {
-    return this.toolModel;
+  async compressContextNow(): Promise<void> {
+    await this.maybeCompressContext(true);
+  }
+
+  /**
+   * Compress the conversation's older messages into a rolling summary, applied
+   * LLM-only via {@link convertToLlm}. Mirrors the auxiliary-call pattern of
+   * {@link maybeGenerateTitle} / {@link maybeDescribeImages}: the `tool`-role
+   * model is driven by the server-delivered `compression` system prompt.
+   * Strictly server-driven: no prompt or no `tool` model → no compression.
+   * Best-effort: any failure keeps the existing summary and never surfaces as a
+   * chat error.
+   *
+   * Strategy: keep the most recent {@link KEEP_RECENT} conversational messages
+   * uncompressed; fold everything between the already-summarized prefix
+   * (`compressedUpTo`) and that recent window into a single (existing-summary +
+   * new-messages) summary, then advance `compressedUpTo`. The `force` flag
+   * (manual button) skips the token-threshold gate but still requires
+   * compressible history. `startingTurn` is set only by prompt(), which flips
+   * `running` on BEFORE this await (to route concurrent sends to steering) but
+   * has not started the agent loop yet — so slicing is still safe there.
+   */
+  private async maybeCompressContext(
+    force = false,
+    startingTurn = false,
+  ): Promise<void> {
+    // Never compress while the agent loop is active (slicing the message set
+    // mid-loop could drop a tool result before it's paired with its call) or
+    // while a compression is already in flight.
+    if (this.compressing) return;
+    if (this.running && !startingTurn) return;
+    const config = this.server.getConfig();
+    if (!config) return;
+    const compressionPrompt = findPromptBody(config, COMPRESSION_PROMPT_NAME);
+    if (!compressionPrompt) return; // strictly server-driven
+    const llm = config.llm.tool;
+    if (!llm) return;
+
+    // Work over the SAME filtered conversational view convertToLlm uses, so the
+    // upTo index stays consistent with what gets sliced at send time.
+    const convo = this.agent.state.messages.filter((m: any) =>
+      ["user", "assistant", "toolResult"].includes(m.role),
+    );
+    // The recent window is never folded: keep the last KEEP_RECENT messages.
+    const currentUpTo = safeCompressionBoundary(convo, this.compressedUpTo);
+    const desiredNewUpTo = Math.max(0, convo.length - KEEP_RECENT);
+    const newUpTo = safeCompressionBoundary(convo, desiredNewUpTo);
+    // Nothing to do if there's no history beyond the already-summarized prefix.
+    if (newUpTo <= currentUpTo) return;
+
+    // Auto gate: only compress once the last turn's provider-reported prompt
+    // size approaches the main model's context window. This is the request as
+    // the provider actually measured it (system prompt, tool schemas, images,
+    // and any existing summary included) — the same number the renderer's
+    // context meter derives. No usage yet (no completed turn) → nothing worth
+    // compressing. Manual (force) skips the gate.
+    if (!force) {
+      const contextWindow =
+        config.llm.main?.model.contextWindow ?? 128_000;
+      const used = lastReportedContextTokens(this.agent.state.messages);
+      if (used === undefined || used < contextWindow * COMPRESS_TRIGGER_RATIO)
+        return;
+    }
+
+    this.setCompressing(true);
+    this.compressAbort = new AbortController();
+    try {
+      // Candidates = the slice not yet summarized, up to the new boundary.
+      const candidates = convo.slice(currentUpTo, newUpTo);
+      const userContent =
+        "Use the material in <existing_summary> and " +
+        "<conversation_to_summarize> as source material.\n\n" +
+        (this.compressedSummary
+          ? `<existing_summary>\n${this.compressedSummary}\n</existing_summary>\n\n`
+          : "<existing_summary>\n(none)\n</existing_summary>\n\n") +
+        `<conversation_to_summarize>\n${serializeForCompression(candidates)}\n</conversation_to_summarize>\n\n` +
+        "Output exactly the Markdown structure shown inside <template> and " +
+        "keep the section order unchanged. Do not include the <template> tags " +
+        "in your response.\n" +
+        "<template>\n" +
+        "## Objective\n" +
+        "- [one or two brief sentences describing what the user is trying to accomplish]\n\n" +
+        "## Important Details\n" +
+        "- [constraints/preferences, decisions and why, important facts/assumptions, exact context needed to continue, or \"(none)\"]\n\n" +
+        "## Work State\n" +
+        "### Completed\n" +
+        "- [finished work, verified facts, or changes made; otherwise \"(none)\"]\n\n" +
+        "### Active\n" +
+        "- [current work, partial changes, or investigation state; otherwise \"(none)\"]\n\n" +
+        "### Blocked\n" +
+        "- [blockers, failing commands, or unknowns; otherwise \"(none)\"]\n\n" +
+        "## Next Move\n" +
+        "1. [immediate concrete action, or \"(none)\"]\n" +
+        "2. [next action if known, or \"(none)\"]\n\n" +
+        "## Relevant Files\n" +
+        "- [file or directory path: why it matters, or \"(none)\"]\n" +
+        "</template>\n\n" +
+        "Rules:\n" +
+        "- Keep every section, even when empty.\n" +
+        "- Use terse bullets, not prose paragraphs.\n" +
+        "- Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.\n" +
+        "- Do not mention the summary process or that context was compacted.";
+      const stream = streamSimple(
+        buildModel(llm),
+        {
+          systemPrompt: compressionPrompt,
+          messages: [
+            { role: "user", content: userContent, timestamp: Date.now() } as any,
+          ],
+        },
+        // SDK-level backoff (see maybeGenerateTitle); still abortable via signal.
+        {
+          apiKey: llm.provider.credential,
+          signal: this.compressAbort.signal,
+          maxRetries: 2,
+        },
+      );
+      const result = await stream.result();
+      if (result.stopReason === "error" || result.stopReason === "aborted")
+        return;
+      const summary = result.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("")
+        .trim();
+      if (!summary) return;
+      this.compressedSummary = summary;
+      this.compressedUpTo = newUpTo;
+      saveCompression(this.sessionId, summary, newUpTo);
+    } catch (err) {
+      // Best-effort: keep the existing summary. Never a chat error.
+      console.warn("[compress] failed:", err);
+    } finally {
+      this.compressAbort = null;
+      this.setCompressing(false);
+    }
+  }
+
+  /** Push the compressing flag to the renderer (drives the message-list shimmer). */
+  private setCompressing(active: boolean): void {
+    this.compressing = active;
+    getMainWindow()?.webContents.send(IPC.AgentCompressStatus, {
+      sessionId: this.sessionId,
+      active,
+    });
   }
 
   /**
@@ -763,6 +981,9 @@ export class AgentService {
 
   abort(): void {
     this.running = false;
+    // Cancel any in-flight compression side stream too; prompt() checks
+    // `running` after its compression await, so the prepared turn never starts.
+    this.compressAbort?.abort();
     this.agent.abort();
     // Drop any queued steering/follow-up messages so a stop fully clears intent —
     // otherwise a steer queued just before the stop would be injected into the
@@ -783,6 +1004,7 @@ export class AgentService {
   dispose(): void {
     this.disposed = true;
     this.running = false;
+    this.compressAbort?.abort();
     this.agent.abort();
     // Settle any interaction still open for this session so its blocked Promise
     // resolves and no registry entries leak. Routed through the injected fan-out
@@ -936,6 +1158,93 @@ function findPromptBody(
     .find((p) => p.enabled && p.name.trim().toLowerCase() === name)
     ?.body.trim();
   return body || undefined;
+}
+
+/**
+ * The real prompt size of the most recent completed turn: pi stamps the
+ * provider-reported usage on each assistant message, and input + cacheRead +
+ * cacheWrite is everything that was in that request's context. Same derivation
+ * as the renderer's context meter (ModelPanel), so the auto-compress trigger
+ * and the UI can never disagree. Undefined until a turn has reported usage.
+ */
+function lastReportedContextTokens(messages: any[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const u = (
+      messages[i] as {
+        usage?: { input?: number; cacheRead?: number; cacheWrite?: number };
+      }
+    ).usage;
+    if (u) return (u.input ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0);
+  }
+  return undefined;
+}
+
+/**
+ * Return a compression boundary that never leaves a toolResult in the kept suffix
+ * without its matching assistant toolCall. Provider APIs reject such transcripts,
+ * so if the desired boundary cuts a tool pair we move it backward until the
+ * suffix is self-contained (or all the way to 0 for corrupt/partial histories).
+ */
+function safeCompressionBoundary(messages: any[], desired: number): number {
+  let boundary = Math.min(Math.max(0, desired), messages.length);
+  while (boundary > 0 && hasOrphanToolResult(messages.slice(boundary))) {
+    boundary--;
+  }
+  return boundary;
+}
+
+function hasOrphanToolResult(messages: any[]): boolean {
+  const toolCallIds = new Set<string>();
+  for (const m of messages) {
+    if ((m as { role?: string }).role !== "assistant") continue;
+    const content = (m as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (
+        part &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "toolCall"
+      ) {
+        const id = (part as { id?: unknown }).id;
+        if (typeof id === "string" && id) toolCallIds.add(id);
+      }
+    }
+  }
+  for (const m of messages) {
+    if ((m as { role?: string }).role !== "toolResult") continue;
+    const id = (m as { toolCallId?: unknown }).toolCallId;
+    if (typeof id === "string" && id && !toolCallIds.has(id)) return true;
+  }
+  return false;
+}
+
+/**
+ * Flatten a slice of conversational messages into a plain-text transcript for
+ * the compression model. Drops non-text content (images) and tags each turn with
+ * its role so the summarizer can tell user from assistant.
+ */
+function serializeForCompression(messages: any[]): string {
+  return messages
+    .map((m) => {
+      const role = (m as { role?: string }).role ?? "user";
+      const content = (m as { content?: unknown }).content;
+      let text = "";
+      if (typeof content === "string") {
+        text = content;
+      } else if (Array.isArray(content)) {
+        text = content
+          .map((part) => {
+            if (typeof part === "string") return part;
+            if (part && typeof part === "object" && "text" in part)
+              return String((part as { text?: unknown }).text ?? "");
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n");
+      }
+      return `### ${role}\n${text}`;
+    })
+    .join("\n\n");
 }
 
 /** Normalize a model-produced title: drop wrapping quotes, collapse whitespace, clamp length. */

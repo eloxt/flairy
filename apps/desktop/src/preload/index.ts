@@ -5,6 +5,7 @@ import {
   type FlairyApi,
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
+  type CompressStatusPayload,
   type QuestionRequestPayload,
   type RedactedConfigSnapshot,
   type SessionTitleUpdatedPayload,
@@ -24,6 +25,7 @@ const api: FlairyApi = {
   respondApproval: (args) => ipcRenderer.invoke(IPC.AgentApprovalResponse, args),
   respondQuestion: (args) => ipcRenderer.invoke(IPC.AgentQuestionResponse, args),
   setPermissionMode: (mode) => ipcRenderer.invoke(IPC.AgentSetPermissionMode, mode),
+  compressContext: (args) => ipcRenderer.invoke(IPC.AgentCompressContext, args),
   listSessions: () => ipcRenderer.invoke(IPC.SessionList),
   loadSession: (sessionId) => ipcRenderer.invoke(IPC.SessionLoad, sessionId),
   loadSessionLive: (sessionId) => ipcRenderer.invoke(IPC.SessionLoadLive, sessionId),
@@ -129,6 +131,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, s: TelegramStatus): void => cb(s)
     ipcRenderer.on(IPC.TelegramStatusChanged, listener)
     return () => ipcRenderer.removeListener(IPC.TelegramStatusChanged, listener)
+  },
+  onCompressStatus: (cb) => {
+    const listener = (_e: unknown, payload: CompressStatusPayload): void => cb(payload)
+    ipcRenderer.on(IPC.AgentCompressStatus, listener)
+    return () => ipcRenderer.removeListener(IPC.AgentCompressStatus, listener)
   }
 }
 

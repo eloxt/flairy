@@ -65,6 +65,7 @@ const en = {
     running: 'Running',
     reasoning: 'Thinking...',
     reasoningLive: 'Thinking...',
+    compressingContext: 'Summarizing earlier messages...',
     error: 'Error',
     copy: 'Copy',
     copied: 'Copied'

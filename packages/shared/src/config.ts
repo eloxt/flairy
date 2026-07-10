@@ -476,6 +476,15 @@ export const TITLE_GENERATION_PROMPT_NAME = 'title_generation'
 export const IMAGE_DESCRIPTION_PROMPT_NAME = 'image_description'
 
 /**
+ * Reserved {@link SystemPromptConfig.name} the client treats specially: its body
+ * is the system prompt given to the `tool`-role model when it compresses the
+ * conversation's older messages into a summary (matched case-insensitively,
+ * trimmed). When this prompt is absent, context compression is disabled —
+ * strictly server-driven, like `title_generation`.
+ */
+export const COMPRESSION_PROMPT_NAME = 'compression'
+
+/**
  * Minimal skill descriptor shipped to clients in `config:snapshot` /
  * `config:updated`. Skills can be large (body + up to 50 MB files), so the
  * snapshot stays small — the desktop fetches the full skill and its files via
