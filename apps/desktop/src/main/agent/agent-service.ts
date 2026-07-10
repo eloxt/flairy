@@ -526,33 +526,40 @@ export class AgentService {
    * Whether this session is a `chat` (no workspace chosen). Resolved fresh from
    * SQLite rather than cached: a chat session becomes a `project` the moment the
    * user picks a directory (updateSessionCwd persists BEFORE setCwd rebuilds),
-   * and the rebuild must see the new kind. Chat sessions run without the local
-   * file/shell tools and use the `chat` system prompt instead of `main`.
+   * and the rebuild must see the new kind. Chat sessions run a minimal toolset
+   * (ask + web tools only) and use the `chat` system prompt instead of `main`.
    */
   private isChatSession(): boolean {
     return getSession(this.sessionId)?.kind === "chat";
   }
 
   /**
-   * Assemble the agent's tool set: the local coding tools (projects only — a
-   * chat session has no workspace, so the file/shell tools are not injected at
-   * all), the `ask` tool (which needs `win` + `sessionId` to round-trip a
-   * question to the renderer), and the live MCP tools. Used at all three
-   * injection points (constructor, MCP tool-change rebuild, setCwd rebuild) so
-   * `ask` is always present.
+   * Assemble the agent's tool set. A `chat` session (no workspace chosen) gets a
+   * deliberately minimal set — `ask` plus the web tools — nothing that touches
+   * local state (no file/shell tools, no remember/todo, no MCP). A project
+   * session gets the full set: the local coding tools, `ask` (which needs
+   * `win` + `sessionId` to round-trip a question to the renderer), remember/todo,
+   * the web tools, and the live MCP tools. Used at all three injection points
+   * (constructor, MCP tool-change rebuild, setCwd rebuild) so `ask` is always
+   * present.
    */
   private buildTools(cwd: string): AgentTool<any>[] {
+    const chat = this.isChatSession();
     const tools: AgentTool<any>[] = [
-      ...(this.isChatSession() ? [] : createTools(cwd)),
+      ...(chat ? [] : createTools(cwd)),
       // Resolve origin + channel at CALL time (not here at build time) so an
       // `ask` routes to the front-end that authored the turn currently running.
       createAskTool(this.sessionId, () => ({
         origin: this.activeTurnOrigin,
         channel: this.resolveChannel(this.activeTurnOrigin),
       })),
-      createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
-      createTodoTool(),
     ];
+    if (!chat) {
+      tools.push(
+        createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
+        createTodoTool(),
+      );
+    }
     // Offer web_search only when an Exa service is configured + enabled, so the
     // model never sees a tool it can't actually use. Resolved fresh at execute
     // time from the latest server config (key never captured here).
@@ -571,7 +578,7 @@ export class AgentService {
       );
       tools.push(createWebFetchTool(() => resolveExaService(this.server.getConfig())));
     }
-    tools.push(...this.mcp.getTools());
+    if (!chat) tools.push(...this.mcp.getTools());
     return tools;
   }
 
