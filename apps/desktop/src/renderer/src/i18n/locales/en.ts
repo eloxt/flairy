@@ -181,32 +181,32 @@ const en = {
   },
   settings: {
     title: 'Settings',
-    // Tabs
-    tabProfile: 'Profile',
-    tabInterface: 'Interface',
+    // Sidebar nav
+    navGeneral: 'General',
     tabMemory: 'Memory',
     tabTelegram: 'Telegram',
     tabAbout: 'About',
-    // Profile tab
+    // Account
     account: 'Account',
     name: 'Name',
     email: 'Email',
     signedIn: 'Signed in',
     signOut: 'Sign out',
-    // Interface tab
+    signOutHint:
+      'Your conversations stay on this device after you sign out. Sign back in to keep syncing.',
+    // General
+    sectionDisplay: 'Display',
+    sectionWindow: 'Window',
     language: 'Language',
-    languageDescription: 'Choose the display language.',
     chatWidth: 'Conversation width',
     chatWidthDescription: 'How wide the conversation appears in the window.',
     chatWidthStandard: 'Standard',
     chatWidthWide: 'Wide',
     chatWidthFull: 'Full width',
-    closeToTray: 'When you close the window',
     closeToTrayDescription:
       'Keep Flairy running in the background when you close the window, so it opens again instantly.',
     closeToTrayLabel: 'Keep running in the background',
-    // Memory tab
-    memory: 'What Flairy remembers',
+    // Memory
     memoryDescription:
       "Flairy remembers helpful things about you as you chat, so you don't have to repeat yourself. You can forget any of them here.",
     memoryEmpty: "Flairy hasn't remembered anything about you yet.",
@@ -222,13 +222,13 @@ const en = {
     telegramConnectButton: 'Connect',
     telegramConnecting: 'Connecting…',
     telegramDisconnectButton: 'Disconnect',
-    telegramResumeButton: 'Resume',
     telegramStatusConnected: 'Connected as @{{username}}',
     telegramStatusNotConnected: 'Not connected',
     telegramStatusPaused: 'Paused — not accepting new messages',
     telegramStatusError: 'Error: {{error}}',
     telegramLastActive: 'Last message received: {{time}}',
     telegramLinkGroup: 'Link your chat',
+    telegramNotPaired: 'No chat linked yet',
     telegramLinkGroupDescription:
       'Pair your private chat with the bot. Threads in that chat each become a separate conversation in Flairy.',
     telegramPairButton: 'Get pairing code',
@@ -240,18 +240,15 @@ const en = {
     telegramPairingStep3: '3. Send /pair {{code}} in that chat.',
     telegramPaired: 'Linked with {{chat}}',
     telegramUnpairButton: 'Unlink chat',
-    telegramKillSwitch: 'Pause',
+    telegramReceiveLabel: 'Receive Telegram messages',
     telegramKillSwitchDescription:
       'Stop Flairy from accepting new Telegram messages. Any action already running may not stop immediately.',
-    telegramPauseButton: 'Pause Telegram',
     telegramWorkspace: 'Telegram workspace',
     telegramWorkspaceDescription:
       'Telegram-driven tasks run in a dedicated workspace folder, separate from your other workspaces.',
-    // About tab
-    about: 'About',
+    // About
     appTagline: 'Your AI assistant that just works.',
     version: 'Version',
-    troubleshooting: 'Troubleshooting',
     troubleshootingDescription:
       "Technical details for support. You normally don't need to open this.",
     showConfig: 'Configuration details',

@@ -157,16 +157,28 @@ export function openSettingsWindow(): void {
     return;
   }
 
+  const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
-    width: 760,
-    height: 820,
-    minWidth: 520,
+    width: 780,
+    height: 600,
+    minWidth: 640,
     minHeight: 480,
     show: false,
     title: "Settings",
     autoHideMenuBar: true,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 15 },
+    // Same frosted treatment as the main window: the settings sidebar is a
+    // translucent rail (`.vibrancy` on <html>), the content pane paints opaque.
+    ...(isMac
+      ? {
+          vibrancy: "popover" as const,
+          visualEffectState: "active" as const,
+          backgroundColor: "#00000000",
+        }
+      : {
+          backgroundMaterial: "mica" as const,
+        }),
     webPreferences,
   });
 
