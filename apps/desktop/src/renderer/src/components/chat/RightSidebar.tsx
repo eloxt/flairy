@@ -4,13 +4,13 @@ import { useChat } from '@/store/chat-store'
 import { useUi } from '@/store/ui-store'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { TimelinePanel } from './sidebar/TimelinePanel'
-import { CostPanel } from './sidebar/CostPanel'
+import { ModelPanel } from './sidebar/ModelPanel'
 import { PlanPanel } from './sidebar/PlanPanel'
 
 /**
  * The resizable right-hand details panel. Tabs over the active (foreground)
- * session: a chronological Timeline, a Cost/spend summary, and — once the agent
- * has produced a plan — a Plan checklist. All read from the same `messages`
+ * session: a chronological Timeline, a Model info panel (identity + context +
+ * spend), and — once the agent has produced a plan — a Plan checklist. All read from the same `messages`
  * mirror the main thread renders, so they stay in lockstep with the conversation
  * (live and on replay).
  */
@@ -71,8 +71,8 @@ export function RightSidebar(): React.JSX.Element {
         <TabsTab value="timeline" className="app-no-drag">
           {t('panel.timeline')}
         </TabsTab>
-        <TabsTab value="cost" className="app-no-drag">
-          {t('panel.cost')}
+        <TabsTab value="model" className="app-no-drag">
+          {t('panel.model')}
         </TabsTab>
         {hasTodos && (
           <TabsTab value="plan" className="app-no-drag">
@@ -83,8 +83,8 @@ export function RightSidebar(): React.JSX.Element {
       <TabsPanel value="timeline">
         <TimelinePanel messages={messages} />
       </TabsPanel>
-      <TabsPanel value="cost">
-        <CostPanel messages={messages} />
+      <TabsPanel value="model">
+        <ModelPanel messages={messages} />
       </TabsPanel>
       {hasTodos && (
         <TabsPanel value="plan">
