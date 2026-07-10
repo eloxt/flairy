@@ -2,12 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Streamdown } from "streamdown";
-import {
-  CircleAlert,
-  ChevronRight,
-  Sparkle,
-  SquareTerminal,
-} from "lucide-react";
+import { CircleAlert, ChevronRight } from "lucide-react";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +16,11 @@ import {
 } from "@/components/ui/message-scroller";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Marker, MarkerContent } from "@/components/ui/marker";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import {
   Attachment,
   AttachmentGroup,
@@ -66,6 +66,30 @@ const STREAMDOWN_REMARK_PLUGINS = [remarkGfm, remarkCitations];
 const STREAMDOWN_COMPONENTS = { sup: CitationChip };
 
 /**
+ * Disclosure chevron shared by ToolEntry / ToolGroup / TurnFold: invisible at
+ * rest so process lines read as plain text, revealed when the row is hovered
+ * (or keyboard-focused), and kept visible while expanded as the open indicator.
+ * `group/marker` comes from the Marker root, which IS the trigger button here,
+ * and base-ui stamps `data-panel-open` on that same element.
+ */
+const DISCLOSURE_CHEVRON_CLS =
+  "size-3.5 shrink-0 text-muted-foreground/70 opacity-0 transition-all " +
+  "group-hover/marker:opacity-100 group-focus-visible/marker:opacity-100 " +
+  "group-data-[panel-open]/marker:rotate-90 group-data-[panel-open]/marker:opacity-100";
+
+/**
+ * Collapsible panel with an animated height. base-ui measures the content into
+ * `--collapsible-panel-height` for the open/close transition and resets it to
+ * `auto` once settled, so content that keeps streaming while expanded can still
+ * grow freely. No padding here — under border-box a padded element can't reach
+ * height 0, which would leave a visible sliver when collapsed.
+ */
+const DISCLOSURE_PANEL_CLS =
+  "h-[var(--collapsible-panel-height)] overflow-hidden " +
+  "transition-[height] duration-200 ease-out " +
+  "data-[starting-style]:h-0 data-[ending-style]:h-0";
+
+/**
  * A render unit for the thread. We fold the store's flat message list into rows
  * at render time (the store stays one-message-per-tool-call, so hydration and
  * sync are untouched): adjacent tool calls with no visible text between them
@@ -75,17 +99,30 @@ const STREAMDOWN_COMPONENTS = { sup: CitationChip };
 type Row =
   | { kind: "msg"; key: string; m: UiMessage }
   | { kind: "tool"; key: string; m: UiMessage }
-  | { kind: "group"; key: string; tools: UiMessage[] };
+  | { kind: "group"; key: string; tools: UiMessage[] }
+  /**
+   * A turn's working process — every tool row and intermediate assistant note
+   * between the user prompt and its latest answer — folded behind one summary
+   * line by `foldTurns`. Folding happens LIVE: the moment an answer lands after
+   * tool work (no tool call pending), the process collapses; if the turn then
+   * runs more tools, they stream below and get absorbed at the next answer.
+   */
+  | { kind: "fold"; key: string; rows: Row[] };
 
 /** Group adjacent tool calls until a visible non-tool message breaks the run. */
 function toRows(messages: UiMessage[]): Row[] {
   const rows: Row[] = [];
   let run: UiMessage[] = [];
   const flush = (): void => {
+    // A group keys off its FIRST call's id — the same key the run had while it
+    // was still a lone `tool` row. The tool→group upgrade then reuses one
+    // MessageScrollerItem instead of remounting, so the scroller's content
+    // never sees an equal-count childList swap (its "new anchor appeared"
+    // heuristic misreads those and yanks the viewport to a historical anchor).
     if (run.length === 1)
       rows.push({ kind: "tool", key: run[0].id, m: run[0] });
     else if (run.length > 1)
-      rows.push({ kind: "group", key: `group-${run[0].id}`, tools: run });
+      rows.push({ kind: "group", key: run[0].id, tools: run });
     run = [];
   };
   const hasFollowingVisibleWork = (from: number): boolean => {
@@ -121,6 +158,73 @@ function toRows(messages: UiMessage[]): Row[] {
   return rows;
 }
 
+/**
+ * Second pass over the row list: collapse everything between the user prompt
+ * and the turn's LATEST answer — tool rows, tool groups, AND intermediate
+ * assistant notes — into a single `fold` row, so a long multi-round turn
+ * doesn't bury the thread in process detail.
+ *
+ * Folding is live and progressive: an answer landing after tool work means no
+ * tool call is pending at that moment, so the process before it collapses
+ * immediately — mid-turn, even while the answer itself is still streaming. If
+ * the model then runs MORE tools, they stream live below the answer; the next
+ * answer absorbs them (and the now-intermediate previous answer) into the same
+ * fold. Tool rows still running never fold, and a turn with no answer yet (or
+ * one aborted mid-tools) stays fully expanded.
+ *
+ * The fold reuses its FIRST process row's key. That row is the fold's stable
+ * mount point across every restatement (fold contents only ever grow), and the
+ * key handoff means folding re-renders an existing MessageScrollerItem instead
+ * of swapping DOM nodes — see the equal-count childList note in `toRows`.
+ */
+function foldTurns(rows: Row[]): Row[] {
+  const out: Row[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    // Copy the user prompt that opens the segment (the first segment of a
+    // thread may start without one).
+    const head = rows[i];
+    if (head.kind === "msg" && head.m.role === "user") {
+      out.push(head);
+      i++;
+    }
+    // Collect the segment: everything up to (not including) the next user row.
+    const seg: Row[] = [];
+    while (i < rows.length) {
+      const r = rows[i];
+      if (r.kind === "msg" && r.m.role === "user") break;
+      seg.push(r);
+      i++;
+    }
+    // The segment's latest answer; everything before it is foldable process.
+    let lastText = -1;
+    for (let j = seg.length - 1; j >= 0; j--) {
+      const r = seg[j];
+      if (r.kind === "msg" && r.m.role === "assistant" && r.m.text.trim()) {
+        lastText = j;
+        break;
+      }
+    }
+    const process = lastText > 0 ? seg.slice(0, lastText) : [];
+    const foldable =
+      process.length > 0 &&
+      process.every((r) =>
+        r.kind === "tool"
+          ? !r.m.running
+          : r.kind === "group"
+            ? r.tools.every((m) => !m.running)
+            : true,
+      );
+    if (foldable) {
+      out.push({ kind: "fold", key: process[0].key, rows: process });
+      out.push(...seg.slice(lastText));
+    } else {
+      out.push(...seg);
+    }
+  }
+  return out;
+}
+
 export function MessageList({
   messages,
 }: {
@@ -130,7 +234,7 @@ export function MessageList({
   const questionCount = useChat((s) => s.questionQueue.length);
   const running = useChat((s) => s.running);
   const sessionId = useChat((s) => s.sessionId);
-  const rows = useMemo(() => toRows(messages), [messages]);
+  const rows = useMemo(() => foldTurns(toRows(messages)), [messages]);
   // Per-assistant-message citation registry: ALL web_search sources gathered so
   // far in the current turn (reset at each user message), so an answer can cite
   // any search in the turn — not just the nearest one. Ids are turn-unique (the
@@ -257,6 +361,11 @@ export function MessageList({
                       ? sourcesByMessage.get(row.m.id)
                       : undefined
                   }
+                  // Folds carry intermediate answers whose [n] chips still need
+                  // their per-message source snapshots when expanded.
+                  sourcesByMessage={
+                    row.kind === "fold" ? sourcesByMessage : undefined
+                  }
                   showSources={row.kind === "msg" && footerIds.has(row.m.id)}
                   showActions={
                     row.kind === "msg" && footerCopyIds.has(row.m.id)
@@ -287,12 +396,20 @@ export function MessageList({
  *     row, else the top.
  *   - `pendingScrollId`: a timeline-tab jump, located by in-memory UiMessage id
  *     (works for live and replayed messages alike).
- * Both resolve to a row `key` (which is the item's `messageId`) and scroll to it.
+ * Both resolve to a row `key` (which is the item's `messageId`) and scroll to it;
+ * a target folded inside a finished turn resolves to its `fold` row.
  * Since every row is in the DOM, `scrollToMessage` always finds its target — no
  * layout/virtualization race — but we still defer to a rAF so the scroll runs
  * after the current commit, and clear the target INSIDE the frame so clearing it
  * doesn't re-run the effect and cancel the pending scroll before it fires.
  */
+/** Every conversation message a row stands for (folds flatten recursively). */
+function rowMessages(row: Row): UiMessage[] {
+  if (row.kind === "fold") return row.rows.flatMap(rowMessages);
+  if (row.kind === "group") return row.tools;
+  return [row.m];
+}
+
 function ScrollController({
   rows,
   onHighlight,
@@ -312,16 +429,15 @@ function ScrollController({
       rows.length === 0
     )
       return;
-    let index = rows.findIndex(
-      (r) => r.kind === "msg" && r.m.sourceIndex === pendingScrollIndex,
+    let index = rows.findIndex((r) =>
+      rowMessages(r).some((m) => m.sourceIndex === pendingScrollIndex),
     );
     if (index < 0) {
       for (let i = rows.length - 1; i >= 0; i--) {
-        const r = rows[i];
         if (
-          r.kind === "msg" &&
-          r.m.sourceIndex != null &&
-          r.m.sourceIndex < pendingScrollIndex
+          rowMessages(rows[i]).some(
+            (m) => m.sourceIndex != null && m.sourceIndex < pendingScrollIndex,
+          )
         ) {
           index = i;
           break;
@@ -346,8 +462,8 @@ function ScrollController({
 
   useEffect(() => {
     if (pendingScrollId == null || rows.length === 0) return;
-    const index = rows.findIndex(
-      (r) => r.kind === "msg" && r.m.id === pendingScrollId,
+    const index = rows.findIndex((r) =>
+      rowMessages(r).some((m) => m.id === pendingScrollId),
     );
     if (index < 0) {
       clearPendingScroll();
@@ -370,6 +486,7 @@ function RowView({
   highlight,
   animate,
   sources,
+  sourcesByMessage,
   showSources,
   showActions,
 }: {
@@ -377,11 +494,14 @@ function RowView({
   highlight?: boolean;
   animate?: boolean;
   sources?: SearchSource[];
+  sourcesByMessage?: Map<string, SearchSource[]>;
   showSources?: boolean;
   showActions?: boolean;
 }): React.JSX.Element {
   const inner =
-    row.kind === "group" ? (
+    row.kind === "fold" ? (
+      <TurnFold rows={row.rows} sourcesByMessage={sourcesByMessage} />
+    ) : row.kind === "group" ? (
       <ToolGroup tools={row.tools} />
     ) : row.kind === "tool" ? (
       <SingleTool m={row.m} />
@@ -423,8 +543,14 @@ const Spacer = (): React.JSX.Element => <div className="h-6" />;
 const ApprovalFooter = (): React.JSX.Element => {
   const approvalQueue = useChat((s) => s.approvalQueue);
   const questionQueue = useChat((s) => s.questionQueue);
+  // One PERSISTENT wrapper, deliberately not a fragment: the scroller watches
+  // its content element's direct childList, and its "new anchor appeared"
+  // heuristic misfires on equal-count swaps — a transient row (thinking dots,
+  // an approval card) vanishing in the same commit a message row appears would
+  // net out to zero and jump the viewport to a historical anchor. Behind one
+  // constant div, these rows' churn is invisible to the observer.
   return (
-    <>
+    <div>
       <ThinkingRow />
       {approvalQueue.map((req) => (
         <ApprovalCard key={req.approvalId} payload={req} />
@@ -433,7 +559,7 @@ const ApprovalFooter = (): React.JSX.Element => {
         <QuestionCard key={req.questionId} payload={req} />
       ))}
       <div style={{ height: "var(--composer-h, 9rem)" }} />
-    </>
+    </div>
   );
 };
 
@@ -610,7 +736,7 @@ function AssistantRow({
               <Streamdown
                 animated
                 isAnimating={Boolean(m.streaming)}
-                caret="circle"
+                linkSafety={{ enabled: false }}
                 plugins={STREAMDOWN_PLUGINS}
                 remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
                 components={STREAMDOWN_COMPONENTS}
@@ -644,11 +770,10 @@ function ReasoningStatus(): React.JSX.Element {
   const { t } = useTranslation();
   return (
     <div
-      className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-muted-foreground"
+      className="flex items-center gap-2 rounded-md py-1 text-xs text-muted-foreground"
       aria-live="polite"
     >
-      <Sparkle className="size-3.5 shrink-0 animate-pulse" />
-      <span className="shimmer text-xs font-medium">
+      <span className="shimmer text-sm font-medium">
         {t("chat.reasoningLive")}
       </span>
     </div>
@@ -664,38 +789,13 @@ function ReasoningStatus(): React.JSX.Element {
  */
 function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const StatusIcon = m.isError ? CircleAlert : SquareTerminal;
   return (
-    <div className="py-0.5">
-      <Marker
-        render={
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-          />
-        }
-        className="rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
-      >
-        <ChevronRight
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
-            open && "rotate-90",
-          )}
-          strokeWidth={2}
-        />
-        <StatusIcon
-          className={cn(
-            "size-3.5 shrink-0",
-            m.isError ? "text-destructive" : "text-muted-foreground",
-          )}
-          strokeWidth={2}
-        />
-        <MarkerContent className="flex min-w-0 flex-1 items-center gap-2">
+    <Collapsible className="py-0.5">
+      <Marker render={<CollapsibleTrigger />} className="py-1">
+        <MarkerContent className="flex items-center gap-2">
           <span
             className={cn(
-              "shrink-0 text-xs font-medium",
+              "shrink-0 text-sm font-medium",
               m.isError ? "text-destructive" : "text-muted-foreground",
               // Shimmer the label while the call is in flight.
               m.running && "shimmer",
@@ -707,15 +807,16 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
           </span>
           {m.toolArg && (
             <span
-              className="min-w-0 flex-1 truncate text-xs text-muted-foreground/60"
+              className="min-w-0 flex-1 truncate text-sm text-muted-foreground/60"
               title={m.toolArg}
             >
               {m.toolArg}
             </span>
           )}
+          <ChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
         </MarkerContent>
       </Marker>
-      {open && (
+      <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
         <pre
           className={cn(
             "mt-1 max-h-56 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed",
@@ -726,8 +827,8 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
         >
           {m.text}
         </pre>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -767,42 +868,17 @@ function summarizeTools(tools: UiMessage[], t: TFunction): string {
  */
 function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const anyRunning = tools.some((m) => m.running);
   const anyError = tools.some((m) => m.isError);
   const doneCount = tools.filter((m) => !m.running).length;
-  const StatusIcon = anyError ? CircleAlert : SquareTerminal;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
-      <Marker
-        render={
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-          />
-        }
-        className="rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
-      >
-        <ChevronRight
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
-            open && "rotate-90",
-          )}
-          strokeWidth={2}
-        />
-        <StatusIcon
-          className={cn(
-            "size-3.5 shrink-0",
-            anyError ? "text-destructive" : "text-muted-foreground",
-          )}
-          strokeWidth={2}
-        />
+    <Collapsible className="mx-auto w-full max-w-3xl px-6 py-0.5">
+      <Marker render={<CollapsibleTrigger />} className="py-1">
         <MarkerContent className="flex items-center gap-2">
           <span
             className={cn(
-              "text-xs font-medium",
+              "text-sm font-medium",
               anyError ? "text-destructive" : "text-muted-foreground",
               // Shimmer the "working…" summary while the batch is still running.
               anyRunning && "shimmer",
@@ -815,15 +891,74 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
               · {doneCount}
             </span>
           )}
+          <ChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
         </MarkerContent>
       </Marker>
-      {open && (
-        <div className="mt-0.5 ml-[0.6rem] border-l border-border pl-2.5">
+      <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
+        <div className="mt-0.5 border-l border-border pl-2.5">
           {tools.map((m) => (
             <ToolEntry key={m.id} m={m} />
           ))}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * A turn's working process, folded behind one summary line the moment an
+ * answer lands after tool work (see `foldTurns`) — and re-absorbing any
+ * further rounds at each subsequent answer. Collapsed it reads like a
+ * {@link ToolGroup} header — the same plain-language activity clause — so the
+ * thread shows just prompt → one quiet line → answer. Expanded it replays the
+ * process exactly as it looked live: tool rows/groups and any intermediate
+ * assistant notes, each with their own layout.
+ */
+function TurnFold({
+  rows,
+  sourcesByMessage,
+}: {
+  rows: Row[];
+  sourcesByMessage?: Map<string, SearchSource[]>;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const tools = rows.flatMap(rowMessages).filter((m) => m.role === "tool");
+  const anyError = tools.some((m) => m.isError);
+
+  return (
+    <Collapsible>
+      <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
+        <Marker render={<CollapsibleTrigger />} className="py-1">
+          <MarkerContent className="flex items-center gap-2">
+            <span
+              className={cn(
+                "text-sm font-medium",
+                anyError ? "text-destructive" : "text-muted-foreground",
+              )}
+            >
+              {tools.length > 0
+                ? summarizeTools(tools, t)
+                : t("chat.processDone")}
+            </span>
+            <ChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
+          </MarkerContent>
+        </Marker>
+      </div>
+      <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
+        {rows.map((r) =>
+          r.kind === "group" ? (
+            <ToolGroup key={r.key} tools={r.tools} />
+          ) : r.kind === "tool" ? (
+            <SingleTool key={r.key} m={r.m} />
+          ) : r.kind === "msg" ? (
+            <MessageRow
+              key={r.key}
+              m={r.m}
+              sources={sourcesByMessage?.get(r.m.id)}
+            />
+          ) : null,
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
