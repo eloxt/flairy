@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AppLanguage, Memory, RedactedConfigSnapshot, TelegramStatus } from '@shared/ipc'
+import type {
+  AppLanguage,
+  ChatWidth,
+  Memory,
+  RedactedConfigSnapshot,
+  TelegramStatus
+} from '@shared/ipc'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -83,7 +89,7 @@ function ProfileTab(): React.JSX.Element {
   )
 }
 
-/** Language switcher + close-to-tray toggle. */
+/** Language switcher + chat width + close-to-tray toggle. */
 function InterfaceTab(): React.JSX.Element {
   const { t, i18n } = useTranslation()
 
@@ -97,6 +103,23 @@ function InterfaceTab(): React.JSX.Element {
   const onSelect = (lng: AppLanguage): void => {
     void window.api.setLanguage(lng)
   }
+
+  // Chat width: read once, then follow live changes (e.g. undone from another
+  // window). Setting goes through main, which broadcasts back to every window.
+  const [chatWidth, setChatWidth] = useState<ChatWidth>('standard')
+  useEffect(() => {
+    void window.api.getChatWidth().then(setChatWidth)
+    return window.api.onChatWidthChanged(setChatWidth)
+  }, [])
+  const onSelectChatWidth = (w: ChatWidth): void => {
+    setChatWidth(w)
+    void window.api.setChatWidth(w)
+  }
+  const widthOptions: { value: ChatWidth; label: string }[] = [
+    { value: 'standard', label: t('settings.chatWidthStandard') },
+    { value: 'wide', label: t('settings.chatWidthWide') },
+    { value: 'full', label: t('settings.chatWidthFull') }
+  ]
 
   // Defaults to on; main resolves the real value (missing key → on).
   const [closeToTray, setCloseToTray] = useState(true)
@@ -119,6 +142,22 @@ function InterfaceTab(): React.JSX.Element {
               variant={current === lng ? 'default' : 'outline'}
               size="sm"
               onClick={() => onSelect(lng)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </Section>
+
+      <Section title={t('settings.chatWidth')}>
+        <p className="mb-3 text-sm text-muted-foreground">{t('settings.chatWidthDescription')}</p>
+        <div className="flex gap-2">
+          {widthOptions.map(({ value, label }) => (
+            <Button
+              key={value}
+              variant={chatWidth === value ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onSelectChatWidth(value)}
             >
               {label}
             </Button>

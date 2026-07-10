@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
   type AppLanguage,
+  type ChatWidth,
   type FlairyApi,
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
@@ -71,6 +72,8 @@ const api: FlairyApi = {
   setLanguage: (lng) => ipcRenderer.invoke(IPC.SettingsSetLanguage, lng),
   getCloseToTray: () => ipcRenderer.invoke(IPC.SettingsGetCloseToTray),
   setCloseToTray: (v) => ipcRenderer.invoke(IPC.SettingsSetCloseToTray, v),
+  getChatWidth: () => ipcRenderer.invoke(IPC.SettingsGetChatWidth),
+  setChatWidth: (w) => ipcRenderer.invoke(IPC.SettingsSetChatWidth, w),
 
   onAgentEvent: (cb) => {
     const listener = (_e: unknown, env: AgentEventEnvelope): void => cb(env)
@@ -121,6 +124,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, lng: AppLanguage): void => cb(lng)
     ipcRenderer.on(IPC.LanguageChanged, listener)
     return () => ipcRenderer.removeListener(IPC.LanguageChanged, listener)
+  },
+  onChatWidthChanged: (cb) => {
+    const listener = (_e: unknown, w: ChatWidth): void => cb(w)
+    ipcRenderer.on(IPC.ChatWidthChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.ChatWidthChanged, listener)
   },
   onUpdateAvailable: (cb) => {
     const listener = (_e: unknown, info: UpdateInfo): void => cb(info)

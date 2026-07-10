@@ -196,7 +196,7 @@ export function Composer(): React.JSX.Element {
   if (readOnly) {
     return (
       <div ref={rootRef} className="pointer-events-none absolute bottom-0 left-0 right-0 pt-10">
-        <div className="pointer-events-auto mx-auto w-full max-w-200 px-6">
+        <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
           <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
             <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
               <Send className="size-4 shrink-0" />
@@ -213,7 +213,7 @@ export function Composer(): React.JSX.Element {
       ref={rootRef}
       className="pointer-events-none absolute bottom-0 left-0 right-0 pt-10"
     >
-      <div className="pointer-events-auto mx-auto w-full max-w-200 px-6">
+      <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
           <div className="rounded-2xl border border-border bg-muted/60">
             {attachments.length > 0 && (

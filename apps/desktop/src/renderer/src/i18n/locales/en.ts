@@ -195,6 +195,11 @@ const en = {
     // Interface tab
     language: 'Language',
     languageDescription: 'Choose the display language.',
+    chatWidth: 'Conversation width',
+    chatWidthDescription: 'How wide the conversation appears in the window.',
+    chatWidthStandard: 'Standard',
+    chatWidthWide: 'Wide',
+    chatWidthFull: 'Full width',
     closeToTray: 'When you close the window',
     closeToTrayDescription:
       'Keep Flairy running in the background when you close the window, so it opens again instantly.',

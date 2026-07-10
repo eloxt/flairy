@@ -73,6 +73,8 @@ export const IPC = {
   SettingsSetLanguage: 'settings:set-language',
   SettingsGetCloseToTray: 'settings:get-close-to-tray',
   SettingsSetCloseToTray: 'settings:set-close-to-tray',
+  SettingsGetChatWidth: 'settings:get-chat-width',
+  SettingsSetChatWidth: 'settings:set-chat-width',
   // event streams (send)
   TelegramStatusChanged: 'telegram:status-changed',
   UpdateAvailable: 'update:available',
@@ -86,11 +88,18 @@ export const IPC = {
   SessionsChanged: 'session:changed',
   MemoriesChanged: 'memory:changed',
   LanguageChanged: 'settings:language-changed',
+  ChatWidthChanged: 'settings:chat-width-changed',
   AgentCompressStatus: 'agent:compress-status'
 } as const
 
 /** UI language. The single source of truth for both renderer and main catalogs. */
 export type AppLanguage = 'en' | 'zh-CN'
+
+/**
+ * How wide the chat column renders. Maps to the `data-chat-width` attribute on
+ * the document root, which selects the `--chat-width` CSS variable.
+ */
+export type ChatWidth = 'standard' | 'wide' | 'full'
 
 /**
  * A newer release the main process found on GitHub. Surfaced as a header badge;
@@ -589,6 +598,10 @@ export interface FlairyApi {
   getCloseToTray(): Promise<boolean>
   /** Persist the close-to-tray preference (default on). */
   setCloseToTray(value: boolean): Promise<void>
+  /** The saved chat column width preference (default "standard"). */
+  getChatWidth(): Promise<ChatWidth>
+  /** Persist a new chat width; main broadcasts the change to all windows. */
+  setChatWidth(width: ChatWidth): Promise<void>
   onAgentEvent(cb: (env: AgentEventEnvelope) => void): () => void
   onApprovalRequest(cb: (req: ApprovalRequestPayload) => void): () => void
   /** Fires when the agent asks the user one or more multiple-choice questions. */
@@ -607,6 +620,8 @@ export interface FlairyApi {
   onAuthChanged(cb: () => void): () => void
   /** Fires when the language changes (from any window); the renderer re-translates live. */
   onLanguageChanged(cb: (lng: AppLanguage) => void): () => void
+  /** Fires when the chat width preference changes (from any window). */
+  onChatWidthChanged(cb: (width: ChatWidth) => void): () => void
   /** Fires when the app detects a newer release is available. */
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void
   /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */

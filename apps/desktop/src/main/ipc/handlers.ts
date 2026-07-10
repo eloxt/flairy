@@ -21,7 +21,8 @@ import {
   type SearchMessagesArgs,
   type SessionMenuAction,
   type RecentDirMenuAction,
-  type ViewerImage
+  type ViewerImage,
+  type ChatWidth
 } from '@shared/ipc'
 import { t } from '../locale'
 import type { AgentManager } from '../agent/agent-manager'
@@ -61,6 +62,8 @@ import {
   clearAllMemories,
   getCloseToTrayPref,
   setCloseToTrayPref,
+  getChatWidthPref,
+  setChatWidthPref,
   clearTelegramBinding
 } from '../store/db'
 import { login, register } from '../auth'
@@ -557,6 +560,15 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SettingsSetCloseToTray, (_e, value: boolean) =>
     setCloseToTrayPref(!!value)
   )
+
+  // Chat width preference: persist, then broadcast so every open window (main
+  // chat + settings) re-applies the width live.
+  ipcMain.handle(IPC.SettingsGetChatWidth, () => getChatWidthPref())
+  ipcMain.handle(IPC.SettingsSetChatWidth, (_e, value: ChatWidth) => {
+    const width: ChatWidth = value === 'wide' || value === 'full' ? value : 'standard'
+    setChatWidthPref(width)
+    broadcast(IPC.ChatWidthChanged, width)
+  })
 
   // A window that mounts after the update check ran reads the current status so
   // its header badge reflects an already-known update (the broadcast it missed).

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createHashRouter, RouterProvider, Outlet } from "react-router";
 import { useTranslation } from "react-i18next";
+import type { ChatWidth } from "@shared/ipc";
 import { PanelRight } from "lucide-react";
 import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
@@ -52,6 +53,18 @@ export default function App(): React.JSX.Element {
     void checkStatus();
     return window.api.onAuthChanged(() => void checkStatus());
   }, [checkStatus]);
+
+  // Chat width preference lives on <html> as `data-chat-width`, which selects
+  // the `--chat-width` CSS variable the chat containers cap themselves to.
+  // Applied here (not in ChatView) so it's set once and follows live changes
+  // made from the Settings window.
+  useEffect(() => {
+    const apply = (w: ChatWidth): void => {
+      document.documentElement.dataset.chatWidth = w;
+    };
+    void window.api.getChatWidth().then(apply);
+    return window.api.onChatWidthChanged(apply);
+  }, []);
 
   if (phase === "loading") return <Splash />;
   if (phase === "anon") return <AuthScreen />;

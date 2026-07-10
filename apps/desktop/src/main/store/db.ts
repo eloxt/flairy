@@ -3,7 +3,7 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
-import type { SessionMeta, CreateSessionArgs, SearchHit } from '@shared/ipc'
+import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth } from '@shared/ipc'
 import { t } from '../locale'
 
 /**
@@ -234,6 +234,16 @@ export function getCloseToTrayPref(): boolean {
 
 export function setCloseToTrayPref(value: boolean): void {
   setSetting('closeToTray', value ? '1' : '0')
+}
+
+/** Chat column width preference. Unknown/missing values fall back to "standard". */
+export function getChatWidthPref(): ChatWidth {
+  const v = getSetting('chatWidth')
+  return v === 'wide' || v === 'full' ? v : 'standard'
+}
+
+export function setChatWidthPref(value: ChatWidth): void {
+  setSetting('chatWidth', value)
 }
 
 export function createSession({ title, cwd, workspacePath }: CreateSessionArgs): SessionMeta {

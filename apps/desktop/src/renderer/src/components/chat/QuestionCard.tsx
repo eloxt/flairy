@@ -77,7 +77,7 @@ export function QuestionCard({
   }
 
   return (
-    <div className="animate-message-in mx-auto w-full max-w-3xl px-6 py-2.5">
+    <div className="animate-message-in mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex items-start gap-3 px-4 py-3">
           <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary">

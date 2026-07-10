@@ -574,7 +574,7 @@ function CompressionRow(): React.JSX.Element | null {
   const show = useChat((s) => s.compressing);
   if (!show) return null;
   return (
-    <div className="animate-message-in mx-auto w-full max-w-3xl px-6 py-2.5">
+    <div className="animate-message-in mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
       <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
         <span className="shimmer text-sm font-medium">{t("chat.compressingContext")}</span>
       </div>
@@ -592,7 +592,7 @@ function RetryRow(): React.JSX.Element | null {
   const retrying = useChat((s) => s.retrying);
   if (!retrying) return null;
   return (
-    <div className="animate-message-in mx-auto w-full max-w-3xl px-6 py-2.5">
+    <div className="animate-message-in mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
       <div
         className="flex items-center gap-2 text-muted-foreground"
         aria-live="polite"
@@ -624,7 +624,7 @@ function ThinkingRow(): React.JSX.Element | null {
   });
   if (!show) return null;
   return (
-    <div className="animate-message-in mx-auto w-full max-w-3xl px-6 py-2.5">
+    <div className="animate-message-in mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
       <div className="flex gap-1">
         {[0, 1, 2].map((i) => (
           <span
@@ -651,7 +651,7 @@ function EmptyState(): React.JSX.Element {
   return (
     <div className="absolute inset-0 flex flex-col overflow-y-auto px-6 py-8">
       {/* Announcements pinned to the top, matching the composer's content width. */}
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="mx-auto w-full max-w-(--chat-width)">
         <Announcements />
       </div>
       <div className="flex flex-1 items-center justify-center -mt-40">
@@ -698,7 +698,7 @@ function MessageRow({
 function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-2.5">
+    <div className="mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
       <Message
         align="end"
         // Steered-while-running: queued until pi injects it at the next turn
@@ -773,7 +773,7 @@ function AssistantRow({
   // an unstable plugin reference crashes Streamdown with React #185 — see the note
   // on STREAMDOWN_REMARK_PLUGINS.)
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
+    <div className="mx-auto w-full max-w-(--chat-width) px-6 py-0.5">
       <Message align="start">
         <MessageContent className="gap-2">
           {m.streaming && !hasText && m.thinking?.trim() && (
@@ -887,7 +887,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
 /** A lone tool call, in the standard message rhythm. */
 function SingleTool({ m }: { m: UiMessage }): React.JSX.Element {
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
+    <div className="mx-auto w-full max-w-(--chat-width) px-6 py-0.5">
       <ToolEntry m={m} />
     </div>
   );
@@ -925,7 +925,7 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
   const doneCount = tools.filter((m) => !m.running).length;
 
   return (
-    <Collapsible className="mx-auto w-full max-w-3xl px-6 py-0.5">
+    <Collapsible className="mx-auto w-full max-w-(--chat-width) px-6 py-0.5">
       <Marker render={<CollapsibleTrigger />} className="py-1">
         <MarkerContent className="flex items-center gap-2">
           <span
@@ -979,7 +979,7 @@ function TurnFold({
 
   return (
     <Collapsible>
-      <div className="mx-auto w-full max-w-3xl px-6 py-0.5">
+      <div className="mx-auto w-full max-w-(--chat-width) px-6 py-0.5">
         <Marker render={<CollapsibleTrigger />} className="py-1">
           <MarkerContent className="flex items-center gap-2">
             <span

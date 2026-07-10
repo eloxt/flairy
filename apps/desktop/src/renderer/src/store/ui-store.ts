@@ -13,11 +13,13 @@ export const RIGHT_PANEL_MAX_WIDTH = 600
 const RIGHT_PANEL_DEFAULT_WIDTH = 380
 
 /**
- * Comfortable minimum for the chat column. Message content is capped at Tailwind's
- * `max-w-3xl` (48rem) inside `px-6` gutters (1.5rem each side) — 51rem ≈ 816px — so
- * below this the messages can no longer reach their intended width. We treat
- * opening the details panel as "squeezing" the chat only when it would push the
- * column under this; otherwise the window is left as-is.
+ * Comfortable minimum for the chat column. At the default "standard" chat width
+ * messages cap at `--chat-width` (48rem) inside `px-6` gutters (1.5rem each
+ * side) — 51rem ≈ 816px — so below this the messages can no longer reach their
+ * intended width. Wider preferences degrade gracefully (content just wraps
+ * earlier), so this floor intentionally stays at the standard-width value. We
+ * treat opening the details panel as "squeezing" the chat only when it would
+ * push the column under this; otherwise the window is left as-is.
  */
 export const MIN_CHAT_WIDTH = 816
 

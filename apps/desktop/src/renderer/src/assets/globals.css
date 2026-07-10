@@ -154,6 +154,22 @@
 
     /* Seam shadow where the opaque chat surface meets the frosted rails. */
     --rail-shadow: rgba(0, 0, 0, 0.2);
+
+    /* Chat column width (user preference, `data-chat-width` on <html>).
+       Messages cap at --chat-width; the composer sits 2rem wider so its frame
+       visually wraps the thread. Defaults match the old max-w-3xl / max-w-200. */
+    --chat-width: 48rem;
+    --composer-width: 50rem;
+}
+
+:root[data-chat-width='wide'] {
+    --chat-width: 64rem;
+    --composer-width: 66rem;
+}
+
+:root[data-chat-width='full'] {
+    --chat-width: 100%;
+    --composer-width: 100%;
 }
 
 /* ── Obsidian · Dark ─────────────────────────────────────────────────────────

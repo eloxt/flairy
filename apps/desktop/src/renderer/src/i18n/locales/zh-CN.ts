@@ -180,6 +180,11 @@ const zhCN: typeof En = {
     // 界面
     language: '语言',
     languageDescription: '选择显示语言。',
+    chatWidth: '聊天界面宽度',
+    chatWidthDescription: '调整对话内容在窗口中的显示宽度。',
+    chatWidthStandard: '标准',
+    chatWidthWide: '宽',
+    chatWidthFull: '铺满',
     closeToTray: '关闭窗口时',
     closeToTrayDescription: '关闭窗口后让 Flairy 继续在后台运行，下次可立即打开。',
     closeToTrayLabel: '关闭后继续在后台运行',
