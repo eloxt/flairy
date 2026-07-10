@@ -193,7 +193,7 @@ const en = {
     signedIn: 'Signed in',
     signOut: 'Sign out',
     signOutHint:
-      'Your conversations stay on this device after you sign out. Sign back in to keep syncing.',
+      'Signing out removes all conversations and data from this device. They are restored from your account when you sign back in.',
     // General
     sectionDisplay: 'Display',
     sectionWindow: 'Window',
