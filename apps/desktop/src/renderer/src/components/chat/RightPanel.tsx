@@ -76,7 +76,7 @@ export function RightPanel(): React.JSX.Element {
             shadow falls onto the panel and slides away with it when closed. */}
         <div
           className={cn(
-            'absolute inset-y-0 right-0 bg-sidebar shadow-[inset_4px_0_12px_-8px_var(--rail-shadow)]',
+            'absolute inset-y-0 right-0 bg-sidebar',
             ease
           )}
           style={{ width, transform: open ? 'translateX(0)' : 'translateX(100%)' }}

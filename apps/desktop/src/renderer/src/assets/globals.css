@@ -187,12 +187,12 @@
     --secondary: oklch(0.225 0 0);
     --secondary-foreground: oklch(0.95 0 0);
     --muted: oklch(0.225 0 0);
-    --muted-foreground: oklch(0.62 0 0);
+    --muted-foreground: oklch(0.68 0 0);
     --accent: oklch(1 0 0 / 10%);
     --accent-foreground: oklch(0.95 0 0);
     --destructive: oklch(0.7 0.17 22);
-    --border: oklch(1 0 0 / 9%);
-    --input: oklch(1 0 0 / 12%);
+    --border: oklch(1 0 0 / 11%);
+    --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.55 0 0);
 
     --chart-1: oklch(0.9 0 0);
@@ -203,7 +203,7 @@
 
     /* Opaque fallback (non-vibrant windows). */
     --sidebar: oklch(0.135 0 0);
-    --sidebar-foreground: oklch(0.82 0 0);
+    --sidebar-foreground: oklch(0.86 0 0);
     --sidebar-primary: oklch(0.95 0 0);
     --sidebar-primary-foreground: oklch(0.18 0 0);
     --sidebar-accent: oklch(1 0 0 / 10%);
@@ -221,11 +221,15 @@
    desktop blurs through them just like a native sidebar. The chat surface stays
    opaque (painted in the layout), so only the rails are translucent.          */
 :root.vibrancy {
-    --sidebar: oklch(0.97 0 0 / 0.55);
+    --sidebar: oklch(0.97 0 0 / 0.7);
     --sidebar-border: oklch(0 0 0 / 8%);
 }
+/* The tint must carry the contrast on its own: the native backdrop behind a
+   translucent rail is unpredictable (on macOS 26 + Electron 34 the material
+   sometimes renders light even in dark mode). Near-opaque keeps text readable
+   over ANY backdrop while leaving a hint of depth. */
 .dark.vibrancy {
-    --sidebar: oklch(0.15 0 0 / 0.45);
+    --sidebar: oklch(0.15 0 0 / 0.88);
     --sidebar-border: oklch(1 0 0 / 9%);
 }
 .vibrancy body {
