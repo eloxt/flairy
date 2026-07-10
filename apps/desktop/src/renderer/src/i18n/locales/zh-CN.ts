@@ -145,7 +145,9 @@ const zhCN: typeof En = {
     allowSession: '本次会话允许'
   },
   question: {
-    title: '想问你一下',
+    multi: '可多选',
+    back: '上一题',
+    next: '下一题',
     other: '输入你自己的答案…',
     submit: '提交'
   },

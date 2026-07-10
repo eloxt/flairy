@@ -156,7 +156,9 @@ const en = {
     allowSession: 'Allow for this session'
   },
   question: {
-    title: 'A quick question',
+    multi: 'Choose all that apply',
+    back: 'Back',
+    next: 'Next',
     other: 'Type your own answer…',
     submit: 'Submit'
   },
@@ -276,7 +278,7 @@ const en = {
     grep: 'Search contents',
     find: 'Find files',
     ls: 'List files',
-    ask: 'ask you a question',
+    ask: 'Ask you a question',
     web_search: 'Search the web',
     web_fetch: 'Fetch a web page',
     todo_write: 'Update the plan',
