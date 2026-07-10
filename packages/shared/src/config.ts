@@ -460,6 +460,16 @@ export interface ResourceAssignment {
 export const MAIN_PROMPT_NAME = 'main'
 
 /**
+ * Reserved {@link SystemPromptConfig.name} used as the agent's system prompt for
+ * `chat`-kind sessions (no workspace chosen; matched case-insensitively,
+ * trimmed). Chat sessions run without the local file/shell tools, so this prompt
+ * should not instruct the agent to read or edit files. Falls back to
+ * {@link MAIN_PROMPT_NAME} when not delivered, so existing deployments keep
+ * working before an admin configures it.
+ */
+export const CHAT_PROMPT_NAME = 'chat'
+
+/**
  * Reserved {@link SystemPromptConfig.name} the client treats specially: its body
  * is used as the system prompt for automatic session-title generation (matched
  * case-insensitively, trimmed) rather than folded into the agent's own prompt.

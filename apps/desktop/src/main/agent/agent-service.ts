@@ -1,6 +1,7 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel, streamSimple } from "@earendil-works/pi-ai";
 import {
+  CHAT_PROMPT_NAME,
   IMAGE_DESCRIPTION_PROMPT_NAME,
   MAIN_PROMPT_NAME,
   TITLE_GENERATION_PROMPT_NAME,
@@ -325,7 +326,7 @@ export class AgentService {
       // otherwise spread a quick burst of redirects across several turns.
       steeringMode: "all",
       initialState: {
-        systemPrompt: buildSystemPrompt(config, cwd),
+        systemPrompt: buildSystemPrompt(config, cwd, this.isChatSession()),
         model: buildModel(mainLlm),
         // Reasoning effort is server-driven per model. Only set it when delivered
         // so an unset value leaves pi's own default in place. pi maps this uniform
@@ -437,7 +438,11 @@ export class AgentService {
       this.agent.state.model = buildModel(llm);
       if (llm.model.thinkingLevel)
         this.agent.state.thinkingLevel = llm.model.thinkingLevel;
-      this.agent.state.systemPrompt = buildSystemPrompt(cfg, this.cwd);
+      this.agent.state.systemPrompt = buildSystemPrompt(
+        cfg,
+        this.cwd,
+        this.isChatSession(),
+      );
       this.agent.state.tools = this.buildTools(this.cwd);
     });
 
@@ -518,14 +523,27 @@ export class AgentService {
   }
 
   /**
-   * Assemble the agent's tool set: the local coding tools, the `ask` tool (which
-   * needs `win` + `sessionId` to round-trip a question to the renderer), and the
-   * live MCP tools. Used at all three injection points (constructor, MCP
-   * tool-change rebuild, setCwd rebuild) so `ask` is always present.
+   * Whether this session is a `chat` (no workspace chosen). Resolved fresh from
+   * SQLite rather than cached: a chat session becomes a `project` the moment the
+   * user picks a directory (updateSessionCwd persists BEFORE setCwd rebuilds),
+   * and the rebuild must see the new kind. Chat sessions run without the local
+   * file/shell tools and use the `chat` system prompt instead of `main`.
+   */
+  private isChatSession(): boolean {
+    return getSession(this.sessionId)?.kind === "chat";
+  }
+
+  /**
+   * Assemble the agent's tool set: the local coding tools (projects only — a
+   * chat session has no workspace, so the file/shell tools are not injected at
+   * all), the `ask` tool (which needs `win` + `sessionId` to round-trip a
+   * question to the renderer), and the live MCP tools. Used at all three
+   * injection points (constructor, MCP tool-change rebuild, setCwd rebuild) so
+   * `ask` is always present.
    */
   private buildTools(cwd: string): AgentTool<any>[] {
     const tools: AgentTool<any>[] = [
-      ...createTools(cwd),
+      ...(this.isChatSession() ? [] : createTools(cwd)),
       // Resolve origin + channel at CALL time (not here at build time) so an
       // `ask` routes to the front-end that authored the turn currently running.
       createAskTool(this.sessionId, () => ({
@@ -1230,9 +1248,17 @@ export class AgentService {
    */
   setCwd(cwd: string): void {
     this.cwd = cwd;
+    // The session kind is re-read here: picking a directory flips a chat into a
+    // project (persisted before this call), so the rebuild injects the local
+    // file/shell tools and swaps the `chat` prompt for `main`.
     this.agent.state.tools = this.buildTools(cwd);
     const config = this.server.getConfig();
-    if (config) this.agent.state.systemPrompt = buildSystemPrompt(config, cwd);
+    if (config)
+      this.agent.state.systemPrompt = buildSystemPrompt(
+        config,
+        cwd,
+        this.isChatSession(),
+      );
   }
 
   abort(): void {
@@ -1277,18 +1303,27 @@ export class AgentService {
 }
 
 /**
- * Resolve the agent's system prompt from the server-delivered `main` prompt,
+ * Resolve the agent's system prompt from the server-delivered prompts,
  * applying runtime variable substitution ({{os}}, {{date}}, {{skill}}, …) to
  * the body. The client does NOT assemble or append anything — the server is the
- * sole source of the prompt.
+ * sole source of the prompt. A `chat` session (no workspace) uses the reserved
+ * `chat` prompt, falling back to `main` when the admin hasn't configured one so
+ * existing deployments keep working.
  */
-function buildSystemPrompt(config: ConfigSnapshot, cwd: string): string {
+function buildSystemPrompt(
+  config: ConfigSnapshot,
+  cwd: string,
+  chat: boolean,
+): string {
   // The server is the single source of the system prompt: take the reserved
-  // `main` prompt body verbatim and apply runtime variable substitution only.
-  // No client-side assembly, appending, or built-in fallback — if `main` is not
-  // delivered the prompt is empty.
-  const body = findPromptBody(config, MAIN_PROMPT_NAME) ?? "";
-  return injectContext(body, config, cwd);
+  // prompt body verbatim and apply runtime variable substitution only. No
+  // client-side assembly, appending, or built-in fallback — if neither prompt
+  // is delivered the prompt is empty.
+  const body =
+    (chat ? findPromptBody(config, CHAT_PROMPT_NAME) : undefined) ??
+    findPromptBody(config, MAIN_PROMPT_NAME) ??
+    "";
+  return injectContext(body, config, cwd, chat);
 }
 
 /** Human-readable name for the current OS, for prompt injection. */
@@ -1327,12 +1362,16 @@ function injectContext(
   prompt: string,
   config: ConfigSnapshot,
   cwd: string,
+  chat: boolean,
 ): string {
   const mainModel = config.llm.main?.model;
   const values: Record<string, string> = {
     os: osName(),
     date: new Date().toISOString().slice(0, 10),
-    skill: buildSkillsInstructions(config),
+    // Skills rely on the `read` tool for progressive disclosure; a chat session
+    // has no file tools, so advertising skills there would only make the agent
+    // call a tool it doesn't have. Injected empty instead.
+    skill: chat ? "" : buildSkillsInstructions(config),
     memory: buildMemoryBlock(),
     language: uiLanguage(),
     cwd,
