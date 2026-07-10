@@ -83,6 +83,15 @@ export interface UiMessage {
    */
   todos?: TodoItem[]
   /**
+   * For an `edit` / `write` tool message: the unified patch describing the
+   * change, rendered as an expandable diff view. Carried on the persisted
+   * toolResult message's `details` (pi keeps `details` in the message blob and
+   * in the sync `raw`, but never sends it to the LLM — the provider adapters
+   * map only `content`), so it survives session reload and device sync without
+   * entering the model's context.
+   */
+  diffPatch?: string
+  /**
    * For `tool` messages: the id of the assistant turn that issued this call.
    * Tool calls in the same turn (a parallel batch) share it, so the UI folds
    * them into one group. Derived identically by the live stream (from the
@@ -826,6 +835,9 @@ function applyEvent(
         messages: rt.messages.map((m) => {
           if (m.id !== e.toolCallId) return m
           const raw = summarizeResult(e.result)
+          // edit / write carry a unified patch on the result's `details` for the
+          // expandable diff view. Never enters the LLM context (see UiMessage.diffPatch).
+          const patch = readResultPatch(e.result)
           // The todo_write tool returns a JSON plan; detect it by parsing (robust
           // to the tool name). The plan itself is shown in the Plan tab, not inline —
           // the thread row just notes the plan changed, with `todos` carried for the tab.
@@ -852,7 +864,7 @@ function applyEvent(
               running: false
             }
           }
-          return { ...m, text: raw, isError: e.isError, running: false }
+          return { ...m, text: raw, diffPatch: patch, isError: e.isError, running: false }
         })
       }))
       break
@@ -875,6 +887,15 @@ function applyEvent(
 function summarizeResult(result: unknown): string {
   const r = result as { content?: { text?: string }[] } | undefined
   return r?.content?.map((c) => c.text ?? '').join('\n') ?? i18n.t('chat.toolDone')
+}
+
+/**
+ * Pull the unified patch off a tool result's `details` (edit / write), or
+ * undefined if none. The patch is display-only and never reaches the model.
+ */
+function readResultPatch(result: unknown): string | undefined {
+  const patch = (result as { details?: { patch?: unknown } } | undefined)?.details?.patch
+  return typeof patch === 'string' && patch.length > 0 ? patch : undefined
 }
 
 /**
@@ -996,6 +1017,7 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
       }
       case 'toolResult': {
         const raw = partsToText(m.content)
+        const patch = readResultPatch(m)
         const existing = m.toolCallId ? toolBubbles.get(m.toolCallId) : undefined
         if (existing) {
           // Mirror the live path: parse the todo plan / web-search JSON into
@@ -1011,6 +1033,8 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
           } else {
             existing.text = raw || i18n.t('chat.toolDone')
           }
+          // edit / write: restore the diff patch carried on the persisted details.
+          if (patch) existing.diffPatch = patch
           // Carry the persisted error flag so a failed call stays red on replay,
           // mirroring the live stream's tool_execution_end (isError: e.isError).
           existing.isError = Boolean(m.isError)
@@ -1034,6 +1058,7 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
                   : raw) || i18n.t('chat.toolDone'),
             todos: todos ?? undefined,
             sources: sources ?? undefined,
+            diffPatch: patch ?? undefined,
             isError: Boolean(m.isError),
             batchId: m.toolCallId ?? crypto.randomUUID(),
             timestamp: m.timestamp

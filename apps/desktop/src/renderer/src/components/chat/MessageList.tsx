@@ -38,6 +38,7 @@ import {
   SourcesList,
 } from "./Citations";
 import { ApprovalCard } from "./ApprovalCard";
+import { DiffView } from "./DiffView";
 import { MessageActions } from "./MessageActions";
 import { QuestionCard } from "./QuestionCard";
 import { Onboarding } from "./Onboarding";
@@ -817,16 +818,20 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
         </MarkerContent>
       </Marker>
       <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
-        <pre
-          className={cn(
-            "mt-1 max-h-56 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed",
-            m.isError
-              ? "border-destructive/30 text-destructive"
-              : "border-border text-muted-foreground",
-          )}
-        >
-          {m.text}
-        </pre>
+        {m.diffPatch ? (
+          <DiffView patch={m.diffPatch} />
+        ) : (
+          <pre
+            className={cn(
+              "mt-1 max-h-56 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed",
+              m.isError
+                ? "border-destructive/30 text-destructive"
+                : "border-border text-muted-foreground",
+            )}
+          >
+            {m.text}
+          </pre>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
