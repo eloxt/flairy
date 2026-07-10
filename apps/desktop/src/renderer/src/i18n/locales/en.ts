@@ -66,6 +66,7 @@ const en = {
     reasoning: 'Thinking...',
     reasoningLive: 'Thinking...',
     compressingContext: 'Summarizing earlier messages...',
+    retrying: 'Connection hiccup — retrying ({{attempt}}/{{max}})...',
     error: 'Error',
     copy: 'Copy',
     copied: 'Copied'

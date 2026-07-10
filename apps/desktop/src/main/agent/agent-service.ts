@@ -79,6 +79,60 @@ const KEEP_RECENT = 12;
 const COMPRESS_TRIGGER_RATIO = 0.7;
 
 /**
+ * Auto-retry tunables for failed model requests (main agent loop).
+ *   - `MAX_AUTO_RETRIES`: retries per user turn — resets on each fresh prompt().
+ *   - `RETRY_BASE_DELAY_MS`: first backoff; doubles each attempt (1/2/4/8s)
+ *     with ±20% jitter so parallel sessions don't re-hit a provider in lockstep.
+ */
+const MAX_AUTO_RETRIES = 4;
+const RETRY_BASE_DELAY_MS = 1000;
+
+/**
+ * Permanent failures that a retry can never fix: auth/credential problems,
+ * billing, a missing model, an over-long prompt, malformed requests, and user
+ * aborts. pi-ai flattens provider errors to a plain `errorMessage` string (no
+ * structured status), so classification is by substring. Anything NOT matched
+ * here — 429/5xx/overloaded/timeouts/socket resets/unknown network junk — is
+ * treated as transient and retried.
+ */
+const NON_RETRYABLE_ERROR =
+  /\b40[0134]\b|invalid[ _]*(api[ _]*)?key|api key|unauthorized|authentication|permission|forbidden|billing|credit|payment|model not found|does not exist|not_found_error|invalid_request_error|context (length|window)|too many tokens|prompt is too long|maximum context|abort/i;
+
+/** Whether an errored model request is worth retrying (transient by default). */
+function isRetryableModelError(errorMessage: string | undefined): boolean {
+  if (!errorMessage) return true;
+  return !NON_RETRYABLE_ERROR.test(errorMessage);
+}
+
+/** Exponential backoff with ±20% jitter: 1s, 2s, 4s, 8s for attempts 1–4. */
+function retryBackoffMs(attempt: number): number {
+  const base = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+  return Math.round(base * (0.8 + Math.random() * 0.4));
+}
+
+/**
+ * Sleep that a user stop can cut short. Resolves true after the full delay,
+ * false immediately when the signal fires (the retry must not happen).
+ */
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
  * One AgentService instance per session. Wraps a pi-agent-core Agent, forwards
  * its event stream to the renderer over IPC, gates dangerous tools behind the
  * approval registry, persists messages to SQLite, and mirrors them to the
@@ -160,6 +214,22 @@ export class AgentService {
    * stop cancels compression too (it's otherwise an unabortable side stream).
    */
   private compressAbort: AbortController | null = null;
+  /**
+   * Retries already made for the CURRENT user turn (reset on each fresh
+   * prompt()). The subscribe handler reads it to decide whether an errored run
+   * will be retried; the retry loop in {@link runTurnRetries} increments it.
+   */
+  private retryAttempt = 0;
+  /**
+   * True from the moment the subscribe handler sees a retryable model error
+   * until the retry actually re-runs (or is given up on). While set, the errored
+   * run's terminal events (message_end/turn_end/agent_end) are swallowed — the
+   * failed message is about to be popped, so persisting it or letting the
+   * renderer flip to idle would both be wrong.
+   */
+  private retryPending = false;
+  /** Cuts the backoff sleep short on abort()/dispose() so a stop is immediate. */
+  private retryAbort: AbortController | null = null;
   /**
    * Settle every pending interaction (approval + question) for this session.
    * Injected so abort()/dispose() can reach the centralized fan-out in
@@ -360,6 +430,13 @@ export class AgentService {
       if (event.type === "message_update" && inner?.type === "error") {
         const msg =
           inner.error?.errorMessage ?? `LLM stream ${inner.reason ?? "error"}`;
+        // A retryable failure opens a retry window instead of surfacing: the
+        // run is about to end with an errored message that runTurnRetries (in
+        // prompt(), which is still awaiting this run) will pop and re-issue.
+        if (inner.reason !== "aborted" && this.willAutoRetry(msg)) {
+          this.beginRetryWindow();
+          return;
+        }
         this.running = false;
         this.send(sessionId, { type: "error", message: msg });
         return;
@@ -377,6 +454,13 @@ export class AgentService {
         endMsg.stopReason !== "aborted" &&
         (endMsg.errorMessage || endMsg.stopReason === "error")
       ) {
+        // Same retry window as the mid-stream branch (which may already have
+        // opened it — beginRetryWindow is idempotent per failure). Swallow the
+        // errored message_end: the failed message never reaches the renderer.
+        if (this.willAutoRetry(endMsg.errorMessage)) {
+          this.beginRetryWindow();
+          return;
+        }
         this.running = false;
         this.send(sessionId, {
           type: "error",
@@ -384,6 +468,15 @@ export class AgentService {
         });
         return;
       }
+      // While a retry window is open, the errored run's terminal events stay
+      // internal: forwarding agent_end would flash the renderer to idle, and
+      // persisting on turn_end/agent_end would sync the failed message that
+      // runTurnRetries is about to pop.
+      if (
+        this.retryPending &&
+        (event.type === "turn_end" || event.type === "agent_end")
+      )
+        return;
       // Keep the run-state flag in lockstep with the lifecycle events the
       // renderer also keys off, so isRunning() matches what the UI shows.
       if (event.type === "agent_start") {
@@ -555,6 +648,8 @@ export class AgentService {
     // A fresh run fixes the turn's routing origin: the event sink + gate read this
     // for the rest of the turn.
     this.activeTurnOrigin = origin;
+    // Fresh user turn → fresh retry budget.
+    this.retryAttempt = 0;
     // First user message in a fresh session → generate a title from it. Capture
     // "is first" BEFORE agent.prompt mutates state.messages, and fire it off
     // before the await so it runs in parallel with (never blocks) the turn.
@@ -595,14 +690,152 @@ export class AgentService {
       } else {
         await this.agent.prompt(text, attachments as any);
       }
+      // The run has fully resolved. If it ended in a retryable model error,
+      // re-issue it with exponential backoff (up to MAX_AUTO_RETRIES).
+      await this.runTurnRetries();
     } catch (err) {
       this.running = false;
+      this.retryPending = false;
       // A rejected run (bad credential, provider/baseUrl, network) would
       // otherwise vanish silently — surface it as a visible error event.
       this.send(this.sessionId, {
         type: "error",
         message: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  /**
+   * Whether the subscribe handler should hold back an errored run for an
+   * automatic retry. Must agree with the loop guard in {@link runTurnRetries}:
+   * the handler decides at message_end time, the loop re-checks once the run
+   * resolves — same state, same predicate.
+   */
+  private willAutoRetry(errorMessage: string | undefined): boolean {
+    return (
+      this.running &&
+      !this.disposed &&
+      this.retryAttempt < MAX_AUTO_RETRIES &&
+      isRetryableModelError(errorMessage)
+    );
+  }
+
+  /**
+   * Open the retry window for the failure currently unwinding: swallow the
+   * run's terminal events and tell the renderer a retry is coming (shimmer
+   * row). Idempotent per failure — the mid-stream and terminal error branches
+   * can both land for the same failed request.
+   */
+  private beginRetryWindow(): void {
+    if (this.retryPending) return;
+    this.retryPending = true;
+    this.notifyRetryStatus(true, this.retryAttempt + 1);
+  }
+
+  /** Push the retry-in-progress flag to the renderer (drives the shimmer row). */
+  private notifyRetryStatus(active: boolean, attempt: number): void {
+    this.send(this.sessionId, {
+      type: "retry_status",
+      active,
+      attempt,
+      max: MAX_AUTO_RETRIES,
+    });
+  }
+
+  /**
+   * The retry state a cold session-open should seed the renderer with, mirroring
+   * isRunning()/isCompressing(). Non-null only while a retry window is open.
+   */
+  getRetryStatus(): { attempt: number; max: number } | null {
+    return this.retryPending
+      ? { attempt: this.retryAttempt + 1, max: MAX_AUTO_RETRIES }
+      : null;
+  }
+
+  /**
+   * Auto-retry loop for the run prompt() just awaited. pi never throws on a
+   * model failure — it leaves an assistant message with `stopReason: "error"`
+   * at the tail of the transcript and ends the run. Recovery: pop that message
+   * (the live array is safe to mutate between runs), wait out the backoff, and
+   * `agent.continue()` — which re-issues the request from the surviving
+   * transcript, draining any steering messages the user queued meanwhile.
+   *
+   * The subscribe handler has already suppressed the failed run's error event
+   * and terminal events (see beginRetryWindow); if retries are exhausted — or
+   * the guard disagrees because state moved under us — the error the handler
+   * swallowed is surfaced here instead.
+   */
+  private async runTurnRetries(): Promise<void> {
+    while (true) {
+      const messages = this.agent.state.messages as any[];
+      const last = messages[messages.length - 1];
+      // Failure predicate must MATCH the subscribe handler's error branch: if
+      // the handler held a run back for retry, this loop must agree it failed —
+      // otherwise the swallowed agent_end leaves the session stuck "running".
+      const failed =
+        last?.role === "assistant" &&
+        last.stopReason !== "aborted" &&
+        (last.errorMessage || last.stopReason === "error");
+      // Clean end (or user abort, which keeps stopReason "aborted"): done.
+      if (!failed) break;
+      if (
+        !this.running ||
+        this.disposed ||
+        this.retryAttempt >= MAX_AUTO_RETRIES ||
+        !isRetryableModelError(last.errorMessage)
+      ) {
+        // Give up. If the handler swallowed the terminal error expecting a
+        // retry that won't happen, surface it now — unless the user stopped
+        // (running already false), where a deliberate stop shows no error.
+        if (this.retryPending && this.running && !this.disposed) {
+          this.running = false;
+          this.send(this.sessionId, {
+            type: "error",
+            message: last.errorMessage ?? "LLM request failed",
+          });
+        }
+        break;
+      }
+      this.retryAttempt++;
+      // The failed message must not survive: the provider would reject a
+      // transcript continuing from it, and it must never persist/sync.
+      messages.pop();
+      this.retryAbort = new AbortController();
+      const slept = await sleepUnlessAborted(
+        retryBackoffMs(this.retryAttempt),
+        this.retryAbort.signal,
+      );
+      this.retryAbort = null;
+      // Stopped during the backoff → the user's abort wins, no retry.
+      if (!slept || !this.running || this.disposed) break;
+      // Close the window so the new run's events flow to the renderer again.
+      this.retryPending = false;
+      try {
+        await this.agent.continue();
+      } catch (err) {
+        // continue() only throws on invalid state (a model failure would land
+        // as another errored message and loop again). Surface and stop.
+        this.running = false;
+        this.send(this.sessionId, {
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+        break;
+      }
+    }
+    if (this.retryPending || this.retryAttempt > 0) {
+      if (this.retryPending) {
+        // The failed run's terminal events — and the persist they trigger —
+        // were swallowed, and no successful run followed (retries exhausted or
+        // stopped mid-backoff). Snapshot what survived so the user's message
+        // (and, on exhaustion, the final errored reply) reach disk/sync, and
+        // synthesize the agent_end the renderer never saw so every surface
+        // (background sessions, Telegram-initiated stops) leaves "running".
+        this.retryPending = false;
+        void this.persist();
+        this.send(this.sessionId, { type: "agent_end" });
+      }
+      this.notifyRetryStatus(false, this.retryAttempt);
     }
   }
 
@@ -634,7 +867,9 @@ export class AgentService {
             },
           ] as any,
         },
-        { apiKey: llm.provider.credential, maxTokens: 64 },
+        // maxRetries re-enables the provider SDK's own backoff (pi defaults it
+        // to 0) — right for an invisible best-effort side call.
+        { apiKey: llm.provider.credential, maxTokens: 64, maxRetries: 2 },
       );
       const result = await stream.result();
       // .result() resolves even on a SOFT stream error (an AssistantMessage with
@@ -769,7 +1004,9 @@ export class AgentService {
             },
           ] as any,
         },
-        { apiKey: visual.provider.credential, maxTokens: 2048 },
+        // SDK-level backoff (see maybeGenerateTitle) — a transient failure here
+        // shouldn't silently drop the image description.
+        { apiKey: visual.provider.credential, maxTokens: 2048, maxRetries: 2 },
       );
       const result = await stream.result();
       // .result() resolves even on a SOFT stream error (an AssistantMessage with
@@ -984,6 +1221,9 @@ export class AgentService {
     // Cancel any in-flight compression side stream too; prompt() checks
     // `running` after its compression await, so the prepared turn never starts.
     this.compressAbort?.abort();
+    // Cut a pending retry backoff short — the loop re-checks `running` and
+    // gives up without re-issuing (and without an error row: deliberate stop).
+    this.retryAbort?.abort();
     this.agent.abort();
     // Drop any queued steering/follow-up messages so a stop fully clears intent —
     // otherwise a steer queued just before the stop would be injected into the
@@ -1005,6 +1245,7 @@ export class AgentService {
     this.disposed = true;
     this.running = false;
     this.compressAbort?.abort();
+    this.retryAbort?.abort();
     this.agent.abort();
     // Settle any interaction still open for this session so its blocked Promise
     // resolves and no registry entries leak. Routed through the injected fan-out

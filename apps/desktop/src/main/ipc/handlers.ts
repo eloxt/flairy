@@ -286,7 +286,8 @@ export function registerIpcHandlers(
       meta,
       messages: svc ? svc.getLiveMessages() : loadMessages(sessionId),
       running: svc?.isRunning() ?? false,
-      compressing: svc?.isCompressing() ?? false
+      compressing: svc?.isCompressing() ?? false,
+      retrying: svc?.getRetryStatus() ?? null
     }
   })
 

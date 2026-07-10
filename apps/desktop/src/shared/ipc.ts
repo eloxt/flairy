@@ -354,6 +354,11 @@ export type AgentStreamEvent =
   | { type: 'tool_execution_update'; toolCallId: string; partial: unknown }
   | { type: 'tool_execution_end'; toolCallId: string; result: unknown; isError: boolean }
   | { type: 'error'; message: string }
+  // A model request failed transiently and the main process is auto-retrying
+  // with backoff. `active: true` opens the renderer's "retrying" shimmer (and
+  // trims the failed attempt's partial bubble); `active: false` closes it —
+  // either the retry succeeded or the final error event follows.
+  | { type: 'retry_status'; active: boolean; attempt: number; max: number }
 
 export interface ApprovalRequestPayload {
   approvalId: string
@@ -473,6 +478,8 @@ export interface FlairyApi {
     messages: unknown[]
     running: boolean
     compressing: boolean
+    /** Non-null while a model-request auto-retry is in flight (backoff window). */
+    retrying: { attempt: number; max: number } | null
   }>
   /** Full-text search over message content + session titles. */
   searchMessages(args: SearchMessagesArgs): Promise<SearchHit[]>

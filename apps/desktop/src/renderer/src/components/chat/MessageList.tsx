@@ -554,6 +554,7 @@ const ApprovalFooter = (): React.JSX.Element => {
   return (
     <div>
       <CompressionRow />
+      <RetryRow />
       <ThinkingRow />
       {approvalQueue.map((req) => (
         <ApprovalCard key={req.approvalId} payload={req} />
@@ -581,6 +582,32 @@ function CompressionRow(): React.JSX.Element | null {
 }
 
 /**
+ * Transient status row shown while the main process auto-retries a failed
+ * model request (the backoff wait + the re-issued request). User-facing copy
+ * stays jargon-free: it reads as a connection hiccup, not an API error.
+ */
+function RetryRow(): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const retrying = useChat((s) => s.retrying);
+  if (!retrying) return null;
+  return (
+    <div className="animate-message-in mx-auto w-full max-w-3xl px-6 py-2.5">
+      <div
+        className="flex items-center gap-2 text-muted-foreground"
+        aria-live="polite"
+      >
+        <span className="shimmer text-sm font-medium">
+          {t("chat.retrying", {
+            attempt: retrying.attempt,
+            max: retrying.max,
+          })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The pause between sending and the first token. Three dots breathing in place —
  * the only signal the agent is awake. Shown only in that gap: once text streams
  * the caret takes over, and once a tool runs its own row pulses instead.
@@ -588,6 +615,8 @@ function CompressionRow(): React.JSX.Element | null {
 function ThinkingRow(): React.JSX.Element | null {
   const show = useChat((s) => {
     if (s.compressing) return false;
+    // The retry shimmer owns the gap while a failed request is being retried.
+    if (s.retrying) return false;
     if (!s.running) return false;
     const last = s.messages[s.messages.length - 1];
     return last?.role === "user";

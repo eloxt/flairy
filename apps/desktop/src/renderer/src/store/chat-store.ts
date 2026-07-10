@@ -136,6 +136,13 @@ export interface SessionRuntime {
    */
   compressing: boolean
   /**
+   * Non-null while the main process is auto-retrying a failed model request
+   * (backoff window). Drives the "retrying" shimmer row; `running` stays true
+   * for the whole retry cycle. Cleared when the retry's response starts
+   * streaming (message_start) or the cycle resolves (retry_status inactive).
+   */
+  retrying: { attempt: number; max: number } | null
+  /**
    * The assistant turn currently streaming in THIS session, used to stamp a
    * shared `batchId` onto the turn's tool calls. Per-session (not a module
    * global) so two concurrently-running sessions never cross-stamp batches.
@@ -165,6 +172,7 @@ function emptyRuntime(): SessionRuntime {
     messages: [],
     running: false,
     compressing: false,
+    retrying: null,
     liveBatchId: null,
     approvalQueue: [],
     questionQueue: [],
@@ -194,6 +202,8 @@ interface ChatState {
   running: boolean
   /** Mirror of the foreground session's compression-in-flight flag. */
   compressing: boolean
+  /** Mirror of the foreground session's model-request retry state. */
+  retrying: { attempt: number; max: number } | null
   /** Pending approval requests, oldest first; the dialog shows the head. */
   approvalQueue: ApprovalRequestPayload[]
   /** Pending `ask` questions for the open session, oldest first; each renders a card. */
@@ -278,6 +288,7 @@ export const useChat = create<ChatState>((set, get) => ({
   messages: [],
   running: false,
   compressing: false,
+  retrying: null,
   approvalQueue: [],
   questionQueue: [],
   permissionMode: 'ask',
@@ -369,12 +380,13 @@ export const useChat = create<ChatState>((set, get) => ({
     // Cold open: seed from the main process's LIVE state (in-memory messages +
     // running flag for a session running in the background; persisted snapshot
     // otherwise). Permission mode is per-session in-memory, defaulting to 'ask'.
-    const { messages, running, compressing } = await window.api.loadSessionLive(meta.id)
+    const { messages, running, compressing, retrying } = await window.api.loadSessionLive(meta.id)
     const rt: SessionRuntime = {
       ...emptyRuntime(),
       messages: hydrateMessages(messages),
       running,
       compressing,
+      retrying,
       fromTelegram: Boolean(meta.fromTelegram)
     }
     set((s) => ({
@@ -626,6 +638,7 @@ function mirror(rt: SessionRuntime | null): {
   messages: UiMessage[]
   running: boolean
   compressing: boolean
+  retrying: { attempt: number; max: number } | null
   approvalQueue: ApprovalRequestPayload[]
   questionQueue: QuestionRequestPayload[]
 } {
@@ -633,6 +646,7 @@ function mirror(rt: SessionRuntime | null): {
     messages: rt?.messages ?? [],
     running: rt?.running ?? false,
     compressing: rt?.compressing ?? false,
+    retrying: rt?.retrying ?? null,
     approvalQueue: rt?.approvalQueue ?? [],
     questionQueue: rt?.questionQueue ?? []
   }
@@ -703,8 +717,11 @@ function applyEvent(
       // New turn → new batch for the tool calls it's about to issue. Also clear
       // any "queued" flags: reaching a turn boundary means a steered message is
       // now actually injected, so its optimistic bubble shouldn't read as pending.
+      // A new message also means a pending retry produced a response — swap the
+      // "retrying" shimmer for the real stream.
       updateRuntime(set, get, sessionId, (rt) => ({
         ...rt,
+        retrying: null,
         liveBatchId: e.messageId || crypto.randomUUID(),
         messages: rt.messages.some((m) => m.queued)
           ? rt.messages.map((m) => (m.queued ? { ...m, queued: undefined } : m))
@@ -898,10 +915,24 @@ function applyEvent(
       updateRuntime(set, get, sessionId, (rt) => ({
         ...rt,
         running: false,
+        retrying: null,
         messages: [
           ...rt.messages,
           { id: crypto.randomUUID(), role: 'tool', text: e.message, isError: true }
         ]
+      }))
+      break
+    case 'retry_status':
+      // Opening a retry window also drops the failed attempt's half-streamed
+      // bubble: the main process popped that message from the transcript, and
+      // the retry will re-stream the whole response from scratch.
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
+        retrying: e.active ? { attempt: e.attempt, max: e.max } : null,
+        messages:
+          e.active && rt.messages.some((m) => m.role === 'assistant' && m.streaming)
+            ? rt.messages.filter((m) => !(m.role === 'assistant' && m.streaming))
+            : rt.messages
       }))
       break
   }
