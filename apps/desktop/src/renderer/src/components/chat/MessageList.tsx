@@ -102,11 +102,9 @@ type Row =
   | { kind: "tool"; key: string; m: UiMessage }
   | { kind: "group"; key: string; tools: UiMessage[] }
   /**
-   * A turn's working process — every tool row and intermediate assistant note
-   * between the user prompt and its latest answer — folded behind one summary
-   * line by `foldTurns`. Folding happens LIVE: the moment an answer lands after
-   * tool work (no tool call pending), the process collapses; if the turn then
-   * runs more tools, they stream below and get absorbed at the next answer.
+   * A finished turn's working process — every tool row and intermediate note
+   * between the user prompt and the final answer — folded behind one summary
+   * line by `foldTurns` once the run has ended.
    */
   | { kind: "fold"; key: string; rows: Row[] };
 
@@ -160,25 +158,15 @@ function toRows(messages: UiMessage[]): Row[] {
 }
 
 /**
- * Second pass over the row list: collapse everything between the user prompt
- * and the turn's LATEST answer — tool rows, tool groups, AND intermediate
- * assistant notes — into a single `fold` row, so a long multi-round turn
- * doesn't bury the thread in process detail.
- *
- * Folding is live and progressive: an answer landing after tool work means no
- * tool call is pending at that moment, so the process before it collapses
- * immediately — mid-turn, even while the answer itself is still streaming. If
- * the model then runs MORE tools, they stream live below the answer; the next
- * answer absorbs them (and the now-intermediate previous answer) into the same
- * fold. Tool rows still running never fold, and a turn with no answer yet (or
- * one aborted mid-tools) stays fully expanded.
- *
- * The fold reuses its FIRST process row's key. That row is the fold's stable
- * mount point across every restatement (fold contents only ever grow), and the
- * key handoff means folding re-renders an existing MessageScrollerItem instead
- * of swapping DOM nodes — see the equal-count childList note in `toRows`.
+ * Second pass over the row list: for each finished turn, collapse everything
+ * between the user prompt and the final answer into a single `fold` row. The
+ * active turn (the last segment while a run is in flight) stays fully
+ * expanded and collapses only when the run ends. The fold reuses its FIRST
+ * process row's key so folding re-renders an existing MessageScrollerItem
+ * instead of swapping DOM nodes — see the equal-count childList note in
+ * `toRows`.
  */
-function foldTurns(rows: Row[]): Row[] {
+function foldTurns(rows: Row[], running: boolean): Row[] {
   const out: Row[] = [];
   let i = 0;
   while (i < rows.length) {
@@ -197,6 +185,11 @@ function foldTurns(rows: Row[]): Row[] {
       seg.push(r);
       i++;
     }
+    // The in-flight turn never folds; it collapses when the run ends.
+    if (running && i >= rows.length) {
+      out.push(...seg);
+      break;
+    }
     // The segment's latest answer; everything before it is foldable process.
     let lastText = -1;
     for (let j = seg.length - 1; j >= 0; j--) {
@@ -209,6 +202,11 @@ function foldTurns(rows: Row[]): Row[] {
     const process = lastText > 0 ? seg.slice(0, lastText) : [];
     const foldable =
       process.length > 0 &&
+      // A lone tool row / tool group is already a one-line collapsed summary;
+      // wrapping it in a fold would stack two identical disclosure headers.
+      // A lone intermediate TEXT row still folds — it has no collapse of its
+      // own.
+      !(process.length === 1 && process[0].kind !== "msg") &&
       process.every((r) =>
         r.kind === "tool"
           ? !r.m.running
@@ -236,7 +234,10 @@ export function MessageList({
   const compressing = useChat((s) => s.compressing);
   const running = useChat((s) => s.running);
   const sessionId = useChat((s) => s.sessionId);
-  const rows = useMemo(() => foldTurns(toRows(messages)), [messages]);
+  const rows = useMemo(
+    () => foldTurns(toRows(messages), running),
+    [messages, running],
+  );
   // Per-assistant-message citation registry: ALL web_search sources gathered so
   // far in the current turn (reset at each user message), so an answer can cite
   // any search in the turn — not just the nearest one. Ids are turn-unique (the
