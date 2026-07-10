@@ -38,7 +38,8 @@ const MARKER = 'flairy_web_search'
 export function encodeSearchResults(results: SearchResultInput[]): string {
   return JSON.stringify({
     type: MARKER,
-    instructions: 'Cite results you use inline as [id], e.g. [1] or [1,2] for several.',
+    instructions:
+      'Cite results you use inline by their exact "id" field, e.g. [1] or [1,2] for several. Ids are unique across all searches this turn — a later search continues counting, so never renumber from 1.',
     results
   })
 }

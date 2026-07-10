@@ -84,8 +84,8 @@ export function createWebSearchTool(
   return {
     name: 'web_search',
     label: 'web_search',
-    description: `Search the web for any topic and get clean, ready-to-use content. Each result is numbered [1], [2], etc.
-When citing information from search results in your response, use these numbers as inline citations like [1], [2], or [1,2] for multiple sources.
+    description: `Search the web for any topic and get clean, ready-to-use content. Each result carries a numeric "id"; ids are unique across ALL searches in the current turn (a later search continues counting, e.g. its results may be 11, 12, …).
+When citing information from search results in your response, cite the EXACT "id" field of the result as an inline citation like [11], or [11,12] for multiple sources. Never renumber results from 1 yourself.
 This helps users identify the source of information.
 
 Best for: Finding current information, news, facts, people, companies, or answering questions about any topic.
