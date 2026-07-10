@@ -303,10 +303,12 @@ export function registerIpcHandlers(
   // Pick a directory and set it as the session's cwd: persist it and rebind the
   // live agent's local tools. Returns the updated meta, or null if cancelled.
   ipcMain.handle(IPC.SessionSetCwd, async (_e, args: SetCwdArgs) => {
+    const before = getSession(args.sessionId)
+    // A session's workspace is fixed once set — refuse before showing the dialog.
+    if (before?.kind === 'project') return null
     const dir = await pickDirectory()
     if (!dir) return null
     addRecentDirectory(dir)
-    const before = getSession(args.sessionId)
     const meta = updateSessionCwd(args.sessionId, dir)
     agents.get(args.sessionId)?.setCwd(dir)
     if (before?.kind === 'chat') server.sendSessionDelete({ sessionId: args.sessionId })
@@ -348,6 +350,9 @@ export function registerIpcHandlers(
     addRecentDirectory(args.path)
     if (!args.sessionId) return null
     const before = getSession(args.sessionId)
+    // A session's workspace is fixed once set — return the unchanged meta so any
+    // optimistic renderer update reconciles back to the real value.
+    if (before?.kind === 'project') return before
     const meta = updateSessionCwd(args.sessionId, args.path)
     agents.get(args.sessionId)?.setCwd(args.path)
     if (before?.kind === 'chat') server.sendSessionDelete({ sessionId: args.sessionId })

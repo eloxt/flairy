@@ -243,9 +243,9 @@ interface ChatState {
   /** Clear the queued scroll target (called by MessageList after scrolling). */
   clearPendingScroll: () => void
   /**
-   * Return to the home screen. By default, only an open project carries its
-   * workspace into the next lazy-created session; chats and the blank page reset
-   * to a normal synced chat.
+   * Return to the home screen. The next lazy-created session starts with no
+   * workspace (a normal synced chat) unless `cwd` is passed explicitly — e.g.
+   * the sidebar's new-in-project button.
    */
   newChat: (cwd?: string | null) => Promise<void>
   send: (
@@ -411,13 +411,13 @@ export const useChat = create<ChatState>((set, get) => ({
    * clicking "New chat" repeatedly never litters the history with empty chats.
    */
   newChat: async (cwd) => {
-    set((s) => ({
+    set(() => ({
       sessionId: null,
       // Clear the foreground mirror to the home/empty state; background runtimes
       // stay intact so any running session keeps streaming into its own runtime.
       ...mirror(null),
       pendingScrollIndex: null,
-      pendingCwd: cwd === undefined ? currentProjectWorkspace(s) : cwd
+      pendingCwd: cwd ?? null
     }))
   },
 
@@ -555,6 +555,9 @@ export const useChat = create<ChatState>((set, get) => ({
       await get().loadRecentDirs() // main recorded the pick
       return
     }
+    // A session's workspace is fixed once set (the picker UI is hidden for
+    // projects; this guards any other path).
+    if (currentProjectWorkspace(get())) return
     const updated = await window.api.setWorkingDirectory({ sessionId })
     if (!updated) return // user cancelled
     set((s) => ({ sessions: s.sessions.map((m) => (m.id === updated.id ? updated : m)) }))
@@ -573,6 +576,8 @@ export const useChat = create<ChatState>((set, get) => ({
   // update instead would re-render mid close-animation and flash the menu.
   chooseWorkingDirectory: async (path) => {
     const sessionId = get().sessionId
+    // A session's workspace is fixed once set — skip the optimistic flip too.
+    if (sessionId && currentProjectWorkspace(get())) return
     if (sessionId) {
       set((s) => ({
         sessions: s.sessions.map((m) =>

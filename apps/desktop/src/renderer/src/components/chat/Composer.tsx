@@ -108,6 +108,11 @@ export function Composer(): React.JSX.Element {
   // Telegram-created sessions are read-only on desktop (driven only from Telegram).
   const readOnly = useChat((s) => !!s.sessions.find((x) => x.id === s.sessionId)?.fromTelegram);
 
+  // A session's workspace is fixed once set: show it, but don't offer the picker.
+  const workspaceLocked = useChat(
+    (s) => !!s.sessions.find((x) => x.id === s.sessionId)?.workspacePath,
+  );
+
   // Publish the composer's live height so the message list can reserve matching
   // bottom space and never let content hide behind the floating composer.
   useLayoutEffect(() => {
@@ -348,7 +353,18 @@ export function Composer(): React.JSX.Element {
           </div>
 
           <div className="flex items-center gap-1 px-2 py-1.5">
-            {/* Working directory: hover to open recents, or add another */}
+            {/* Working directory: hover to open recents, or add another. Fixed
+                once the session has a workspace — render a static label then. */}
+            {workspaceLocked ? (
+              <div
+                aria-label={t('composer.workingDirectory')}
+                title={t('composer.workspaceLockedTitle', { path: cwd ?? "~" })}
+                className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground"
+              >
+                <Folder className="size-4" />
+                <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
+              </div>
+            ) : (
             <DropdownMenu
               onOpenChange={(open) => {
                 if (open) void loadRecentDirs();
@@ -409,6 +425,7 @@ export function Composer(): React.JSX.Element {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
 
             {/* Tool permission */}
             <DropdownMenu>

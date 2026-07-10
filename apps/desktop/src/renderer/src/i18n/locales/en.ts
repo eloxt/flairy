@@ -163,6 +163,7 @@ const en = {
     removeAttachment: 'Remove attachment',
     workingDirectory: 'Working directory',
     workingDirectoryTitle: 'Working directory: {{path}}',
+    workspaceLockedTitle: 'Working directory: {{path}}\nFixed for this conversation',
     home: 'home',
     recent: 'Recent',
     recentDirTitle: '{{path}}\nRight-click to remove from recents',

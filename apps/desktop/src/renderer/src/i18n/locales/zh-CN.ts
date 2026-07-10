@@ -150,6 +150,7 @@ const zhCN: typeof En = {
     removeAttachment: '移除附件',
     workingDirectory: '工作目录',
     workingDirectoryTitle: '工作目录：{{path}}',
+    workspaceLockedTitle: '工作目录：{{path}}\n此对话的工作目录不可更改',
     home: '主目录',
     recent: '最近',
     recentDirTitle: '{{path}}\n右键从最近列表中移除',
