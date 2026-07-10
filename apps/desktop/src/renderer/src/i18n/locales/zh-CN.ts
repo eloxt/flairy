@@ -177,7 +177,8 @@ const zhCN: typeof En = {
     email: '邮箱',
     signedIn: '已登录',
     signOut: '退出登录',
-    signOutHint: '退出后将清除这台设备上的所有对话和数据，重新登录后会从你的账户恢复。',
+    signOutHint:
+      '退出后将清除这台设备上的所有数据。对话会在重新登录后从你的账户恢复；项目仅保存在本设备，退出后无法恢复。',
     // 通用
     sectionDisplay: '显示',
     sectionWindow: '窗口',

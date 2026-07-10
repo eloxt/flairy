@@ -193,7 +193,7 @@ const en = {
     signedIn: 'Signed in',
     signOut: 'Sign out',
     signOutHint:
-      'Signing out removes all conversations and data from this device. They are restored from your account when you sign back in.',
+      'Signing out clears all data on this device. Conversations are restored from your account when you sign back in; projects only live on this device and cannot be restored.',
     // General
     sectionDisplay: 'Display',
     sectionWindow: 'Window',
