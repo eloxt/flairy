@@ -243,7 +243,10 @@ export function AppSidebar(): React.JSX.Element {
                               </SidebarMenuAction>
                             }
                           >
-                            <SidebarMenuSub>
+                            {/* Keep the left indent + guide line but let rows
+                                stretch to the sidebar's right edge (the default
+                                mr-3.5/pr-2.5 leaves a dead gutter on the right). */}
+                            <SidebarMenuSub className="mr-0 pr-0">
                               {group.sessions.map((s) => (
                                 <SessionRow
                                   key={s.id}
@@ -266,7 +269,7 @@ export function AppSidebar(): React.JSX.Element {
                       label={t('chat.chats')}
                       triggerClassName="font-semibold text-sidebar-foreground"
                     >
-                      <SidebarMenuSub>
+                      <SidebarMenuSub className="mr-0 pr-0">
                         {grouped.chats.map((s) => (
                           <SessionRow
                             key={s.id}
@@ -446,7 +449,7 @@ function SessionRow({
               else if (action === "select") onEnterSelectionMode(s.id);
             });
           }}
-          className="group/item rounded-lg"
+          className="group/item rounded-lg pr-2!"
         >
           {selecting && (
             <Checkbox
