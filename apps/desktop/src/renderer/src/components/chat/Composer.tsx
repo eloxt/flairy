@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUp,
@@ -14,7 +14,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { Attachment, PermissionMode, RedactedConfigSnapshot } from "@shared/ipc";
+import type { Attachment, PermissionMode } from "@shared/ipc";
 import { cn } from "@/lib/utils";
 import { useChat, selectCwd } from "@/store/chat-store";
 import { useImageInputSupport } from "@/hooks/use-image-input-supported";
@@ -86,7 +86,6 @@ export function Composer(): React.JSX.Element {
   const { t } = useTranslation();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [mainModelName, setMainModelName] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -124,20 +123,6 @@ export function Composer(): React.JSX.Element {
     const ro = new ResizeObserver(publish);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const updateMainModel = (config: RedactedConfigSnapshot | null): void => {
-      const model = config?.llm.main?.model;
-      if (!model) {
-        setMainModelName(null);
-        return;
-      }
-      setMainModelName(model.name.trim() || null);
-    };
-
-    void window.api.getConfig().then(updateMainModel);
-    return window.api.onConfigChanged(updateMainModel);
   }, []);
 
   const submit = (): void => {
@@ -230,13 +215,13 @@ export function Composer(): React.JSX.Element {
     >
       <div className="pointer-events-auto mx-auto w-full max-w-200 px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
-          <div className="group relative flex flex-col rounded-2xl border border-border bg-card transition-colors focus-within:border-foreground/25">
+          <div className="rounded-2xl border border-border bg-muted/60">
             {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-3 pt-3">
+              <div className="flex flex-wrap gap-2 px-2 py-1.5">
                 {attachments.map((a, i) => (
                   <div
                     key={i}
-                    className="group/att relative flex items-center gap-2.5 rounded-xl border border-border bg-muted/50 p-1.5 pr-8"
+                    className="group/att relative flex items-center gap-2.5 rounded-xl border border-border bg-card p-1.5 pr-8"
                   >
                     <img
                       src={`data:${a.attachment.mimeType};base64,${a.attachment.data}`}
@@ -268,19 +253,20 @@ export function Composer(): React.JSX.Element {
             )}
 
             {imagesIgnored && (
-              <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
+              <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesIgnored")}</span>
               </div>
             )}
 
             {imagesExtracted && (
-              <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-600 dark:text-amber-500">
+              <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-600 dark:text-amber-500">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesExtracted")}</span>
               </div>
             )}
 
+            <div className="group relative -m-px flex flex-col rounded-2xl border border-foreground/15 bg-card shadow-xs transition-colors focus-within:border-foreground/25">
             <textarea
               ref={taRef}
               value={text}
@@ -330,136 +316,7 @@ export function Composer(): React.JSX.Element {
                 </TooltipContent>
               </Tooltip>
 
-              {/* Working directory: hover to open recents, or add another */}
-              <DropdownMenu
-                onOpenChange={(open) => {
-                  if (open) void loadRecentDirs();
-                }}
-              >
-                <DropdownMenuTrigger
-                  openOnHover
-                  aria-label={t('composer.workingDirectory')}
-                  title={t('composer.workingDirectoryTitle', { path: cwd ?? "~" })}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <Folder className="size-4" />
-                  <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-56">
-                  {recentDirs.length > 0 && (
-                    <>
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel>{t('composer.recent')}</DropdownMenuLabel>
-                        {recentDirs.map((dir) => (
-                          <DropdownMenuItem
-                            key={dir}
-                            title={t('composer.recentDirTitle', { path: dir })}
-                            onClick={() => void chooseWorkingDirectory(dir)}
-                            onContextMenu={(e) => {
-                              // Right-click pops the OS-native menu; only remove
-                              // this recent directory if the user picks "remove".
-                              e.preventDefault();
-                              void window.api.showRecentDirMenu().then((action) => {
-                                if (action === "remove") void removeRecentDir(dir);
-                              });
-                            }}
-                            className="items-start gap-2"
-                          >
-                            <Check
-                              className={cn(
-                                "mt-0.5 size-4 shrink-0",
-                                normalizeDir(dir) === normalizeDir(cwd ?? "")
-                                  ? "opacity-100"
-                                  : "opacity-0",
-                              )}
-                            />
-                            <div className="flex min-w-0 flex-col">
-                              <span className="truncate">{cwdLabel(dir)}</span>
-                              <span className="truncate text-xs text-muted-foreground">
-                                {dir}
-                              </span>
-                            </div>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuGroup>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  <DropdownMenuItem onClick={() => void setWorkingDirectory()}>
-                    <Plus className="size-4" />
-                    {t('composer.addAnotherDirectory')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Tool permission */}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  openOnHover
-                  aria-label={t('composer.toolPermission')}
-                  className={cn(
-                    "flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors hover:bg-accent",
-                    permissionMode === "full"
-                      ? "text-destructive hover:text-destructive"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {permissionMode === "full" ? (
-                    <ShieldAlert className="size-4" />
-                  ) : (
-                    <ShieldCheck className="size-4" />
-                  )}
-                  <span>
-                    {permissionMode === "full" ? t('composer.fullAccess') : t('composer.askForApproval')}
-                  </span>
-                  <ChevronDown className="size-3 opacity-60" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-72">
-                  <DropdownMenuRadioGroup
-                    value={permissionMode}
-                    onValueChange={(v) => setPermissionMode(v as PermissionMode)}
-                  >
-                    <DropdownMenuRadioItem
-                      closeOnClick
-                      value="ask"
-                      className="items-start gap-2.5 py-2"
-                    >
-                      <ShieldCheck className="mt-0.5 size-4 text-muted-foreground" />
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-medium text-foreground">
-                          {t('composer.askForApproval')}
-                        </span>
-                        <span className="text-xs leading-snug text-muted-foreground">
-                          {t('composer.askDescription')}
-                        </span>
-                      </div>
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem
-                      closeOnClick
-                      value="full"
-                      className="items-start gap-2.5 py-2"
-                    >
-                      <ShieldAlert className="mt-0.5 size-4 text-destructive" />
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-medium text-destructive">
-                          {t('composer.fullAccess')}
-                        </span>
-                        <span className="text-xs leading-snug text-muted-foreground">
-                          {t('composer.fullDescription')}
-                        </span>
-                      </div>
-                    </DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
               <div className="flex-1" />
-
-              {mainModelName && (
-                <div className="flex h-8 max-w-40 items-center px-2 text-xs text-muted-foreground">
-                  <span className="truncate">{mainModelName}</span>
-                </div>
-              )}
 
               {running && !canSend ? (
                 // Running with an empty composer → Stop. Add text or an image and
@@ -488,6 +345,132 @@ export function Composer(): React.JSX.Element {
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="flex items-center gap-1 px-2 py-1.5">
+            {/* Working directory: hover to open recents, or add another */}
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) void loadRecentDirs();
+              }}
+            >
+              <DropdownMenuTrigger
+                openOnHover
+                aria-label={t('composer.workingDirectory')}
+                title={t('composer.workingDirectoryTitle', { path: cwd ?? "~" })}
+                className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Folder className="size-4" />
+                <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-56">
+                {recentDirs.length > 0 && (
+                  <>
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>{t('composer.recent')}</DropdownMenuLabel>
+                      {recentDirs.map((dir) => (
+                        <DropdownMenuItem
+                          key={dir}
+                          title={t('composer.recentDirTitle', { path: dir })}
+                          onClick={() => void chooseWorkingDirectory(dir)}
+                          onContextMenu={(e) => {
+                            // Right-click pops the OS-native menu; only remove
+                            // this recent directory if the user picks "remove".
+                            e.preventDefault();
+                            void window.api.showRecentDirMenu().then((action) => {
+                              if (action === "remove") void removeRecentDir(dir);
+                            });
+                          }}
+                          className="items-start gap-2"
+                        >
+                          <Check
+                            className={cn(
+                              "mt-0.5 size-4 shrink-0",
+                              normalizeDir(dir) === normalizeDir(cwd ?? "")
+                                ? "opacity-100"
+                                : "opacity-0",
+                            )}
+                          />
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate">{cwdLabel(dir)}</span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {dir}
+                            </span>
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem onClick={() => void setWorkingDirectory()}>
+                  <Plus className="size-4" />
+                  {t('composer.addAnotherDirectory')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Tool permission */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                openOnHover
+                aria-label={t('composer.toolPermission')}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors hover:bg-accent",
+                  permissionMode === "full"
+                    ? "text-destructive hover:text-destructive"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {permissionMode === "full" ? (
+                  <ShieldAlert className="size-4" />
+                ) : (
+                  <ShieldCheck className="size-4" />
+                )}
+                <span>
+                  {permissionMode === "full" ? t('composer.fullAccess') : t('composer.askForApproval')}
+                </span>
+                <ChevronDown className="size-3 opacity-60" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-72">
+                <DropdownMenuRadioGroup
+                  value={permissionMode}
+                  onValueChange={(v) => setPermissionMode(v as PermissionMode)}
+                >
+                  <DropdownMenuRadioItem
+                    closeOnClick
+                    value="ask"
+                    className="items-start gap-2.5 py-2"
+                  >
+                    <ShieldCheck className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-foreground">
+                        {t('composer.askForApproval')}
+                      </span>
+                      <span className="text-xs leading-snug text-muted-foreground">
+                        {t('composer.askDescription')}
+                      </span>
+                    </div>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem
+                    closeOnClick
+                    value="full"
+                    className="items-start gap-2.5 py-2"
+                  >
+                    <ShieldAlert className="mt-0.5 size-4 text-destructive" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-destructive">
+                        {t('composer.fullAccess')}
+                      </span>
+                      <span className="text-xs leading-snug text-muted-foreground">
+                        {t('composer.fullDescription')}
+                      </span>
+                    </div>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           </div>
         </div>
       </div>
