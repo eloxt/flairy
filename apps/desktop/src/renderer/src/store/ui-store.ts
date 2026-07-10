@@ -9,7 +9,9 @@ const OPEN_KEY = 'flairy.rightPanelOpen'
 const WIDTH_KEY = 'flairy.rightPanelWidth'
 
 export const RIGHT_PANEL_MIN_WIDTH = 300
-export const RIGHT_PANEL_MAX_WIDTH = 600
+// Roomy enough to read a code file in the Files tab's preview; drag and
+// persisted values are additionally clamped to 60% of the window in RightPanel.
+export const RIGHT_PANEL_MAX_WIDTH = 1000
 const RIGHT_PANEL_DEFAULT_WIDTH = 380
 
 /**

@@ -275,7 +275,11 @@ interface ChatState {
 export const selectCwd = (s: ChatState): string | null =>
   s.sessionId ? (s.sessions.find((m) => m.id === s.sessionId)?.cwd ?? s.pendingCwd) : s.pendingCwd
 
-function currentProjectWorkspace(s: ChatState): string | null {
+/**
+ * The open session's workspace path, or null for chat (non-project) sessions.
+ * Selector-shaped: drives the Files tab and the workspace-lock guards below.
+ */
+export function selectProjectWorkspace(s: ChatState): string | null {
   if (!s.sessionId) return null
   return s.sessions.find((m) => m.id === s.sessionId)?.workspacePath ?? null
 }
@@ -557,7 +561,7 @@ export const useChat = create<ChatState>((set, get) => ({
     }
     // A session's workspace is fixed once set (the picker UI is hidden for
     // projects; this guards any other path).
-    if (currentProjectWorkspace(get())) return
+    if (selectProjectWorkspace(get())) return
     const updated = await window.api.setWorkingDirectory({ sessionId })
     if (!updated) return // user cancelled
     set((s) => ({ sessions: s.sessions.map((m) => (m.id === updated.id ? updated : m)) }))
@@ -577,7 +581,7 @@ export const useChat = create<ChatState>((set, get) => ({
   chooseWorkingDirectory: async (path) => {
     const sessionId = get().sessionId
     // A session's workspace is fixed once set — skip the optimistic flip too.
-    if (sessionId && currentProjectWorkspace(get())) return
+    if (sessionId && selectProjectWorkspace(get())) return
     if (sessionId) {
       set((s) => ({
         sessions: s.sessions.map((m) =>

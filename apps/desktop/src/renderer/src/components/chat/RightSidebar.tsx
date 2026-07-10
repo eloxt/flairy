@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useChat } from '@/store/chat-store'
+import { useChat, selectProjectWorkspace } from '@/store/chat-store'
 import { useUi } from '@/store/ui-store'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { TimelinePanel } from './sidebar/TimelinePanel'
 import { ModelPanel } from './sidebar/ModelPanel'
 import { PlanPanel } from './sidebar/PlanPanel'
+import { FilesPanel } from './sidebar/FilesPanel'
 
 /**
  * The resizable right-hand details panel. Tabs over the active (foreground)
@@ -18,6 +19,7 @@ export function RightSidebar(): React.JSX.Element {
   const { t } = useTranslation()
   const sessionId = useChat((s) => s.sessionId)
   const messages = useChat((s) => s.messages)
+  const workspacePath = useChat(selectProjectWorkspace)
   const openRightPanel = useUi((s) => s.openRightPanel)
 
   // Identity of the current plan: the most recent todo-bearing message. Each
@@ -62,6 +64,12 @@ export function RightSidebar(): React.JSX.Element {
     }
   }, [hasTodos, latestTodoId, openRightPanel, sessionId])
 
+  // The Files tab unmounts for chat (non-project) sessions; don't strand the
+  // panel on an empty selection when switching to one.
+  useEffect(() => {
+    if (!workspacePath) setTab((cur) => (cur === 'files' ? 'timeline' : cur))
+  }, [workspacePath])
+
   return (
     <Tabs value={tab} onValueChange={setTab} className="h-full bg-transparent">
       {/* The tab bar doubles as the panel's top bar: same height as the chat
@@ -74,6 +82,11 @@ export function RightSidebar(): React.JSX.Element {
         <TabsTab value="model" className="app-no-drag">
           {t('panel.model')}
         </TabsTab>
+        {workspacePath && (
+          <TabsTab value="files" className="app-no-drag">
+            {t('panel.files')}
+          </TabsTab>
+        )}
         {hasTodos && (
           <TabsTab value="plan" className="app-no-drag">
             {t('panel.plan')}
@@ -86,6 +99,12 @@ export function RightSidebar(): React.JSX.Element {
       <TabsPanel value="model">
         <ModelPanel messages={messages} />
       </TabsPanel>
+      {workspacePath && (
+        <TabsPanel value="files" className="min-w-0">
+          {/* Keyed so switching between two project sessions resets tree + preview. */}
+          <FilesPanel key={workspacePath} workspacePath={workspacePath} />
+        </TabsPanel>
+      )}
       {hasTodos && (
         <TabsPanel value="plan">
           <PlanPanel messages={messages} />

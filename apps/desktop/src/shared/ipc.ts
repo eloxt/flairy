@@ -46,6 +46,8 @@ export const IPC = {
   MemoryDelete: 'memory:delete',
   MemoryClear: 'memory:clear',
   DialogPickDirectory: 'dialog:pick-directory',
+  FsListFiles: 'fs:list-files',
+  FsReadFile: 'fs:read-file',
   ImageViewerOpen: 'image-viewer:open',
   ImageViewerGet: 'image-viewer:get',
   ShellOpenExternal: 'shell:open-external',
@@ -229,6 +231,43 @@ export interface SessionMeta {
   /** True if this session was created from Telegram — tagged + read-only on desktop. */
   fromTelegram?: boolean
 }
+
+export interface ListWorkspaceFilesArgs {
+  /** Absolute workspace path of a project session (validated against known sessions in main). */
+  root: string
+}
+
+/** Git working-tree state for one file, used to tint rows in the workspace file tree. */
+export interface WorkspaceGitStatusEntry {
+  /** Root-relative posix path. */
+  path: string
+  status: 'added' | 'deleted' | 'modified' | 'renamed' | 'untracked'
+}
+
+export interface ListWorkspaceFilesResult {
+  /**
+   * Root-relative posix file paths (files only — the tree infers directories
+   * from path prefixes, so empty directories don't appear).
+   */
+  paths: string[]
+  /** True when the enumeration cap was hit; `paths` is the first N entries. */
+  truncated: boolean
+  /** Null when the workspace isn't a git repo or git isn't installed. */
+  gitStatus: WorkspaceGitStatusEntry[] | null
+}
+
+export interface ReadWorkspaceFileArgs {
+  root: string
+  /** Root-relative path of the file to read (posix separators). */
+  relPath: string
+}
+
+/** Discriminated preview payload; failures come back as values, never as thrown IPC errors. */
+export type ReadWorkspaceFileResult =
+  | { kind: 'text'; content: string; size: number }
+  | { kind: 'binary'; size: number }
+  | { kind: 'tooLarge'; size: number }
+  | { kind: 'error'; message: string }
 
 export interface SearchMessagesArgs {
   query: string
@@ -536,6 +575,13 @@ export interface FlairyApi {
    * that gets lazily created on the first message.
    */
   pickDirectory(): Promise<string | null>
+  /**
+   * Enumerate all files under a project session's workspace (gitignore-aware,
+   * capped). `root` must be a known session's workspacePath. Feeds the Files tab.
+   */
+  listWorkspaceFiles(args: ListWorkspaceFilesArgs): Promise<ListWorkspaceFilesResult>
+  /** Read one workspace file for preview: text content, or a binary/tooLarge/error marker. */
+  readWorkspaceFile(args: ReadWorkspaceFileArgs): Promise<ReadWorkspaceFileResult>
   setSecret(args: SetSecretArgs): Promise<void>
   hasSecret(provider: SetSecretArgs['provider']): Promise<boolean>
   /** Current Telegram integration status (bot, pairing, binding). */

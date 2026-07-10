@@ -4,6 +4,7 @@ import { initDb } from "./store/db";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { registerLocaleHandlers } from "./ipc/locale-handlers";
 import { registerTelegramHandlers } from "./ipc/telegram-handlers";
+import { registerFsHandlers } from "./ipc/fs-handlers";
 import { ServerClient } from "./sync/server-client";
 import { McpManager } from "./agent/mcp";
 import { AgentManager } from "./agent/agent-manager";
@@ -62,6 +63,7 @@ if (!app.requestSingleInstanceLock()) {
     createMainWindow();
     registerIpcHandlers(server, updates, agents, telegram);
     registerTelegramHandlers(telegram);
+    registerFsHandlers();
     telegram.maybeAutoStart();
     updates.start();
     createTray();
