@@ -15,9 +15,13 @@ import {
   X,
 } from "lucide-react";
 import type { Attachment, PermissionMode } from "@shared/ipc";
+import type { TodoItem } from "@shared/todo";
 import { cn } from "@/lib/utils";
 import { useChat, selectCwd } from "@/store/chat-store";
 import { useImageInputSupport } from "@/hooks/use-image-input-supported";
+import { ApprovalCard } from "./ApprovalCard";
+import { QuestionCard } from "./QuestionCard";
+import { TodoList } from "./TodoList";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -82,6 +86,45 @@ function normalizeDir(path: string): string {
   return path.replace(/\/+$/, "") || path;
 }
 
+/**
+ * The current plan: the most recent todo-bearing message's list (`todo_write`
+ * rewrites the whole plan each call). Returns the todos array by reference —
+ * it lives on a settled tool-result message, so the selector stays
+ * referentially stable across streamed tokens and doesn't re-render the
+ * composer per token.
+ */
+function selectLiveTodos(s: { messages: { todos?: TodoItem[] }[] }): TodoItem[] | null {
+  for (let i = s.messages.length - 1; i >= 0; i--) {
+    const todos = s.messages[i].todos;
+    if (todos?.length) return todos;
+  }
+  return null;
+}
+
+/**
+ * The agent's plan, docked at the top of the composer shell while the run is
+ * live (progress belongs next to where the user is watching/typing, not in a
+ * side panel). The plan is a working artifact of the run: when the turn ends
+ * the card leaves with it, and the thread just keeps its quiet "updated the
+ * plan" tool rows.
+ */
+function LivePlanCard({ todos }: { todos: TodoItem[] }): React.JSX.Element {
+  const { t } = useTranslation();
+  const done = todos.filter((x) => x.status === "completed").length;
+  return (
+    <div className="px-4 pb-1 pt-3">
+      <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{t("composer.plan")}</span>
+        <div className="flex-1" />
+        <span className="tabular-nums">
+          {done}/{todos.length}
+        </span>
+      </div>
+      <TodoList todos={todos} className="mt-2 gap-1 [&_li]:text-xs [&_li]:leading-normal" />
+    </div>
+  );
+}
+
 export function Composer(): React.JSX.Element {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -112,6 +155,15 @@ export function Composer(): React.JSX.Element {
   const workspaceLocked = useChat(
     (s) => !!s.sessions.find((x) => x.id === s.sessionId)?.workspacePath,
   );
+
+  // Interaction cards docked in the composer shell: the pending `ask` question
+  // and tool approval (each the head of its queue) and the live plan while a
+  // run is in flight.
+  const question = useChat((s) => s.questionQueue[0]);
+  const approval = useChat((s) => s.approvalQueue[0]);
+  const approvalsQueued = useChat((s) => s.approvalQueue.length - 1);
+  const liveTodos = useChat(selectLiveTodos);
+  const showPlan = running && !!liveTodos;
 
   // Publish the composer's live height so the message list can reserve matching
   // bottom space and never let content hide behind the floating composer.
@@ -221,6 +273,33 @@ export function Composer(): React.JSX.Element {
       <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
           <div className="rounded-2xl border border-border bg-muted/60">
+            {/* Interaction cards slide out of the shell above the input: plan
+                progress on top, the question card below it (closer to the input,
+                waiting on the user's next action). Question keyed per request so
+                a new ask resets the card's answer state. */}
+            {showPlan && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <LivePlanCard todos={liveTodos} />
+              </div>
+            )}
+            {question && (
+              <div
+                key={question.questionId}
+                className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+              >
+                <QuestionCard payload={question} />
+              </div>
+            )}
+            {/* Approval queue: the head renders, the rest wait behind the count
+                hint; keying by approvalId resets the Details toggle per call. */}
+            {approval && (
+              <div
+                key={approval.approvalId}
+                className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+              >
+                <ApprovalCard payload={approval} queuedCount={approvalsQueued} />
+              </div>
+            )}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 px-2 py-1.5">
                 {attachments.map((a, i) => (

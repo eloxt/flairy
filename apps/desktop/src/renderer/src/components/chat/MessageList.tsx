@@ -37,10 +37,10 @@ import {
   remarkCitations,
   SourcesList,
 } from "./Citations";
-import { ApprovalCard } from "./ApprovalCard";
+import { cardRenderers } from "./cards/renderers";
+import { ConversationNav, type NavRow } from "./ConversationNav";
 import { DiffView } from "./DiffView";
 import { MessageActions } from "./MessageActions";
-import { QuestionCard } from "./QuestionCard";
 import { Onboarding } from "./Onboarding";
 import { Announcements } from "./Announcements";
 import "streamdown/styles.css";
@@ -59,7 +59,9 @@ import { cjk } from "@streamdown/cjk";
 // These MUST stay module-level constants — do NOT compute remarkPlugins per render
 // (even via useMemo): an unstable reference resets Streamdown's stateful animation
 // plugin every commit and re-triggers the parser's setState, reproducing #185.
-const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
+// `renderers` maps ui:* code fences to structured cards (@shared/cards
+// protocol, progressive streaming render).
+const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk, renderers: cardRenderers };
 // Passing remarkPlugins REPLACES Streamdown's default set (which bundles
 // remark-gfm). Re-add gfm here or GFM tables/strikethrough/task-lists/autolinks
 // stop parsing and render as plain text. gfm goes first to match the default order.
@@ -229,8 +231,6 @@ export function MessageList({
 }: {
   messages: UiMessage[];
 }): React.JSX.Element {
-  const approvalCount = useChat((s) => s.approvalQueue.length);
-  const questionCount = useChat((s) => s.questionQueue.length);
   const compressing = useChat((s) => s.compressing);
   const running = useChat((s) => s.running);
   const sessionId = useChat((s) => s.sessionId);
@@ -314,10 +314,9 @@ export function MessageList({
     return () => clearTimeout(id);
   }, [highlightKey]);
 
-  // Pending approvals and questions render inline in the footer, so keep the
-  // list mounted whenever there's a message, an approval, OR a question to show.
-  if (messages.length === 0 && approvalCount === 0 && questionCount === 0 && !compressing)
-    return <EmptyState />;
+  // Approvals and questions live on the composer now, so only messages (or a
+  // compression in flight) keep the list mounted.
+  if (messages.length === 0 && !compressing) return <EmptyState />;
 
   // Reset the "seen" set whenever the session changes so a reopened/switched
   // thread mounts without a cascade of entrances. Rows added afterwards to the
@@ -376,9 +375,20 @@ export function MessageList({
                 />
               </MessageScrollerItem>
             ))}
-            <ApprovalFooter />
+            <ThreadFooter />
           </MessageScrollerContent>
         </MessageScrollerViewport>
+        {/* Left-edge navigation rail: one tick per user turn, click to jump.
+            Projects rows down to key + plain message so the rail stays decoupled
+            from the fold/group row machinery. */}
+        <ConversationNav
+          rows={rows.map(
+            (r): NavRow =>
+              r.kind === "msg" || r.kind === "tool"
+                ? { key: r.key, message: r.m }
+                : { key: r.key },
+          )}
+        />
         {/* Jump-to-live-edge affordance, lifted above the floating composer. */}
         <MessageScrollerButton
           direction="end"
@@ -392,15 +402,13 @@ export function MessageList({
 }
 
 /**
- * Consumes the store's queued scroll targets and drives the scroller. Lives
- * INSIDE the provider so it can call `useMessageScroller`. Two sources feed it:
- *   - `pendingScrollIndex`: a full-text search hit, located by the persisted pi
- *     message index (`sourceIndex`); falls back to the nearest preceding message
- *     row, else the top.
- *   - `pendingScrollId`: a timeline-tab jump, located by in-memory UiMessage id
- *     (works for live and replayed messages alike).
- * Both resolve to a row `key` (which is the item's `messageId`) and scroll to it;
- * a target folded inside a finished turn resolves to its `fold` row.
+ * Consumes the store's queued scroll target and drives the scroller. Lives
+ * INSIDE the provider so it can call `useMessageScroller`. Fed by
+ * `pendingScrollIndex`: a full-text search hit, located by the persisted pi
+ * message index (`sourceIndex`); falls back to the nearest preceding message
+ * row, else the top. It resolves to a row `key` (which is the item's
+ * `messageId`) and scrolls to it; a target folded inside a finished turn
+ * resolves to its `fold` row.
  * Since every row is in the DOM, `scrollToMessage` always finds its target — no
  * layout/virtualization race — but we still defer to a rAF so the scroll runs
  * after the current commit, and clear the target INSIDE the frame so clearing it
@@ -422,7 +430,6 @@ function ScrollController({
 }): null {
   const { scrollToMessage } = useMessageScroller();
   const pendingScrollIndex = useChat((s) => s.pendingScrollIndex);
-  const pendingScrollId = useChat((s) => s.pendingScrollId);
   const clearPendingScroll = useChat((s) => s.clearPendingScroll);
 
   useEffect(() => {
@@ -462,24 +469,6 @@ function ScrollController({
     scrollToMessage,
     onHighlight,
   ]);
-
-  useEffect(() => {
-    if (pendingScrollId == null || rows.length === 0) return;
-    const index = rows.findIndex((r) =>
-      rowMessages(r).some((m) => m.id === pendingScrollId),
-    );
-    if (index < 0) {
-      clearPendingScroll();
-      return;
-    }
-    const key = rows[index].key;
-    const raf = requestAnimationFrame(() => {
-      scrollToMessage(key, { align: "center" });
-      onHighlight(key);
-      clearPendingScroll();
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [pendingScrollId, rows, clearPendingScroll, scrollToMessage, onHighlight]);
 
   return null;
 }
@@ -538,31 +527,23 @@ function RowView({
 const Spacer = (): React.JSX.Element => <div className="h-6" />;
 
 /**
- * Renders any pending approval requests as inline, non-blocking cards, then
- * leaves room at the bottom so the last item clears the floating composer.
+ * Transient status rows at the thread's tail (compression, retry, thinking),
+ * plus room at the bottom so the last item clears the floating composer.
  * Height tracks the composer's live size via the `--composer-h` CSS variable it
  * publishes (falls back to 9rem before the composer has measured itself).
  */
-const ApprovalFooter = (): React.JSX.Element => {
-  const approvalQueue = useChat((s) => s.approvalQueue);
-  const questionQueue = useChat((s) => s.questionQueue);
+const ThreadFooter = (): React.JSX.Element => {
   // One PERSISTENT wrapper, deliberately not a fragment: the scroller watches
   // its content element's direct childList, and its "new anchor appeared"
-  // heuristic misfires on equal-count swaps — a transient row (thinking dots,
-  // an approval card) vanishing in the same commit a message row appears would
-  // net out to zero and jump the viewport to a historical anchor. Behind one
-  // constant div, these rows' churn is invisible to the observer.
+  // heuristic misfires on equal-count swaps — a transient row (e.g. thinking
+  // dots) vanishing in the same commit a message row appears would net out to
+  // zero and jump the viewport to a historical anchor. Behind one constant
+  // div, these rows' churn is invisible to the observer.
   return (
     <div>
       <CompressionRow />
       <RetryRow />
       <ThinkingRow />
-      {approvalQueue.map((req) => (
-        <ApprovalCard key={req.approvalId} payload={req} />
-      ))}
-      {questionQueue.map((req) => (
-        <QuestionCard key={req.questionId} payload={req} />
-      ))}
       <div style={{ height: "var(--composer-h, 9rem)" }} />
     </div>
   );

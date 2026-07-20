@@ -56,7 +56,7 @@ const en = {
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
     toolDone: 'done',
-    planUpdated: 'Updated the task plan — see the Plan tab.',
+    planUpdated: 'Updated the task plan.',
     queued: 'Queued — will steer the running task',
     openImage: 'Open image',
     imagesIgnored: "Not seen — this model can't read images",
@@ -69,17 +69,18 @@ const en = {
     retrying: 'Connection hiccup — retrying ({{attempt}}/{{max}})...',
     error: 'Error',
     copy: 'Copy',
-    copied: 'Copied'
+    copied: 'Copied',
+    cardRecommended: 'Recommended',
+    navLabel: 'Conversation navigation',
+    navImageOnly: 'Image message',
+    navImages_one: '{{count}} image',
+    navImages_other: '{{count}} images'
   },
-  /** Right-side details panel: timeline of the conversation + model info. */
+  /** Right-side details panel: model info + workspace files. */
   panel: {
     toggle: 'Details',
-    timeline: 'Timeline',
     model: 'Model',
-    plan: 'Plan',
-    timelineEmpty: 'Nothing has happened yet.',
     modelEmpty: 'No model configured.',
-    planEmpty: 'No tasks yet.',
     files: 'Files',
     filesEmpty: 'No files in this workspace yet.',
     filesTruncated: 'Showing the first {{count}} files.',
@@ -153,7 +154,9 @@ const en = {
     details: 'Details',
     deny: 'Deny',
     allowOnce: 'Allow once',
-    allowSession: 'Allow for this session'
+    allowSession: 'Allow for this session',
+    queued_one: '{{count}} more waiting',
+    queued_other: '{{count}} more waiting'
   },
   question: {
     multi: 'Choose all that apply',
@@ -163,6 +166,7 @@ const en = {
     submit: 'Submit'
   },
   composer: {
+    plan: 'Plan',
     placeholder: 'Ask Flairy to do something…',
     telegramReadOnly: 'This chat is controlled from Telegram — read-only here.',
     addImage: 'Add image',

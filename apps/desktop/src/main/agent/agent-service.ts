@@ -15,6 +15,7 @@ import {
   encodeImageDescriptions,
   stripImageDescriptions,
 } from "@shared/image-description";
+import { buildCardsPrompt, CHAT_CARD_SET, MAIN_CARD_SET } from "@shared/cards/prompt";
 import { platform } from "node:os";
 import { app } from "electron";
 import {
@@ -1361,9 +1362,9 @@ function uiLanguage(): string {
 
 /**
  * Substitute runtime context placeholders in a prompt body. Admins write
- * `{{os}}` / `{{date}}` / `{{skill}}` / `{{language}}` / `{{cwd}}` /
- * `{{model}}` / `{{version}}` in the prompt; unknown placeholders are left
- * untouched.
+ * `{{os}}` / `{{date}}` / `{{skill}}` / `{{cards}}` / `{{language}}` /
+ * `{{cwd}}` / `{{model}}` / `{{version}}` in the prompt; unknown placeholders
+ * are left untouched.
  */
 function injectContext(
   prompt: string,
@@ -1379,6 +1380,10 @@ function injectContext(
     // has no file tools, so advertising skills there would only make the agent
     // call a tool it doesn't have. Injected empty instead.
     skill: chat ? "" : buildSkillsInstructions(config),
+    // Inline-card vocabulary for the renderer's ui:* fences. Chat sessions get
+    // a trimmed set (no timeline/progress — process-state cards belong to task
+    // execution, which a lean chat session doesn't do).
+    cards: buildCardsPrompt(chat ? CHAT_CARD_SET : MAIN_CARD_SET),
     memory: buildMemoryBlock(),
     language: uiLanguage(),
     cwd,

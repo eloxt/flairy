@@ -223,13 +223,6 @@ interface ChatState {
    * consumes it via `clearPendingScroll` after scrolling.
    */
   pendingScrollIndex: number | null
-  /**
-   * A UiMessage id `MessageList` should scroll to once, set when jumping from the
-   * timeline tab (same in-memory messages, so an id matches live or replayed —
-   * unlike `pendingScrollIndex`, which needs a persisted `sourceIndex`). Null
-   * otherwise; consumed via `clearPendingScroll`.
-   */
-  pendingScrollId: string | null
 
   init: () => () => void
   loadSessions: () => Promise<SessionMeta[]>
@@ -238,8 +231,6 @@ interface ChatState {
    * that message turn; omit it for a plain open, which clears any stale target.
    */
   openSession: (meta: SessionMeta, msgIndex?: number) => Promise<void>
-  /** Queue a scroll to a message in the OPEN session by its UiMessage id. */
-  scrollToMessage: (id: string) => void
   /** Clear the queued scroll target (called by MessageList after scrolling). */
   clearPendingScroll: () => void
   /**
@@ -298,7 +289,6 @@ export const useChat = create<ChatState>((set, get) => ({
   permissionMode: 'ask',
   pendingCwd: null,
   pendingScrollIndex: null,
-  pendingScrollId: null,
   recentDirs: [],
 
   /** Subscribe to the main-process event stream. Call once on mount. */
@@ -405,9 +395,7 @@ export const useChat = create<ChatState>((set, get) => ({
     }))
   },
 
-  scrollToMessage: (id) => set({ pendingScrollId: id }),
-
-  clearPendingScroll: () => set({ pendingScrollIndex: null, pendingScrollId: null }),
+  clearPendingScroll: () => set({ pendingScrollIndex: null }),
 
   /**
    * Return to the home screen (no active session, empty thread). We deliberately
@@ -637,6 +625,14 @@ export const useChat = create<ChatState>((set, get) => ({
     })
   }
 }))
+
+// Dev-only handle so the store can be driven from the devtools console / CDP
+// (e.g. staging a question card or plan without a live model run). Stripped
+// from production builds by the DEV guard. (import.meta cast: this tsconfig
+// doesn't load vite/client types.)
+if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+  ;(window as unknown as { __chat?: typeof useChat }).__chat = useChat
+}
 
 /**
  * Mirror a runtime onto the top-level convenience fields (what components read).

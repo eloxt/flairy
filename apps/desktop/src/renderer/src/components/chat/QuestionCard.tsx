@@ -13,14 +13,17 @@ interface AnswerState {
 }
 
 /**
- * Inline, non-blocking card for an `ask` tool call. One quiet surface: the
- * question text leads (no title bar), options are chip-like rows that invert
- * to the primary fill when picked, and the free-text "other" is a bare
+ * The `ask` tool's question card, hosted on the composer's outer shell (it
+ * slides out above the input — the answer is the next thing the user types,
+ * so the question belongs where their hands already are). One quiet surface:
+ * the question text leads (no title bar), options are chip-like rows that
+ * invert to the primary fill when picked, and the free-text "other" is a bare
  * underline field. Multiple questions become a horizontal slide deck — one
  * question at a time with dot progress and back/next — instead of a long
  * vertical form. The model's turn is blocked until the user submits; submit
  * is disabled until every question has at least one ticked option or
- * non-empty custom text.
+ * non-empty custom text. The card leaves when the store drops the request
+ * from `questionQueue` on submit.
  */
 export function QuestionCard({
   payload
@@ -85,8 +88,7 @@ export function QuestionCard({
   }
 
   return (
-    <div className="animate-message-in mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
-      <div className="rounded-xl border border-border/60 bg-card p-4">
+    <div className="px-4 pb-3.5 pt-3">
         <div className="overflow-hidden">
           <div
             className="flex items-start transition-transform duration-300 ease-out motion-reduce:transition-none"
@@ -127,9 +129,13 @@ export function QuestionCard({
                           aria-pressed={checked}
                           className={cn(
                             'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors',
+                            // Unchecked rows sit on the composer's muted shell,
+                            // so they take the card surface (same nesting cue as
+                            // the input card) rather than a secondary wash that
+                            // would blend into the shell.
                             checked
                               ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary/50 hover:bg-secondary'
+                              : 'bg-card hover:bg-accent'
                           )}
                         >
                           <span className="min-w-0">
@@ -212,7 +218,6 @@ export function QuestionCard({
             )}
           </div>
         </div>
-      </div>
     </div>
   )
 }

@@ -132,6 +132,7 @@
     "streamdown": "^2.5.0",
     "tailwind-merge": "^2.6.0",
     "typebox": "^1.2.14",
+    "zod": "^4.4.3",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

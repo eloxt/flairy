@@ -53,7 +53,7 @@ const zhCN: typeof En = {
     imageCount_other: '📎 {{count}} 张图片',
     toolRunning: '正在{{tool}}…',
     toolDone: '完成',
-    planUpdated: '已更新任务计划 — 见“计划”标签页。',
+    planUpdated: '已更新任务计划。',
     queued: '已加入队列 — 将引导正在进行的任务',
     openImage: '打开图片',
     imagesIgnored: '未被读取 — 当前模型无法识别图片',
@@ -66,17 +66,18 @@ const zhCN: typeof En = {
     retrying: '连接不稳定，正在重试（{{attempt}}/{{max}}）...',
     error: '出错了',
     copy: '复制',
-    copied: '已复制'
+    copied: '已复制',
+    cardRecommended: '推荐',
+    navLabel: '会话导航',
+    navImageOnly: '图片消息',
+    navImages_one: '{{count}} 张图片',
+    navImages_other: '{{count}} 张图片'
   },
-  /** 右侧详情面板：对话时间线 + 模型信息。 */
+  /** 右侧详情面板：模型信息 + 工作目录文件。 */
   panel: {
     toggle: '详情',
-    timeline: '时间线',
     model: '模型',
-    plan: '计划',
-    timelineEmpty: '还没有任何活动。',
     modelEmpty: '未配置模型。',
-    planEmpty: '还没有任务。',
     files: '文件',
     filesEmpty: '工作目录中还没有文件。',
     filesTruncated: '仅显示前 {{count}} 个文件。',
@@ -142,7 +143,9 @@ const zhCN: typeof En = {
     details: '详情',
     deny: '拒绝',
     allowOnce: '允许一次',
-    allowSession: '本次会话允许'
+    allowSession: '本次会话允许',
+    queued_one: '还有 {{count}} 个待审批',
+    queued_other: '还有 {{count}} 个待审批'
   },
   question: {
     multi: '可多选',
@@ -152,6 +155,7 @@ const zhCN: typeof En = {
     submit: '提交'
   },
   composer: {
+    plan: '计划',
     placeholder: '让 Flairy 帮你做点什么…',
     telegramReadOnly: '此对话由 Telegram 控制，这里仅供查看。',
     addImage: '添加图片',
