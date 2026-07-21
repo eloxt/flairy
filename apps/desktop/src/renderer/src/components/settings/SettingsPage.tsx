@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Info, Send, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info, Send, SlidersHorizontal, Sparkles, TentTree } from 'lucide-react'
 import type {
   AppLanguage,
   ChatWidth,
@@ -553,8 +553,10 @@ function AboutSection(): React.JSX.Element {
   return (
     <>
       <div className="pt-4 pb-6 text-center">
-        <div className="mx-auto mb-3 grid size-16 place-items-center rounded-[15px] bg-primary font-serif text-4xl text-primary-foreground shadow-lg">
-          F
+        {/* Mini of the app icon: white squircle tile + the tent-tree mark
+            (same lucide glyph scripts/generate-icons.mjs rasterizes). */}
+        <div className="mx-auto mb-3 grid size-16 place-items-center rounded-[15px] border border-black/10 bg-white shadow-lg">
+          <TentTree className="size-10 text-black" aria-hidden />
         </div>
         <h2 className="text-[17px] font-semibold tracking-tight">Flairy</h2>
         <p className="mt-0.5 text-[12.5px] text-muted-foreground">{t('settings.appTagline')}</p>

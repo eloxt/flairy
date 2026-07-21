@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { TentTree } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
@@ -43,8 +44,8 @@ export function AuthScreen(): React.JSX.Element {
       <div className="app-no-drag w-full max-w-sm">
         {/* Wordmark */}
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
-            <span className="font-serif text-xl leading-none">F</span>
+          <div className="flex size-11 items-center justify-center rounded-xl border border-black/10 bg-white text-black">
+            <TentTree className="size-6" aria-hidden />
           </div>
           <div className="text-center">
             <h1 className="text-base font-semibold tracking-tight">Flairy</h1>
