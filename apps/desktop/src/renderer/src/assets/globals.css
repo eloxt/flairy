@@ -142,7 +142,10 @@
     --chart-4: oklch(0.75 0 0);
     --chart-5: oklch(0.85 0 0);
 
-    /* Opaque fallback (non-vibrant windows). */
+    /* Opaque fallback (non-vibrant windows). --sidebar-solid keeps this tone
+       available even under .vibrancy, for surfaces that must stay opaque
+       (e.g. the mobile sheet sidebar overlaying the chat). */
+    --sidebar-solid: oklch(0.975 0 0);
     --sidebar: oklch(0.975 0 0);
     --sidebar-foreground: oklch(0.28 0 0);
     --sidebar-primary: oklch(0.21 0 0);
@@ -202,6 +205,7 @@
     --chart-5: oklch(0.42 0 0);
 
     /* Opaque fallback (non-vibrant windows). */
+    --sidebar-solid: oklch(0.135 0 0);
     --sidebar: oklch(0.135 0 0);
     --sidebar-foreground: oklch(0.86 0 0);
     --sidebar-primary: oklch(0.95 0 0);
@@ -221,7 +225,9 @@
    desktop blurs through them just like a native sidebar. The chat surface stays
    opaque (painted in the layout), so only the rails are translucent.          */
 :root.vibrancy {
-    --sidebar: oklch(0.97 0 0 / 0.7);
+    /* Slightly more see-through than before so the inset panel's gutter reads
+       as a distinct frosted band instead of merging into the white panel. */
+    --sidebar: oklch(0.96 0 0 / 0.62);
     --sidebar-border: oklch(0 0 0 / 8%);
 }
 /* The tint must carry the contrast on its own: the native backdrop behind a
@@ -234,6 +240,19 @@
 }
 .vibrancy body {
     background: transparent;
+}
+
+/* Inset sidebar: the provider wrapper already paints bg-sidebar across the whole
+   backdrop, so keep the rail itself transparent — otherwise the translucent
+   vibrancy tint stacks twice on the rail and it reads darker than the gutter. */
+[data-slot='sidebar'][data-variant='inset'] [data-slot='sidebar-inner'] {
+    background: transparent;
+}
+
+/* The mobile sidebar is a sheet OVERLAYING the chat, so it must not inherit the
+   frosted rails' translucent --sidebar: force the opaque tone back. */
+[data-slot='sidebar'][data-mobile='true'] {
+    background-color: var(--sidebar-solid);
 }
 
 @layer base {

@@ -150,9 +150,10 @@ export function AppSidebar(): React.JSX.Element {
   };
 
   return (
-    // No right border: the frosted rail is separated from the chat surface by the
-    // seam shadow alone. `!` overrides the ui sidebar's default left-side border-r.
-    <Sidebar className="border-r-0!">
+    // Inset variant: the rail blends into the wrapper's bg-sidebar backdrop and
+    // the chat surface floats as a rounded panel (SidebarInset) beside it.
+    // px-1 narrows the rail's own side gutters (the container default is p-2).
+    <Sidebar variant="inset" className="px-1">
       <SidebarHeader className={cn("app-drag gap-2 px-3 pb-2", isMac ? "pt-11" : "pt-2")}>
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
@@ -171,7 +172,7 @@ export function AppSidebar(): React.JSX.Element {
             <SidebarMenuButton
               render={<NavLink to="/search" />}
               isActive={onSearch}
-              className="app-no-drag h-9 rounded-lg"
+              className="app-no-drag h-9 rounded-lg cursor-default"
             >
               <Search className="size-4" />
               <span>{t('chat.search')}</span>

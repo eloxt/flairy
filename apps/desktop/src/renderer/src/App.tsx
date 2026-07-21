@@ -7,6 +7,7 @@ import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
 import { useUi } from "@/store/ui-store";
 import { AppSidebar } from "@/components/AppSidebar";
+import { ProgressiveBlur } from "@/components/ProgressiveBlur";
 import { MessageList } from "@/components/chat/MessageList";
 import { Composer } from "@/components/chat/Composer";
 import { RightPanel } from "@/components/chat/RightPanel";
@@ -98,7 +99,7 @@ function AppLayout(): React.JSX.Element {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="relative z-10 min-w-0 bg-transparent">
+      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-md! m-2!">
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
@@ -111,19 +112,18 @@ function ChatView(): React.JSX.Element {
   return (
     // A flex row: the chat column fills the space and the details drawer sits to
     // its right, reaching the very top like the left sidebar (header is inside
-    // the chat column only).
-    // The seam shadow lives on THIS overflow-hidden row, not the chat column: an
-    // element's own box-shadow isn't clipped by its own overflow, but a child's
-    // would be. z-10 keeps it above the fixed sidebar so the shadow lands on the
-    // frosted rail. The right panel reveals vibrancy, so the row stays transparent
-    // (no bg here) — only the chat column paints the opaque chat surface.
-    <div className="relative z-10 flex flex-1 overflow-hidden shadow-[-4px_0_12px_-8px_var(--rail-shadow)]">
+    // the chat column only). The inset SidebarInset panel carries the elevation
+    // (rounded corners + shadow), so no seam shadow is needed here; the row stays
+    // transparent — the chat column and right panel each paint their own surface.
+    <div className="relative z-10 flex flex-1 overflow-hidden">
       <div
         data-chat-column
         className="relative z-10 flex min-w-0 flex-1 flex-col bg-background"
       >
-        <ChatHeader />
+        {/* The header floats over the thread (like the composer at the bottom):
+            messages scroll underneath it, fading out through its blur gradient. */}
         <div className="relative flex-1 overflow-hidden">
+          <ChatHeader />
           <MessageList messages={messages} />
           <Composer />
         </div>
@@ -153,11 +153,27 @@ function ChatHeader(): React.JSX.Element {
   return (
     <header
       className={cn(
-        "app-drag flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-4",
+        "app-drag absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2.5 pr-4",
         !isMobile ? "transition-[padding] duration-200 ease-linear" : "",
         isMac && (collapsed || isMobile) ? "pl-20" : "pl-3",
       )}
     >
+      {/* No divider: a progressive blur (stacked backdrop-filter layers, blur
+          ramping up toward the top) plus a soft tint for text contrast.
+          right-2.5 keeps it off the viewport's 10px scrollbar gutter (classic,
+          not overlay — content never paints there, so no seam) so the thumb
+          isn't blurred when it sits near the top. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-0 right-2.5 top-0 -bottom-8 -z-10"
+      >
+        <ProgressiveBlur
+          direction="top"
+          blurIntensity={1}
+          className="absolute inset-0"
+        />
+        <div className="absolute inset-0 bg-linear-to-b from-background/90 via-background/40 to-transparent" />
+      </div>
       <SidebarTrigger className="app-no-drag -ml-0.5 text-muted-foreground hover:text-foreground" />
       <div className="flex min-w-0 flex-1 items-baseline gap-2 leading-none">
         <span className="truncate text-[0.9rem] font-semibold tracking-tight">

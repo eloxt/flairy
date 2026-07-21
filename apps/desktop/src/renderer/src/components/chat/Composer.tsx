@@ -272,7 +272,7 @@ export function Composer(): React.JSX.Element {
     >
       <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
-          <div className="rounded-2xl border border-border bg-muted/60">
+          <div className="rounded-lg border border-border bg-muted/60">
             {/* Interaction cards slide out of the shell above the input: plan
                 progress on top, the question card below it (closer to the input,
                 waiting on the user's next action). Question keyed per request so
@@ -301,11 +301,11 @@ export function Composer(): React.JSX.Element {
               </div>
             )}
             {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-2 py-1.5">
+              <div className="flex flex-wrap gap-2 p-1.5">
                 {attachments.map((a, i) => (
                   <div
                     key={i}
-                    className="group/att relative flex items-center gap-2.5 rounded-xl border border-border bg-card p-1.5 pr-8"
+                    className="group/att relative flex items-center gap-2.5 rounded-lg border border-border bg-card p-1.5 pr-8"
                   >
                     <img
                       src={`data:${a.attachment.mimeType};base64,${a.attachment.data}`}
@@ -350,7 +350,7 @@ export function Composer(): React.JSX.Element {
               </div>
             )}
 
-            <div className="group relative -m-px flex flex-col rounded-2xl border border-foreground/15 bg-card shadow-xs transition-colors focus-within:border-foreground/25">
+            <div className="group relative -m-px flex flex-col rounded-lg border border-foreground/15 bg-background shadow-xs transition-colors focus-within:border-foreground/25">
             <textarea
               ref={taRef}
               value={text}

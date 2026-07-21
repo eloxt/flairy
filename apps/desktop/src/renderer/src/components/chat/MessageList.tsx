@@ -343,7 +343,9 @@ export function MessageList({
           {/* gap-0: rows carry their own vertical rhythm via per-row padding, so
               the container must not add the primitive's default gap between them. */}
           <MessageScrollerContent className="gap-0">
-            <Spacer />
+            {/* Taller than the usual spacer: clears the floating header so the
+                first row starts below its blur fade. */}
+            <div className="h-16 shrink-0" />
             {rows.map((row) => (
               <MessageScrollerItem
                 key={row.key}
@@ -524,7 +526,6 @@ function RowView({
   );
 }
 
-const Spacer = (): React.JSX.Element => <div className="h-6" />;
 
 /**
  * Transient status rows at the thread's tail (compression, retry, thinking),
@@ -630,7 +631,7 @@ function ThinkingRow(): React.JSX.Element | null {
 function EmptyState(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="absolute inset-0 flex flex-col overflow-y-auto px-6 py-8">
+    <div className="absolute inset-0 flex flex-col overflow-y-auto px-6 pb-8 pt-16">
       {/* Announcements pinned to the top, matching the composer's content width. */}
       <div className="mx-auto w-full max-w-(--chat-width)">
         <Announcements />
@@ -713,7 +714,7 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
             </span>
           )}
           {m.text && (
-            <div className="max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
+            <div className="max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
               {m.text}
             </div>
           )}
