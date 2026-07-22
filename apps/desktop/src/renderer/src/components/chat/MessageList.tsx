@@ -811,11 +811,70 @@ function ReasoningStatus(): React.JSX.Element {
 }
 
 /**
+ * Wrap a tool payload as a fenced markdown code block so it can be rendered by
+ * the same {@link Streamdown} code plugin (Shiki) the assistant's code fences
+ * use — one highlighter, one look. JSON is pretty-printed and tagged `json`;
+ * anything else renders as plain `text`. The fence is grown longer than any
+ * backtick run in the payload so tool output containing ``` can't close it early.
+ */
+function asCodeBlock(text: string): string {
+  let lang = "text"
+  let body = text
+  const trimmed = text.trim()
+  if (/^[[{]/.test(trimmed) && /[\]}]$/.test(trimmed) && trimmed.length < 100000) {
+    try {
+      body = JSON.stringify(JSON.parse(trimmed), null, 2)
+      lang = "json"
+    } catch {
+      /* not valid JSON — keep as plain text */
+    }
+  }
+  const longest =
+    body.match(/`+/g)?.reduce((n, s) => Math.max(n, s.length), 0) ?? 0
+  const fence = "`".repeat(Math.max(3, longest + 1))
+  return `${fence}${lang}\n${body}\n${fence}`
+}
+
+/**
+ * A framed code block for the expanded tool detail — its arguments or result.
+ * Delegates to {@link Streamdown} (with `STREAMDOWN_PLUGINS`) so the card,
+ * Shiki highlighting and copy button match the assistant's code blocks; capped
+ * in height with its own scroll for long payloads.
+ */
+function CodeCard({ text }: { text: string }): React.JSX.Element {
+  return (
+    <div className="max-h-60 overflow-auto">
+      <Streamdown plugins={STREAMDOWN_PLUGINS} className="text-xs">
+        {asCodeBlock(text)}
+      </Streamdown>
+    </div>
+  )
+}
+
+/** A labeled section — "Arguments" / "Result" — in the expanded tool detail. */
+function ToolDetailSection({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        {label}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/**
  * One tool call: a low-intrusion single line built on {@link Marker} (a status /
  * system-note row) — tool name + a status icon, collapsed by default; click to
- * reveal the raw output. The presentational unit shared by a standalone call
- * (`SingleTool`) and the members of a `ToolGroup`, so a lone call and a grouped
- * one read identically. The Marker is rendered as the disclosure `<button>`.
+ * reveal the arguments and result. The presentational unit shared by a standalone
+ * call (`SingleTool`) and the members of a `ToolGroup`, so a lone call and a
+ * grouped one read identically. The Marker is rendered as the disclosure `<button>`.
  */
 function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
@@ -850,16 +909,18 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
         {m.diffPatch ? (
           <DiffView patch={m.diffPatch} />
         ) : (
-          <pre
-            className={cn(
-              "mt-1 max-h-56 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed",
-              m.isError
-                ? "border-destructive/30 text-destructive"
-                : "border-border text-muted-foreground",
+          <div className="mt-2 space-y-3 pb-1">
+            {m.toolArgs && (
+              <ToolDetailSection label={t("chat.toolArguments")}>
+                <CodeCard text={m.toolArgs} />
+              </ToolDetailSection>
             )}
-          >
-            {m.text}
-          </pre>
+            {m.text.trim() && (
+              <ToolDetailSection label={t("chat.toolResult")}>
+                <CodeCard text={m.text} />
+              </ToolDetailSection>
+            )}
+          </div>
         )}
       </CollapsibleContent>
     </Collapsible>

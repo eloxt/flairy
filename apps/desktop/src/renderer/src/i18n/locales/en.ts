@@ -56,6 +56,8 @@ const en = {
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
     toolDone: 'done',
+    toolArguments: 'Arguments',
+    toolResult: 'Result',
     planUpdated: 'Updated the task plan.',
     queued: 'Queued — will steer the running task',
     openImage: 'Open image',

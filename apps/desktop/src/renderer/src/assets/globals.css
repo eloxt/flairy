@@ -327,6 +327,70 @@
 
 }
 
+/* ── Streamdown surfaces ── */
+
+/* 代码块 / mermaid：外层即容器——单层细边框 + 8px 圆角 */
+[data-streamdown="code-block"],
+[data-streamdown="mermaid-block"] {
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: var(--radius);
+    background-color: var(--background);
+}
+
+/* 语言标签行 → 带分隔线的标题栏 */
+[data-streamdown="code-block"] > div:first-child,
+[data-streamdown="mermaid-block"] > div:first-child {
+    padding: 0 0.75rem;
+    background-color: var(--sidebar);
+    border-bottom: 1px solid var(--border);
+}
+
+/* 内层内容盒去掉第二圈边框与圆角 */
+[data-streamdown="code-block-body"],
+[data-streamdown="mermaid-block"] > div:last-child {
+    border: 0;
+    border-radius: 0;
+}
+
+/*
+* 复制等按钮：原设计是 sticky 悬浮在代码上方的胶囊卡片。改为静态嵌入标题栏——
+* 原 -mt-10 是按外层 p-2 + gap-2 算的，压平后重新对齐到 h-8 标题栏。
+*/
+[data-streamdown="code-block"] > div:has([data-streamdown="code-block-actions"]),
+[data-streamdown="mermaid-block"] > div:has([data-streamdown="mermaid-block-actions"]) {
+    position: static;
+    margin-top: calc(-2rem - 1px);
+    padding-right: 0.5rem;
+}
+
+/* 去掉胶囊壳（底色/边框/内边距/毛玻璃），缩小图标，融入标题栏 */
+[data-streamdown="code-block-actions"],
+[data-streamdown="mermaid-block-actions"] {
+    gap: 0.25rem;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    backdrop-filter: none;
+}
+[data-streamdown="code-block-actions"] svg,
+[data-streamdown="mermaid-block-actions"] svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+/* 表格：去掉外层灰底粗框，只留内层单边框滚动容器（操作按钮行靠 gap 悬在框外） */
+[data-streamdown="table-wrapper"] {
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+}
+[data-streamdown="table-wrapper"] > div:last-child {
+    border-radius: var(--radius);
+}
+
+
 /* Respect a reader's reduced-motion preference: drop the decorative message
    entrance / rise-in animations. Rows render straight to their resting state;
    layout and scroll behaviour are unchanged. (The thinking bob is left as the

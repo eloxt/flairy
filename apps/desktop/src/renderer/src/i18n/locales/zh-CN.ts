@@ -53,6 +53,8 @@ const zhCN: typeof En = {
     imageCount_other: '📎 {{count}} 张图片',
     toolRunning: '正在{{tool}}…',
     toolDone: '完成',
+    toolArguments: '参数',
+    toolResult: '结果',
     planUpdated: '已更新任务计划。',
     queued: '已加入队列 — 将引导正在进行的任务',
     openImage: '打开图片',

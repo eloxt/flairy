@@ -17,7 +17,7 @@ import {
 } from '@shared/web-search'
 import { parseTodos, type TodoItem } from '@shared/todo'
 import { stripImageDescriptions } from '@shared/image-description'
-import { toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
+import { formatToolArgs, toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
 import i18n from '@/i18n'
 
 /** A rendered chat message in the UI (distinct from pi's internal messages). */
@@ -67,6 +67,13 @@ export interface UiMessage {
    * `toolArgSummary` from the same args on both the live stream and replay.
    */
   toolArg?: string
+  /**
+   * For `tool` messages: the full call arguments, pretty-printed as JSON, shown
+   * in the expanded detail's "Arguments" card. Derived by `formatToolArgs` on
+   * both the live stream and replay. Purely presentational — never sent to the
+   * model.
+   */
+  toolArgs?: string
   /**
    * For a `web_search` tool message: the parsed result sources. The assistant's
    * inline `[n]` citation chips resolve against these and the Sources footer
@@ -877,6 +884,7 @@ function applyEvent(
             text: i18n.t('chat.toolRunning', { tool: i18n.t(toolDisplayKey(e.name)) }),
             running: true,
             toolArg: toolArgSummary(e.name, e.args),
+            toolArgs: formatToolArgs(e.args),
             batchId: rt.liveBatchId ?? e.toolCallId,
             timestamp: Date.now()
           }
@@ -1066,6 +1074,7 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
               toolName: call.name,
               text: '',
               toolArg: toolArgSummary(call.name, call.arguments),
+              toolArgs: formatToolArgs(call.arguments),
               batchId
             }
             toolBubbles.set(call.id, bubble)

@@ -91,3 +91,22 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
       return undefined
   }
 }
+
+/**
+ * The full argument object of a tool call, pretty-printed as JSON for the
+ * expanded detail's "Arguments" card. Returns `undefined` when there's nothing
+ * worth showing (no args, or an empty object) so the card is skipped. Called
+ * from both the live stream (`tool_execution_start.args`) and replay (a pi
+ * `toolCall` part's `arguments`), so a watched run and its reload render the
+ * same. Purely presentational — never sent to the model.
+ */
+export function formatToolArgs(args: unknown): string | undefined {
+  if (args == null) return undefined
+  if (typeof args === 'string') return args.trim() || undefined
+  try {
+    const json = JSON.stringify(args, null, 2)
+    return json && json !== '{}' && json !== 'null' ? json : undefined
+  } catch {
+    return undefined
+  }
+}
