@@ -139,7 +139,7 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
             type: 'auto',
             contents: {
               text: { maxCharacters: 800 },
-              highlights: { numSentences: 2, highlightsPerUrl: 2 }
+              highlights: true
             }
           })
         })

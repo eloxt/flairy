@@ -72,9 +72,8 @@ Returns: Clean text content and metadata from the page(s).`,
             'x-api-key': cfg.apiKey
           },
           body: JSON.stringify({
-            urls: [u],
-            text: { maxCharacters: MAX_CHARACTERS },
-            livecrawl: 'fallback'
+            ids: [u],
+            text: { maxCharacters: MAX_CHARACTERS }
           })
         })
       } catch (err) {
