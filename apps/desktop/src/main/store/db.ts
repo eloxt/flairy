@@ -3,7 +3,7 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
-import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth } from '@shared/ipc'
+import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode } from '@shared/ipc'
 import { t } from '../locale'
 
 /**
@@ -57,6 +57,15 @@ export function initDb(): void {
       id        INTEGER PRIMARY KEY CHECK (id = 0),
       blob      BLOB NOT NULL,
       version   INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    -- User-authored LOCAL config for "detached" mode (Advanced settings). Single
+    -- row (id = 0). The blob is the local config bundle JSON ENCRYPTED via
+    -- safeStorage (it carries LLM/MCP/service secrets) — never plaintext. Kept
+    -- separate from config_cache so switching modes never clobbers the other.
+    CREATE TABLE IF NOT EXISTS local_config (
+      id        INTEGER PRIMARY KEY CHECK (id = 0),
+      blob      BLOB NOT NULL,
       updatedAt INTEGER NOT NULL
     );
     -- Recently-used working directories for the composer's directory menu.
@@ -208,6 +217,27 @@ export function clearConfigBlob(): void {
   db.prepare('DELETE FROM config_cache WHERE id = 0').run()
 }
 
+/** Persist the encrypted local-config bundle blob (singleton row). */
+export function saveLocalConfigBlob(blob: Buffer): void {
+  db.prepare(
+    `INSERT INTO local_config (id, blob, updatedAt) VALUES (0, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET blob = excluded.blob, updatedAt = excluded.updatedAt`
+  ).run(blob, Date.now())
+}
+
+/** Read the encrypted local-config bundle blob, or undefined if none saved. */
+export function loadLocalConfigBlob(): Buffer | undefined {
+  const row = db.prepare('SELECT blob FROM local_config WHERE id = 0').get() as
+    | { blob: Buffer }
+    | undefined
+  return row?.blob
+}
+
+/** Drop the saved local config (e.g. on sign-out). */
+export function clearLocalConfigBlob(): void {
+  db.prepare('DELETE FROM local_config WHERE id = 0').run()
+}
+
 /** Read a local setting value, or undefined if the key was never set. */
 export function getSetting(key: string): string | undefined {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
@@ -244,6 +274,28 @@ export function getChatWidthPref(): ChatWidth {
 
 export function setChatWidthPref(value: ChatWidth): void {
   setSetting('chatWidth', value)
+}
+
+/**
+ * Advanced-settings unlock flag. Hidden by default: the tab only appears after
+ * the user taps the version number 10× (persisted so it stays revealed). Only an
+ * explicit '1' unlocks it.
+ */
+export function getAdvancedUnlockedPref(): boolean {
+  return getSetting('advancedUnlocked') === '1'
+}
+
+export function setAdvancedUnlockedPref(value: boolean): void {
+  setSetting('advancedUnlocked', value ? '1' : '0')
+}
+
+/** Config source. Defaults to 'server'; 'local' means the detached/offline mode. */
+export function getConfigModePref(): ConfigMode {
+  return getSetting('configMode') === 'local' ? 'local' : 'server'
+}
+
+export function setConfigModePref(value: ConfigMode): void {
+  setSetting('configMode', value)
 }
 
 export function createSession({ title, cwd, workspacePath }: CreateSessionArgs): SessionMeta {

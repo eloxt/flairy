@@ -16,13 +16,16 @@ import {
   type SessionRemotePayload,
   type SessionUpsertPayload,
   type SessionWithMessages,
+  type SkillConfig,
   type SkillSummary,
   type SocketAuth
 } from '@flairy/shared'
 import { getAuthToken } from '../store/secrets'
 import { saveCachedConfig, loadCachedConfig, clearCachedConfig } from '../store/config-cache'
-import { materializeSkills } from '../agent/skill-materializer'
-import type { SocketConnectionStatus } from '@shared/ipc'
+import { getConfigModePref, setConfigModePref } from '../store/db'
+import { loadLocalConfig, clearLocalConfig, type LocalConfigBundle } from '../store/local-config'
+import { materializeSkills, materializeLocalSkills } from '../agent/skill-materializer'
+import type { ConfigMode, SocketConnectionStatus } from '@shared/ipc'
 
 /**
  * Where to reach the Flairy server.
@@ -74,11 +77,24 @@ export class ServerClient {
   private socketStatus: SocketConnectionStatus = 'disconnected'
   /** JWT used for the active socket; reused for REST skill materialization. */
   private token: string | undefined
+  /**
+   * Config source. In `local` mode the socket stays closed and getConfig()
+   * returns the user-authored `localConfig` instead of the server snapshot.
+   */
+  private configMode: ConfigMode = 'server'
+  /** User-authored local config (detached mode); its skills are summaries. */
+  private localConfig: ConfigSnapshot | null = null
+  /** Full local skills, materialized to disk when local mode is active. */
+  private localSkills: SkillConfig[] = []
 
   constructor() {
     // Seed from the encrypted on-disk cache so the client is usable before the
     // server delivers a fresh snapshot (and through a server outage entirely).
     this.config = loadCachedConfig()
+    this.configMode = getConfigModePref()
+    const local = loadLocalConfig()
+    this.localConfig = local?.config ?? null
+    this.localSkills = local?.skills ?? []
   }
 
   /** Open the socket using a previously obtained JWT. Idempotent-ish: reconnects. */
@@ -208,23 +224,106 @@ export class ServerClient {
   /**
    * Forget the current config entirely (sign-out): drop the in-memory snapshot
    * and the encrypted on-disk cache so no stale config survives the next launch.
-   * Kept separate from disconnect(), which fires on every reconnect.
+   * Also drops any local config and resets to server mode — a signed-out machine
+   * keeps no secrets. Kept separate from disconnect(), which fires on reconnect.
    */
   clearConfig(): void {
     this.config = null
     clearCachedConfig()
+    this.localConfig = null
+    this.localSkills = []
+    clearLocalConfig()
+    this.configMode = 'server'
+    setConfigModePref('server')
   }
 
-  /** Latest full config, or null until the server delivers the first snapshot. */
-  getConfig(): ConfigSnapshot | null {
+  /** The config consumers should read, honoring the active mode. */
+  private effectiveConfig(): ConfigSnapshot | null {
+    return this.configMode === 'local' ? this.localConfig : this.config
+  }
+
+  /**
+   * The latest SERVER-pushed snapshot regardless of mode (real secrets). Used to
+   * seed the local-config editor and to resolve masked secrets on save. Distinct
+   * from getConfig(), which returns the effective (possibly local) config.
+   */
+  getServerConfig(): ConfigSnapshot | null {
     return this.config
   }
 
-  /** Subscribe to config changes. Fires immediately if a snapshot already exists. */
+  /** The JWT for REST calls (socket token, else the stored one). */
+  getToken(): string | undefined {
+    return this.token ?? getAuthToken()
+  }
+
+  /** Latest effective config, or null until one is available for the active mode. */
+  getConfig(): ConfigSnapshot | null {
+    return this.effectiveConfig()
+  }
+
+  /** Subscribe to config changes. Fires immediately if a config already exists. */
   onConfig(cb: ConfigListener): () => void {
     this.configListeners.add(cb)
-    if (this.config) cb(this.config)
+    const cfg = this.effectiveConfig()
+    if (cfg) cb(cfg)
     return () => this.configListeners.delete(cb)
+  }
+
+  /** Current config source (server ↔ local). */
+  getConfigMode(): ConfigMode {
+    return this.configMode
+  }
+
+  /**
+   * Switch config source. `local` closes the socket (fully offline) and applies
+   * the user-authored config; `server` reconnects with the stored token and
+   * re-adopts the pushed config. Persists the choice and re-emits so every
+   * consumer (agent model/prompt/tools, MCP) re-applies from the new source.
+   */
+  setConfigMode(mode: ConfigMode): void {
+    if (this.configMode === mode) return
+    this.configMode = mode
+    setConfigModePref(mode)
+    if (mode === 'local') {
+      this.disconnect()
+      this.emitConfig()
+      void materializeLocalSkills(this.localSkills).catch((err) =>
+        console.error('[server-client] local skill materialization failed:', err)
+      )
+    } else {
+      this.emitConfig()
+      const token = this.token ?? getAuthToken()
+      if (token) this.connect(token)
+    }
+  }
+
+  /**
+   * Replace the user-authored local config and, if local mode is active, apply
+   * it live (re-emit + re-materialize skills). Called after the user saves edits
+   * in Advanced settings. The bundle is persisted by the caller.
+   */
+  updateLocalConfig(bundle: LocalConfigBundle): void {
+    this.localConfig = bundle.config
+    this.localSkills = bundle.skills
+    if (this.configMode === 'local') {
+      this.emitConfig()
+      void materializeLocalSkills(this.localSkills).catch((err) =>
+        console.error('[server-client] local skill materialization failed:', err)
+      )
+    }
+  }
+
+  /**
+   * If launched in local mode, apply the saved local config once at startup
+   * (emit + materialize). Server mode is driven by the socket instead. Call after
+   * listeners are wired but before/instead of the server auto-connect.
+   */
+  activateLocalMode(): void {
+    if (this.configMode !== 'local') return
+    this.emitConfig()
+    void materializeLocalSkills(this.localSkills).catch((err) =>
+      console.error('[server-client] local skill materialization failed:', err)
+    )
   }
 
   /** Current socket.io connection status for renderer indicators. */
@@ -290,8 +389,9 @@ export class ServerClient {
   }
 
   private emitConfig(): void {
-    if (!this.config) return
-    for (const cb of this.configListeners) cb(this.config)
+    const cfg = this.effectiveConfig()
+    if (!cfg) return
+    for (const cb of this.configListeners) cb(cfg)
   }
 
   private setSocketStatus(status: SocketConnectionStatus): void {

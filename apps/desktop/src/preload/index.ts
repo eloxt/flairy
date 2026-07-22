@@ -3,6 +3,7 @@ import {
   IPC,
   type AppLanguage,
   type ChatWidth,
+  type ConfigMode,
   type FlairyApi,
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
@@ -76,6 +77,12 @@ const api: FlairyApi = {
   setCloseToTray: (v) => ipcRenderer.invoke(IPC.SettingsSetCloseToTray, v),
   getChatWidth: () => ipcRenderer.invoke(IPC.SettingsGetChatWidth),
   setChatWidth: (w) => ipcRenderer.invoke(IPC.SettingsSetChatWidth, w),
+  getAdvancedUnlocked: () => ipcRenderer.invoke(IPC.AdvancedGetUnlocked),
+  setAdvancedUnlocked: (v) => ipcRenderer.invoke(IPC.AdvancedSetUnlocked, v),
+  getConfigMode: () => ipcRenderer.invoke(IPC.ConfigGetMode),
+  setConfigMode: (mode) => ipcRenderer.invoke(IPC.ConfigSetMode, mode),
+  getLocalConfig: () => ipcRenderer.invoke(IPC.LocalConfigGet),
+  saveLocalConfig: (draft) => ipcRenderer.invoke(IPC.LocalConfigSave, draft),
 
   onAgentEvent: (cb) => {
     const listener = (_e: unknown, env: AgentEventEnvelope): void => cb(env)
@@ -131,6 +138,16 @@ const api: FlairyApi = {
     const listener = (_e: unknown, w: ChatWidth): void => cb(w)
     ipcRenderer.on(IPC.ChatWidthChanged, listener)
     return () => ipcRenderer.removeListener(IPC.ChatWidthChanged, listener)
+  },
+  onAdvancedUnlockedChanged: (cb) => {
+    const listener = (_e: unknown, unlocked: boolean): void => cb(unlocked)
+    ipcRenderer.on(IPC.AdvancedUnlockedChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.AdvancedUnlockedChanged, listener)
+  },
+  onConfigModeChanged: (cb) => {
+    const listener = (_e: unknown, mode: ConfigMode): void => cb(mode)
+    ipcRenderer.on(IPC.ConfigModeChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.ConfigModeChanged, listener)
   },
   onUpdateAvailable: (cb) => {
     const listener = (_e: unknown, info: UpdateInfo): void => cb(info)

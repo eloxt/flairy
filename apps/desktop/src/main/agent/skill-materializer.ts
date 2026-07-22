@@ -122,6 +122,83 @@ export async function materializeSkills(
 }
 
 /**
+ * Materialize FULL skills authored locally ("detached" mode) — no server, no
+ * REST. Bodies and file bytes come straight from the passed {@link SkillConfig}
+ * rows (inline `text`/`dataurl` sources only; `url`/`upload` need a server and
+ * are skipped with a warning). Reconciles disk + manifest the same way as the
+ * server path so switching modes cleanly replaces the other mode's skills.
+ */
+export async function materializeLocalSkills(skills: SkillConfig[]): Promise<void> {
+  const enabled = skills.filter((s) => s.enabled)
+  const manifest = new Map(readManifest().map((e) => [e.id, e]))
+
+  // Remove skills that are gone or no longer enabled (disk + manifest).
+  const keepIds = new Set(enabled.map((s) => s.id))
+  for (const entry of [...manifest.values()]) {
+    if (!keepIds.has(entry.id)) {
+      await rmDir(skillDir(entry.name))
+      manifest.delete(entry.id)
+    }
+  }
+
+  for (const skill of enabled) {
+    const prev = manifest.get(skill.id)
+    // Re-materialize on any change (locally edited skills always bump updatedAt).
+    if (prev && prev.updatedAt === skill.updatedAt && prev.enabled && prev.name === skill.name) {
+      continue
+    }
+    try {
+      if (prev && prev.name !== skill.name) await rmDir(skillDir(prev.name))
+      await writeLocalSkill(skill)
+      manifest.set(skill.id, {
+        id: skill.id,
+        name: skill.name,
+        enabled: skill.enabled,
+        updatedAt: skill.updatedAt
+      })
+    } catch (err) {
+      console.error(`[skill-materializer] failed to materialize local "${skill.name}":`, err)
+    }
+  }
+
+  writeManifest([...manifest.values()])
+}
+
+/** Write SKILL.md + inline files for a locally-authored skill (no fetch). */
+async function writeLocalSkill(skill: SkillConfig): Promise<void> {
+  const dir = skillDir(skill.name)
+  await rmDir(dir)
+  await mkdir(dir, { recursive: true })
+
+  const skillMd = `${composeFrontmatter(skill)}\n\n${skill.skillMdBody}`
+  await writeFile(join(dir, 'SKILL.md'), skillMd, 'utf8')
+
+  for (const file of skill.files) {
+    try {
+      let bytes: Buffer
+      if (file.sourceType === 'text') {
+        bytes = Buffer.from(file.content ?? '', 'utf8')
+      } else if (file.sourceType === 'dataurl') {
+        const base64 = file.dataurl ? file.dataurl.split(',', 2)[1] ?? '' : ''
+        bytes = Buffer.from(base64, 'base64')
+      } else {
+        // url/upload need a server to fetch from — unsupported offline.
+        console.warn(
+          `[skill-materializer] local skill "${skill.name}" file "${file.path}" ` +
+            `source "${file.sourceType}" needs a server; skipped`
+        )
+        continue
+      }
+      const dest = join(dir, file.path)
+      await mkdir(dirname(dest), { recursive: true })
+      await writeFile(dest, bytes)
+    } catch (err) {
+      console.error(`[skill-materializer] local skill "${skill.name}" file "${file.path}" failed:`, err)
+    }
+  }
+}
+
+/**
  * List the skills that are ENABLED and actually materialized on disk (their
  * SKILL.md exists). Used to build the `<skills_instructions>` block in the
  * system prompt: progressive disclosure means we only advertise a skill's
@@ -137,6 +214,28 @@ export function listMaterializedSkills(): Array<{ id: string; name: string }> {
 
 async function rmDir(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true })
+}
+
+/**
+ * Fetch the FULL skill (body + files) for each summary over REST. Used to seed
+ * the local-config editor from the current server config. Best-effort: a failed
+ * fetch is logged and skipped; an empty array is returned without a token.
+ */
+export async function fetchFullSkills(
+  summaries: SkillSummary[],
+  token: string | undefined,
+  baseUrl: string
+): Promise<SkillConfig[]> {
+  if (!token) return []
+  const out: SkillConfig[] = []
+  for (const summary of summaries) {
+    try {
+      out.push(await fetchSkill(summary.id, token, baseUrl))
+    } catch (err) {
+      console.error(`[skill-materializer] failed to fetch skill "${summary.name}":`, err)
+    }
+  }
+  return out
 }
 
 /** GET /api/skills/:id with the user JWT → full SkillConfig (files included). */

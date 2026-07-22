@@ -13,6 +13,7 @@ import type {
   Memory,
   RoleModels,
   ServiceConfig,
+  SkillConfig,
   SkillSummary,
   SystemPromptConfig
 } from '@flairy/shared'
@@ -77,6 +78,13 @@ export const IPC = {
   SettingsSetCloseToTray: 'settings:set-close-to-tray',
   SettingsGetChatWidth: 'settings:get-chat-width',
   SettingsSetChatWidth: 'settings:set-chat-width',
+  // Advanced settings (hidden behind the version-tap gate) + local config mode.
+  AdvancedGetUnlocked: 'advanced:get-unlocked',
+  AdvancedSetUnlocked: 'advanced:set-unlocked',
+  ConfigGetMode: 'config:get-mode',
+  ConfigSetMode: 'config:set-mode',
+  LocalConfigGet: 'local-config:get',
+  LocalConfigSave: 'local-config:save',
   // event streams (send)
   TelegramStatusChanged: 'telegram:status-changed',
   UpdateAvailable: 'update:available',
@@ -91,6 +99,8 @@ export const IPC = {
   MemoriesChanged: 'memory:changed',
   LanguageChanged: 'settings:language-changed',
   ChatWidthChanged: 'settings:chat-width-changed',
+  AdvancedUnlockedChanged: 'advanced:unlocked-changed',
+  ConfigModeChanged: 'config:mode-changed',
   AgentCompressStatus: 'agent:compress-status'
 } as const
 
@@ -347,6 +357,43 @@ export interface RedactedConfigSnapshot {
   services: ServiceConfig[]
   /** Monotonic global config version. */
   version: number
+}
+
+/**
+ * Where the client's active configuration comes from.
+ * - `server` — the normal path: the admin server pushes config over socket.io.
+ * - `local`  — "detached" mode: the socket is closed and the client runs fully
+ *   offline off a config the user entered by hand in Advanced settings.
+ *
+ * Persisted in the main process (SQLite `settings` KV). Toggled from the hidden
+ * Advanced settings tab. See {@link LocalConfigDraft}.
+ */
+export type ConfigMode = 'server' | 'local'
+
+/**
+ * The full, user-editable local configuration behind the Advanced settings tab.
+ * Structurally the pieces of a `ConfigSnapshot` that a detached client needs,
+ * plus FULL skills (bodies + files) rather than summaries, since there is no
+ * server to fetch them from.
+ *
+ * SECURITY: on READ (`local-config:get`) every secret is masked exactly like
+ * {@link RedactedConfigSnapshot} — `llm.*.provider.credential`, MCP transport
+ * `env`/`headers` values, and service `secret`. On SAVE (`local-config:save`)
+ * any secret still carrying the mask marker (`••••…`) is left unchanged; a new
+ * plaintext value the user typed overwrites it. Plaintext secrets live only in
+ * the main process (encrypted at rest), never round-tripped back to the renderer.
+ */
+export interface LocalConfigDraft {
+  /** Per-role active models (main required to run; tool/visual optional). */
+  llm: RoleModels
+  /** MCP servers the detached client should connect to. */
+  mcpServers: McpServerConfig[]
+  /** System prompts (reserved names: main/chat/title_generation/…). */
+  systemPrompts: SystemPromptConfig[]
+  /** External services (e.g. Exa web search). */
+  services: ServiceConfig[]
+  /** Full skills, materialized to disk locally (inline file sources only). */
+  skills: SkillConfig[]
 }
 
 /* ---------- event stream payloads ---------- */
@@ -648,6 +695,18 @@ export interface FlairyApi {
   getChatWidth(): Promise<ChatWidth>
   /** Persist a new chat width; main broadcasts the change to all windows. */
   setChatWidth(width: ChatWidth): Promise<void>
+  /** Whether the hidden Advanced settings tab has been unlocked (tap version 10×). */
+  getAdvancedUnlocked(): Promise<boolean>
+  /** Persist the Advanced-settings unlock flag; main broadcasts to all windows. */
+  setAdvancedUnlocked(value: boolean): Promise<void>
+  /** Whether config comes from the server or a local (detached) config. */
+  getConfigMode(): Promise<ConfigMode>
+  /** Switch config source. `local` closes the socket; `server` reconnects. */
+  setConfigMode(mode: ConfigMode): Promise<void>
+  /** The saved local config with secrets masked, or null if none saved yet. */
+  getLocalConfig(): Promise<LocalConfigDraft | null>
+  /** Persist an edited local config (masked secrets are kept); applies it live in local mode. */
+  saveLocalConfig(draft: LocalConfigDraft): Promise<void>
   onAgentEvent(cb: (env: AgentEventEnvelope) => void): () => void
   onApprovalRequest(cb: (req: ApprovalRequestPayload) => void): () => void
   /** Fires when the agent asks the user one or more multiple-choice questions. */
@@ -668,6 +727,10 @@ export interface FlairyApi {
   onLanguageChanged(cb: (lng: AppLanguage) => void): () => void
   /** Fires when the chat width preference changes (from any window). */
   onChatWidthChanged(cb: (width: ChatWidth) => void): () => void
+  /** Fires when the Advanced-settings unlock flag changes (from any window). */
+  onAdvancedUnlockedChanged(cb: (unlocked: boolean) => void): () => void
+  /** Fires when the config source (server ↔ local) changes (from any window). */
+  onConfigModeChanged(cb: (mode: ConfigMode) => void): () => void
   /** Fires when the app detects a newer release is available. */
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void
   /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */

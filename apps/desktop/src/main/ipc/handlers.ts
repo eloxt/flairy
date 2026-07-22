@@ -22,7 +22,9 @@ import {
   type SessionMenuAction,
   type RecentDirMenuAction,
   type ViewerImage,
-  type ChatWidth
+  type ChatWidth,
+  type ConfigMode,
+  type LocalConfigDraft
 } from '@shared/ipc'
 import { t } from '../locale'
 import type { AgentManager } from '../agent/agent-manager'
@@ -64,12 +66,15 @@ import {
   setCloseToTrayPref,
   getChatWidthPref,
   setChatWidthPref,
+  getAdvancedUnlockedPref,
+  setAdvancedUnlockedPref,
   clearTelegramBinding
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
 import type { UpdateManager } from '../update/update-checker'
 import { redactConfig } from '../sync/config-redact'
+import { readLocalConfigDraft, seedDraftFromServer, writeLocalConfigDraft } from '../sync/local-config-draft'
 import {
   broadcast,
   getMainWindow,
@@ -205,9 +210,15 @@ export function registerIpcHandlers(
     broadcast(IPC.SocketStatusChanged, status)
   })
 
-  // If we already have a stored token from a previous run, connect immediately.
+  // If we already have a stored token from a previous run, connect immediately —
+  // unless the user detached to local mode, in which case we stay fully offline
+  // and apply the saved local config instead.
   const existingToken = getAuthToken()
-  if (existingToken) server.connect(existingToken)
+  if (server.getConfigMode() === 'local') {
+    server.activateLocalMode()
+  } else if (existingToken) {
+    server.connect(existingToken)
+  }
 
   ipcMain.handle(IPC.AgentPrompt, async (_e, args: PromptArgs) => {
     // Telegram-created sessions are read-only on desktop — they are driven only
@@ -552,6 +563,36 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.ConfigGet, () => redactConfig(server.getConfig()))
 
   ipcMain.handle(IPC.SocketStatusGet, () => server.getSocketStatus())
+
+  // ── Advanced settings (hidden version-tap gate) + local config mode ──
+  ipcMain.handle(IPC.AdvancedGetUnlocked, () => getAdvancedUnlockedPref())
+
+  ipcMain.handle(IPC.AdvancedSetUnlocked, (_e, value: boolean) => {
+    setAdvancedUnlockedPref(value)
+    broadcast(IPC.AdvancedUnlockedChanged, value)
+  })
+
+  ipcMain.handle(IPC.ConfigGetMode, (): ConfigMode => server.getConfigMode())
+
+  ipcMain.handle(IPC.ConfigSetMode, (_e, mode: ConfigMode) => {
+    server.setConfigMode(mode)
+    broadcast(IPC.ConfigModeChanged, mode)
+  })
+
+  // Local config for the editor (secrets masked). If the user hasn't saved a
+  // local config yet, seed the editor from the latest server config so it opens
+  // pre-filled instead of blank.
+  ipcMain.handle(IPC.LocalConfigGet, async (): Promise<LocalConfigDraft | null> => {
+    return readLocalConfigDraft() ?? (await seedDraftFromServer(server.getServerConfig(), server.getToken()))
+  })
+
+  // Save an edited local config: merge masked secrets against the stored local
+  // values (then the server config, so a server-seeded draft keeps working keys)
+  // in the main process, persist (encrypted), then apply live via the server client.
+  ipcMain.handle(IPC.LocalConfigSave, (_e, draft: LocalConfigDraft) => {
+    const bundle = writeLocalConfigDraft(draft, server.getServerConfig())
+    server.updateLocalConfig(bundle)
+  })
 
   // Open the standalone Settings window (from the sidebar).
   ipcMain.handle(IPC.WindowOpenSettings, () => openSettingsWindow())

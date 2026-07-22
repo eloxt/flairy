@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Info, Send, SlidersHorizontal, Sparkles, TentTree } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Info,
+  Send,
+  SlidersHorizontal,
+  Sparkles,
+  TentTree,
+  Wrench
+} from 'lucide-react'
 import type {
   AppLanguage,
   ChatWidth,
@@ -20,7 +29,9 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 
-type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'about'
+import { AdvancedSection } from './advanced/AdvancedSection'
+
+type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'about' | 'advanced'
 
 /**
  * End-user settings, macOS System Settings style: a frosted sidebar on the left
@@ -33,13 +44,29 @@ export function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('general')
   const user = useAuth((s) => s.user)
+  const [advancedUnlocked, setAdvancedUnlocked] = useState(false)
+
+  // The Advanced tab is hidden until the user taps the version number 10× (in
+  // AboutSection). The flag lives in main; follow it live across windows.
+  useEffect(() => {
+    void window.api.getAdvancedUnlocked().then(setAdvancedUnlocked)
+    return window.api.onAdvancedUnlockedChanged(setAdvancedUnlocked)
+  }, [])
+
+  // If the tab is hidden again while it's open, fall back to General.
+  useEffect(() => {
+    if (!advancedUnlocked && tab === 'advanced') setTab('general')
+  }, [advancedUnlocked, tab])
 
   const navItems: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] =
     [
       { id: 'general', label: t('settings.navGeneral'), icon: SlidersHorizontal },
       { id: 'memory', label: t('settings.tabMemory'), icon: Sparkles },
       { id: 'telegram', label: t('settings.tabTelegram'), icon: Send },
-      { id: 'about', label: t('settings.tabAbout'), icon: Info }
+      { id: 'about', label: t('settings.tabAbout'), icon: Info },
+      ...(advancedUnlocked
+        ? [{ id: 'advanced' as const, label: t('settings.tabAdvanced'), icon: Wrench }]
+        : [])
     ]
 
   const titles: Record<Tab, string> = {
@@ -47,7 +74,8 @@ export function SettingsPage(): React.JSX.Element {
     account: t('settings.account'),
     memory: t('settings.tabMemory'),
     telegram: t('settings.tabTelegram'),
-    about: t('settings.tabAbout')
+    about: t('settings.tabAbout'),
+    advanced: t('settings.tabAdvanced')
   }
 
   const displayName = user?.displayName || t('settings.signedIn')
@@ -114,6 +142,7 @@ export function SettingsPage(): React.JSX.Element {
           {tab === 'memory' && <MemorySection />}
           {tab === 'telegram' && <TelegramSection />}
           {tab === 'about' && <AboutSection />}
+          {tab === 'advanced' && <AdvancedSection />}
         </div>
       </main>
     </div>
@@ -538,6 +567,9 @@ function AboutSection(): React.JSX.Element {
   const [config, setConfig] = useState<RedactedConfigSnapshot | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [version] = useState(() => window.api.getAppVersion())
+  // Hidden gate: 10 taps on the version reveals the Advanced tab (Android-style).
+  const [, setTaps] = useState(0)
+  const [justUnlocked, setJustUnlocked] = useState(false)
 
   useEffect(() => {
     void window.api.getConfig().then((c) => {
@@ -549,6 +581,22 @@ function AboutSection(): React.JSX.Element {
       setLoaded(true)
     })
   }, [])
+
+  const onVersionTap = (): void => {
+    setTaps((n) => {
+      const next = n + 1
+      if (next >= 10) {
+        void window.api.getAdvancedUnlocked().then((already) => {
+          if (!already) {
+            void window.api.setAdvancedUnlocked(true)
+            setJustUnlocked(true)
+          }
+        })
+        return 0
+      }
+      return next
+    })
+  }
 
   return (
     <>
@@ -564,8 +612,23 @@ function AboutSection(): React.JSX.Element {
 
       <Group>
         <Row label={t('settings.version')}>
-          <RowValue>{version}</RowValue>
+          <RowValue>
+            <span
+              onClick={onVersionTap}
+              className="cursor-default select-none"
+              title={justUnlocked ? t('settings.advancedUnlockedToast') : undefined}
+            >
+              {version}
+            </span>
+          </RowValue>
         </Row>
+        {justUnlocked && (
+          <Row label={t('settings.advancedUnlockedToast')}>
+            <RowValue>
+              <Wrench className="size-3.5 text-muted-foreground" />
+            </RowValue>
+          </Row>
+        )}
         <details className="group/cfg">
           <summary className="flex min-h-[46px] cursor-pointer list-none items-center gap-4 px-3.5 py-2 select-none [&::-webkit-details-marker]:hidden">
             <div className="min-w-0 flex-1">
