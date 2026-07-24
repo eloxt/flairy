@@ -350,7 +350,7 @@ export function Composer(): React.JSX.Element {
               </div>
             )}
 
-            <div className="group relative -m-px flex flex-col rounded-lg border border-foreground/15 bg-background shadow-xs transition-colors focus-within:border-foreground/25">
+            <div className="group relative -m-px flex flex-col rounded-lg border border-foreground/15 bg-background/66 backdrop-blur shadow-xs transition-colors focus-within:border-foreground/25">
             <textarea
               ref={taRef}
               value={text}
