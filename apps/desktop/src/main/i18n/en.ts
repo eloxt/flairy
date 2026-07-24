@@ -20,6 +20,7 @@ export const en = {
   'menu.selectChats': 'Select chats',
   'menu.removeRecentDir': 'Remove from recents',
   'tray.open': 'Open Main Window',
+  'tray.quickAsk': 'Quick Ask',
   'tray.quit': 'Quit Flairy'
 } as const
 

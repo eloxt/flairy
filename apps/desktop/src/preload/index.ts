@@ -8,8 +8,10 @@ import {
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
   type CompressStatusPayload,
+  type LauncherShownPayload,
   type QuestionRequestPayload,
   type RedactedConfigSnapshot,
+  type SessionMeta,
   type SessionTitleUpdatedPayload,
   type SocketConnectionStatus,
   type TelegramStatus,
@@ -63,6 +65,15 @@ const api: FlairyApi = {
   getConfig: () => ipcRenderer.invoke(IPC.ConfigGet),
   getSocketStatus: () => ipcRenderer.invoke(IPC.SocketStatusGet),
   openSettings: () => ipcRenderer.invoke(IPC.WindowOpenSettings),
+  showLauncher: () => ipcRenderer.invoke(IPC.LauncherShow),
+  hideLauncher: () => ipcRenderer.invoke(IPC.LauncherHide),
+  resizeLauncher: (height) => ipcRenderer.invoke(IPC.LauncherResize, height),
+  openLauncherSessionInMain: (sessionId) =>
+    ipcRenderer.invoke(IPC.LauncherOpenInMain, sessionId),
+  takePendingLauncherSession: () => ipcRenderer.invoke(IPC.LauncherTakePendingSession),
+  getLauncherShortcut: () => ipcRenderer.invoke(IPC.SettingsGetLauncherShortcut),
+  setLauncherShortcut: (accelerator) =>
+    ipcRenderer.invoke(IPC.SettingsSetLauncherShortcut, accelerator),
   growWindowWidth: (delta) => ipcRenderer.invoke(IPC.WindowGrowWidth, delta),
   openExternal: (url) => ipcRenderer.invoke(IPC.ShellOpenExternal, url),
   openImageViewer: (image) => ipcRenderer.invoke(IPC.ImageViewerOpen, image),
@@ -163,6 +174,16 @@ const api: FlairyApi = {
     const listener = (_e: unknown, payload: CompressStatusPayload): void => cb(payload)
     ipcRenderer.on(IPC.AgentCompressStatus, listener)
     return () => ipcRenderer.removeListener(IPC.AgentCompressStatus, listener)
+  },
+  onLauncherShown: (cb) => {
+    const listener = (_e: unknown, payload: LauncherShownPayload): void => cb(payload)
+    ipcRenderer.on(IPC.LauncherShown, listener)
+    return () => ipcRenderer.removeListener(IPC.LauncherShown, listener)
+  },
+  onLauncherOpenSession: (cb) => {
+    const listener = (_e: unknown, meta: SessionMeta): void => cb(meta)
+    ipcRenderer.on(IPC.LauncherOpenSession, listener)
+    return () => ipcRenderer.removeListener(IPC.LauncherOpenSession, listener)
   }
 }
 

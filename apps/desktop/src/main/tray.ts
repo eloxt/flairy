@@ -1,7 +1,7 @@
 import { app, Menu, Tray, nativeImage } from "electron";
 import { join } from "node:path";
 import { t } from "./locale";
-import { showMainWindow } from "./windows";
+import { showMainWindow, toggleLauncherWindow } from "./windows";
 
 /**
  * System tray / menu-bar presence. Lets Flairy keep running with no window open
@@ -34,6 +34,7 @@ export function createTray(): void {
 
   const menu = Menu.buildFromTemplate([
     { label: t("tray.open"), click: () => showMainWindow() },
+    { label: t("tray.quickAsk"), click: () => toggleLauncherWindow() },
     { type: "separator" },
     { label: t("tray.quit"), click: () => app.quit() },
   ]);

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { createHashRouter, RouterProvider, Outlet } from "react-router";
 import { useTranslation } from "react-i18next";
-import type { ChatWidth } from "@shared/ipc";
+import type { ChatWidth, SessionMeta } from "@shared/ipc";
 import { PanelRight } from "lucide-react";
 import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
@@ -87,13 +87,33 @@ function AppLayout(): React.JSX.Element {
 
   useEffect(() => {
     const dispose = init();
+    // The quick launcher handing its conversation off to this window: make sure
+    // the session is in the sidebar list, then open it. A cold open seeds from
+    // the live agent state (loadSessionLive), so a mid-stream handoff renders
+    // live and keeps streaming via the broadcast agent events.
+    const openFromLauncher = (meta: SessionMeta): void => {
+      useChat.setState((s) =>
+        s.sessions.some((x) => x.id === meta.id)
+          ? {}
+          : { sessions: [meta, ...s.sessions] },
+      );
+      void useChat.getState().openSession(meta);
+    };
+    const offLauncher = window.api.onLauncherOpenSession(openFromLauncher);
     void (async () => {
       // Load the session list to populate the sidebar, but always land on the
       // blank "new conversation" page instead of auto-opening the latest chat.
       await loadSessions();
       await newChat();
+      // A handoff made while no main window was alive: consume it (take-once)
+      // AFTER the initial newChat so the handed-off session stays in front.
+      const pending = await window.api.takePendingLauncherSession();
+      if (pending) openFromLauncher(pending);
     })();
-    return dispose;
+    return () => {
+      offLauncher();
+      dispose();
+    };
   }, [init, loadSessions, newChat]);
 
   return (

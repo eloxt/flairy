@@ -69,6 +69,14 @@ export const IPC = {
   SocketStatusGet: 'socket:status',
   WindowOpenSettings: 'window:open-settings',
   WindowGrowWidth: 'window:grow-width',
+  // Quick launcher (Spotlight-style) window.
+  LauncherShow: 'launcher:show',
+  LauncherHide: 'launcher:hide',
+  LauncherResize: 'launcher:resize',
+  LauncherOpenInMain: 'launcher:open-in-main',
+  LauncherTakePendingSession: 'launcher:take-pending-session',
+  SettingsGetLauncherShortcut: 'settings:get-launcher-shortcut',
+  SettingsSetLauncherShortcut: 'settings:set-launcher-shortcut',
   AppGetVersion: 'app:get-version',
   UpdateGetStatus: 'update:get-status',
   UpdateOpenRelease: 'update:open-release',
@@ -101,7 +109,9 @@ export const IPC = {
   ChatWidthChanged: 'settings:chat-width-changed',
   AdvancedUnlockedChanged: 'advanced:unlocked-changed',
   ConfigModeChanged: 'config:mode-changed',
-  AgentCompressStatus: 'agent:compress-status'
+  AgentCompressStatus: 'agent:compress-status',
+  LauncherShown: 'launcher:shown',
+  LauncherOpenSession: 'launcher:open-session'
 } as const
 
 /** UI language. The single source of truth for both renderer and main catalogs. */
@@ -538,6 +548,27 @@ export interface TelegramConnectArgs {
 /** Main server socket connection state, renderer-safe and credential-free. */
 export type SocketConnectionStatus = 'disconnected' | 'connecting' | 'connected'
 
+/**
+ * The quick-launcher global shortcut, as saved and as actually registered.
+ * `accelerator` is an Electron accelerator string ('' = shortcut disabled).
+ * `registered` is false when the OS refused the chord (already taken by another
+ * app) — the choice is persisted anyway so the Settings UI can show a hint.
+ */
+export interface LauncherShortcutStatus {
+  accelerator: string
+  registered: boolean
+}
+
+/**
+ * Sent to the launcher window on every summon. `reset: true` means start a
+ * fresh conversation (first summon, or the previous one aged out of the keep
+ * window); `false` means the previous quick chat is still fresh — keep it and
+ * just put the caret back.
+ */
+export interface LauncherShownPayload {
+  reset: boolean
+}
+
 /** Returned by startTelegramPairing: a one-time code the user sends via /pair. */
 export interface TelegramPairing {
   code: string
@@ -657,6 +688,27 @@ export interface FlairyApi {
   getSocketStatus(): Promise<SocketConnectionStatus>
   /** Open (or focus) the standalone Settings window. */
   openSettings(): Promise<void>
+  /** Toggle the quick-launcher window (dev/tray fallback for the global shortcut). */
+  showLauncher(): Promise<void>
+  /** Hide the quick-launcher window (Esc). */
+  hideLauncher(): Promise<void>
+  /** Resize the quick-launcher window to `height` px (clamped; grows downward). */
+  resizeLauncher(height: number): Promise<void>
+  /**
+   * Hand the launcher's conversation off to the main window: shows/recreates the
+   * main window, tells it to open `sessionId`, and hides the launcher. Tolerates
+   * an empty/unknown id (just brings the main window forward).
+   */
+  openLauncherSessionInMain(sessionId: string): Promise<void>
+  /**
+   * Called by a freshly-(re)created main window: fetch (and consume) a session
+   * handed off while no main window was alive. Null if there is none.
+   */
+  takePendingLauncherSession(): Promise<SessionMeta | null>
+  /** The saved quick-launcher shortcut and whether it's actually registered. */
+  getLauncherShortcut(): Promise<LauncherShortcutStatus>
+  /** Persist + re-register the quick-launcher shortcut ('' disables it). */
+  setLauncherShortcut(accelerator: string): Promise<LauncherShortcutStatus>
   /**
    * Widen the main window by `delta` px (clamped to the display work area, never
    * shrinks). The renderer calls this before opening the details panel when the
@@ -735,4 +787,8 @@ export interface FlairyApi {
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void
   /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */
   onCompressStatus(cb: (payload: CompressStatusPayload) => void): () => void
+  /** Fires in the launcher window each time it is summoned (fresh chat vs continue). */
+  onLauncherShown(cb: (payload: LauncherShownPayload) => void): () => void
+  /** Fires in the main window when the launcher hands a conversation off to it. */
+  onLauncherOpenSession(cb: (meta: SessionMeta) => void): () => void
 }

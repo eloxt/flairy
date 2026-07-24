@@ -207,6 +207,12 @@ const zhCN: typeof En = {
     chatWidthFull: '铺满',
     closeToTrayDescription: '关闭窗口后让 Flairy 继续在后台运行，下次可立即打开。',
     closeToTrayLabel: '关闭后继续在后台运行',
+    launcherShortcutLabel: '快速提问快捷键',
+    launcherShortcutDescription: '在任何地方按下这组按键，就能立即打开一个小窗口向 Flairy 提问。',
+    launcherShortcutDescriptionMac:
+      '在任何地方按下这组按键，就能立即打开一个小窗口向 Flairy 提问。如果你的 Mac 用 Ctrl+空格 切换输入法，请在这里换一组按键。',
+    launcherShortcutTaken: '这组按键已被其他应用占用，请换一组。',
+    launcherShortcutOff: '关闭',
     // 记忆
     memoryDescription: 'Flairy 会在对话中记住关于你的有用信息，这样你不必重复说明。你可以在这里删除其中任意一条。',
     memoryEmpty: 'Flairy 还没有记住关于你的任何内容。',
@@ -348,6 +354,16 @@ const zhCN: typeof En = {
   },
   citations: {
     sources: '来源'
+  },
+  /** The quick-launcher (Spotlight-style) window. */
+  launcher: {
+    placeholder: '有什么想问 Flairy 的…',
+    send: '发送',
+    stop: '停止',
+    newChat: '新对话',
+    openInMain: '在主窗口中打开',
+    signedOutHint: '登录 Flairy 后即可提问',
+    openApp: '打开 Flairy'
   },
   /** Full-screen fallback shown when a page crashes (route errorElement). */
   error: {

@@ -1,6 +1,8 @@
 import { shell, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
+import liquidGlass from "electron-liquid-glass";
+import { IPC } from "@shared/ipc";
 import { getCloseToTrayPref } from "./store/db";
 
 /**
@@ -63,7 +65,7 @@ const webPreferences = {
 } as const;
 
 /** Load a renderer HTML entry (`index` → main app, `settings` → Settings window). */
-type RendererEntry = "index" | "settings" | "image-viewer";
+type RendererEntry = "index" | "settings" | "image-viewer" | "launcher";
 
 /**
  * Load a renderer HTML entry. `query` (without a leading `?`) is appended so a
@@ -216,6 +218,168 @@ export function openImageViewerWindow(id: string): BrowserWindow {
   openLinksExternally(win);
   loadRenderer(win, "image-viewer", `id=${encodeURIComponent(id)}`);
   return win;
+}
+
+/* ---------- quick launcher (Spotlight-style) window ---------- */
+
+/**
+ * Singleton launcher window. Created lazily on first summon and then only
+ * hidden/shown (never destroyed) so its renderer stays warm and a summon is
+ * instant. Frameless + TRANSPARENT.
+ *
+ * On macOS the glass comes from the real thing: electron-liquid-glass inserts
+ * a native NSGlassEffectView BEHIND the web content (Tahoe Liquid Glass;
+ * gracefully degrades to the legacy blur material on older macOS), so the
+ * renderer paints no surface of its own — window = card exactly, corners
+ * rounded natively, and the window casts a real system shadow.
+ *
+ * Elsewhere (Windows) the renderer paints a translucent tint + CSS shadow
+ * inside a 24px transparent gutter (no native material to lean on), so the
+ * window is 2×24px taller than the card. Hence the mode-dependent heights —
+ * the renderer mirrors them, keyed off the `glass=1` query.
+ */
+let launcherWindow: BrowserWindow | null = null;
+
+/** Native Liquid Glass mode (the library safely no-ops off-mac). */
+const LAUNCHER_GLASS = process.platform === "darwin";
+
+const LAUNCHER_WIDTH = 640;
+/** Collapsed: the capsule input row (+ shadow gutter in CSS mode). */
+export const LAUNCHER_COLLAPSED_HEIGHT = LAUNCHER_GLASS ? 64 : 112;
+/** Expanded: input + streaming reply area (+ gutter in CSS mode). */
+export const LAUNCHER_EXPANDED_HEIGHT = LAUNCHER_GLASS ? 460 : 508;
+
+/**
+ * How long a hidden launcher keeps its conversation. Re-summon within this
+ * window and the previous quick chat is still there to continue; after it, the
+ * summon starts fresh automatically (the renderer also has a new-chat button
+ * for an explicit reset at any time).
+ */
+const LAUNCHER_KEEP_MS = 5 * 60_000;
+
+/** When the launcher was last hidden (0 = never shown yet → fresh). */
+let launcherHiddenAt = 0;
+
+function createLauncherWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: LAUNCHER_WIDTH,
+    height: LAUNCHER_COLLAPSED_HEIGHT,
+    show: false,
+    frame: false,
+    transparent: true,
+    // NOTE: backdrop-filter CANNOT work in this window: Chromium only samples
+    // a backdrop that lives inside an opaque-background subtree, and the whole
+    // point here is a fully transparent page over the native glass view.
+    // (Verified empirically — tiny-alpha backgrounds, dropping `transparent`,
+    // layer promotion and un-clipping all fail; an opaque thread background
+    // works but defeats the glass.) Floating chrome uses translucent tints.
+    backgroundColor: "#00000000",
+    // The native glass layer gives the window a real shape for the system
+    // shadow; in CSS mode the shadow is painted by the renderer instead.
+    hasShadow: LAUNCHER_GLASS,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences,
+  });
+  // Float above regular windows, and on macOS follow the user across Spaces.
+  // Deliberately NOT `visibleOnFullScreen: true`: joining fullscreen Spaces
+  // requires macOS to treat the app as an accessory, which HIDES the Dock icon
+  // for the whole app. Keeping the Dock icon wins; summoning over a fullscreen
+  // app just switches Spaces instead.
+  win.setAlwaysOnTop(true, "screen-saver");
+  if (process.platform === "darwin") {
+    win.setVisibleOnAllWorkspaces(true);
+  }
+  // Spotlight behavior: clicking anywhere else dismisses the launcher.
+  win.on("blur", () => win.hide());
+  // Stamp EVERY hide path (blur, Esc, toggle, handoff) so the keep-window
+  // countdown for the next summon starts from the moment it disappeared.
+  win.on("hide", () => {
+    launcherHiddenAt = Date.now();
+  });
+  win.on("closed", () => {
+    if (launcherWindow === win) launcherWindow = null;
+  });
+  openLinksExternally(win);
+  if (LAUNCHER_GLASS) {
+    // Attach the native glass view once the page is up (the library wants the
+    // content view to exist). 32px radius = a perfect capsule at the 64px
+    // collapsed height, and reads Tahoe-native on the expanded panel.
+    win.webContents.once("did-finish-load", () => {
+      try {
+        liquidGlass.addView(win.getNativeWindowHandle(), { cornerRadius: 32 });
+      } catch (err) {
+        console.error("[launcher] failed to attach glass view:", err);
+      }
+    });
+  }
+  loadRenderer(win, "launcher", LAUNCHER_GLASS ? "glass=1" : "");
+  return win;
+}
+
+/**
+ * Center the launcher on the display the cursor is on, top edge ~22% down the
+ * work area (Spotlight-esque), then show it. Re-summoned within the keep
+ * window, the previous conversation stays (current height kept, caret back in
+ * the input); after it — or on first summon — the renderer resets to a fresh
+ * collapsed chat.
+ */
+function presentLauncher(win: BrowserWindow): void {
+  const reset =
+    launcherHiddenAt === 0 || Date.now() - launcherHiddenAt > LAUNCHER_KEEP_MS;
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const x = Math.round(area.x + (area.width - LAUNCHER_WIDTH) / 2);
+  const y = Math.round(area.y + area.height * 0.22);
+  const height = reset ? LAUNCHER_COLLAPSED_HEIGHT : win.getBounds().height;
+  win.setBounds({ x, y, width: LAUNCHER_WIDTH, height });
+  win.show();
+  win.focus();
+  // Transparent windows cache their shadow shape — recompute after the bounds
+  // change or the old outline ghosts around the new one.
+  if (LAUNCHER_GLASS) win.invalidateShadow();
+  win.webContents.send(IPC.LauncherShown, { reset });
+}
+
+/** Toggle the launcher: hide if visible, else summon it (creating on first use). */
+export function toggleLauncherWindow(): void {
+  const existing = launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null;
+  if (existing) {
+    if (existing.isVisible()) existing.hide();
+    else presentLauncher(existing);
+    return;
+  }
+  const win = createLauncherWindow();
+  launcherWindow = win;
+  // First summon: the renderer isn't ready yet — present once it is so the
+  // window never flashes unpainted.
+  win.once("ready-to-show", () => presentLauncher(win));
+}
+
+export function hideLauncherWindow(): void {
+  if (launcherWindow && !launcherWindow.isDestroyed()) launcherWindow.hide();
+}
+
+/**
+ * Resize the launcher to `height` px (renderer-driven: collapsed input vs
+ * expanded reply view). Top edge stays put — the card grows downward. Clamped
+ * to [collapsed, 70% of the work area] so it can't run off-screen.
+ */
+export function resizeLauncherWindow(height: number): void {
+  const win = launcherWindow;
+  if (!win || win.isDestroyed() || !Number.isFinite(height)) return;
+  const bounds = win.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const h = Math.min(
+    Math.max(Math.round(height), LAUNCHER_COLLAPSED_HEIGHT),
+    Math.round(area.height * 0.7),
+  );
+  win.setBounds({ ...bounds, height: h });
+  if (LAUNCHER_GLASS) win.invalidateShadow();
 }
 
 /**

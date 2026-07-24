@@ -15,5 +15,6 @@ export const zhCN: MainCatalog = {
   'menu.selectChats': '选择多个对话',
   'menu.removeRecentDir': '从最近列表中移除',
   'tray.open': '打开主窗口',
+  'tray.quickAsk': '快速提问',
   'tray.quit': '退出 Flairy'
 }

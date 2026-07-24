@@ -13,6 +13,7 @@ import {
 import type {
   AppLanguage,
   ChatWidth,
+  LauncherShortcutStatus,
   Memory,
   RedactedConfigSnapshot,
   TelegramStatus
@@ -183,6 +184,32 @@ function GeneralSection(): React.JSX.Element {
     void window.api.setCloseToTray(v)
   }
 
+  // Quick-launcher summon chord: a small preset menu (values are Electron
+  // accelerator strings). Main persists + re-registers on the spot and reports
+  // whether the chord actually registered — `registered: false` means another
+  // app owns it, surfaced as a plain-language hint under the row.
+  const isMac = window.api.platform === 'darwin'
+  const [launcherShortcut, setLauncherShortcut] = useState<LauncherShortcutStatus | null>(null)
+  useEffect(() => {
+    void window.api.getLauncherShortcut().then(setLauncherShortcut)
+  }, [])
+  const onSelectLauncherShortcut = (accelerator: string): void => {
+    void window.api.setLauncherShortcut(accelerator).then(setLauncherShortcut)
+  }
+  const shortcutOptions: { value: string; label: string }[] = [
+    { value: 'Control+Space', label: isMac ? '⌃ Space' : 'Ctrl+Space' },
+    { value: 'Control+Shift+Space', label: isMac ? '⌃⇧ Space' : 'Ctrl+Shift+Space' },
+    { value: 'Alt+Space', label: isMac ? '⌥ Space' : 'Alt+Space' },
+    { value: 'CommandOrControl+Shift+L', label: isMac ? '⌘⇧ L' : 'Ctrl+Shift+L' },
+    { value: '', label: t('settings.launcherShortcutOff') }
+  ]
+  const currentShortcutLabel = launcherShortcut
+    ? (shortcutOptions.find((o) => o.value === launcherShortcut.accelerator)?.label ??
+      launcherShortcut.accelerator)
+    : ''
+  const shortcutTaken =
+    !!launcherShortcut && !!launcherShortcut.accelerator && !launcherShortcut.registered
+
   return (
     <>
       <GroupLabel>{t('settings.sectionDisplay')}</GroupLabel>
@@ -227,6 +254,37 @@ function GeneralSection(): React.JSX.Element {
             onCheckedChange={onToggleCloseToTray}
             aria-label={t('settings.closeToTrayLabel')}
           />
+        </Row>
+        <Row
+          label={t('settings.launcherShortcutLabel')}
+          description={
+            <>
+              {t(
+                isMac
+                  ? 'settings.launcherShortcutDescriptionMac'
+                  : 'settings.launcherShortcutDescription'
+              )}
+              {shortcutTaken && (
+                <span className="mt-0.5 block text-amber-600 dark:text-amber-500">
+                  {t('settings.launcherShortcutTaken')}
+                </span>
+              )}
+            </>
+          }
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-[6.5px] bg-background px-2.5 py-1 text-xs shadow-[inset_0_0_0_0.5px_var(--input),0_1px_1.5px_rgb(0_0_0/0.07)] transition-colors hover:bg-muted">
+              {currentShortcutLabel}
+              <ChevronDown className="size-3 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {shortcutOptions.map(({ value, label }) => (
+                <DropdownMenuItem key={value} onClick={() => onSelectLauncherShortcut(value)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </Row>
       </Group>
     </>

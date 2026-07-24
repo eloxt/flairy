@@ -11,6 +11,7 @@ import { AgentManager } from "./agent/agent-manager";
 import { TelegramManager } from "./telegram/telegram-manager";
 import { UpdateManager } from "./update/update-checker";
 import { createMainWindow, markQuitting, showMainWindow } from "./windows";
+import { syncLauncherShortcut, unregisterShortcuts } from "./shortcuts";
 import { createTray, destroyTray } from "./tray";
 import { buildAppMenu } from "./menu";
 
@@ -67,6 +68,9 @@ if (!app.requestSingleInstanceLock()) {
     telegram.maybeAutoStart();
     updates.start();
     createTray();
+    // Register the quick-launcher summon chord (reads the saved preference, so
+    // it must run after initDb()).
+    syncLauncherShortcut();
 
     app.on("activate", () => showMainWindow());
 
@@ -81,6 +85,7 @@ if (!app.requestSingleInstanceLock()) {
       mcp.dispose();
       server.disconnect();
       destroyTray();
+      unregisterShortcuts();
     });
   });
 }

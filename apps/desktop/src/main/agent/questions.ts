@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { Notification, type BrowserWindow } from 'electron'
+import { BrowserWindow, Notification } from 'electron'
 import { IPC, type QuestionAnswer, type QuestionRequestPayload } from '@shared/ipc'
 import { t } from '../locale'
-import { getMainWindow } from '../windows'
+import { broadcast, showMainWindow } from '../windows'
 
 /**
  * Bridges the agent's blocking `ask` tool to an async user reply in the renderer.
@@ -27,35 +27,30 @@ class QuestionRegistry {
   request(
     payload: Omit<QuestionRequestPayload, 'questionId'>
   ): Promise<QuestionAnswer[] | null> {
-    // Resolve the live main window at request time so the card reaches the
-    // renderer even after a window close→reopen. With no window, settle as
-    // cancelled (null) — the `ask` tool maps that to a thrown cancellation.
-    const win = getMainWindow()
-    if (!win) return Promise.resolve(null)
+    // Fan the card out to every live window (resolved at request time, never
+    // captured): whichever window holds this session's runtime shows it. With
+    // no window at all, settle as cancelled (null) — the `ask` tool maps that
+    // to a thrown cancellation.
+    if (BrowserWindow.getAllWindows().length === 0) return Promise.resolve(null)
 
     const questionId = randomUUID()
     return new Promise<QuestionAnswer[] | null>((resolve) => {
       this.pending.set(questionId, { resolve, sessionId: payload.sessionId })
-      win.webContents.send(IPC.QuestionRequest, { questionId, ...payload })
-      this.notify(win, payload)
+      broadcast(IPC.QuestionRequest, { questionId, ...payload })
+      this.notify(payload)
     })
   }
 
   /**
-   * Raise a desktop notification when Flairy isn't focused so the user knows
-   * their input is needed — the inline question card is non-blocking and an
-   * out-of-focus user would otherwise miss it. Silent when already focused.
-   * Clicking the notification brings the window forward.
+   * Raise a desktop notification when no Flairy window is focused so the user
+   * knows their input is needed — the inline question card is non-blocking and
+   * an out-of-focus user would otherwise miss it. Silent when any window is
+   * focused. Clicking the notification brings the main window forward.
    */
-  private notify(win: BrowserWindow, payload: Omit<QuestionRequestPayload, 'questionId'>): void {
-    if (!Notification.isSupported() || win.isDestroyed() || win.isFocused()) return
+  private notify(payload: Omit<QuestionRequestPayload, 'questionId'>): void {
+    if (!Notification.isSupported() || BrowserWindow.getFocusedWindow()) return
     const n = new Notification({ title: t('questionNotificationTitle'), body: payload.reason })
-    n.on('click', () => {
-      if (win.isDestroyed()) return
-      if (win.isMinimized()) win.restore()
-      win.show()
-      win.focus()
-    })
+    n.on('click', () => showMainWindow())
     n.show()
   }
 

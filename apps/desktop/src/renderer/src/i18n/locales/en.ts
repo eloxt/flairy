@@ -223,6 +223,14 @@ const en = {
     closeToTrayDescription:
       'Keep Flairy running in the background when you close the window, so it opens again instantly.',
     closeToTrayLabel: 'Keep running in the background',
+    launcherShortcutLabel: 'Quick Ask shortcut',
+    launcherShortcutDescription:
+      'Press this key combination anywhere to open a small window and ask Flairy right away.',
+    launcherShortcutDescriptionMac:
+      'Press this key combination anywhere to open a small window and ask Flairy right away. If your Mac uses Ctrl+Space to switch input sources, pick a different combination here.',
+    launcherShortcutTaken:
+      'This key combination is being used by another app. Pick a different one.',
+    launcherShortcutOff: 'Off',
     // Memory
     memoryDescription:
       "Flairy remembers helpful things about you as you chat, so you don't have to repeat yourself. You can forget any of them here.",
@@ -370,6 +378,16 @@ const en = {
   },
   citations: {
     sources: 'Sources'
+  },
+  /** The quick-launcher (Spotlight-style) window. */
+  launcher: {
+    placeholder: 'Ask Flairy anything…',
+    send: 'Send',
+    stop: 'Stop',
+    newChat: 'New chat',
+    openInMain: 'Open in main window',
+    signedOutHint: 'Sign in to Flairy to start asking',
+    openApp: 'Open Flairy'
   },
   /** Full-screen fallback shown when a page crashes (route errorElement). */
   error: {

@@ -5,6 +5,7 @@ allowBuilds:
   '@google/genai': true
   better-sqlite3: true
   electron: true
+  electron-liquid-glass: true
   esbuild: true
   protobufjs: true
 minimumReleaseAgeExclude:

@@ -242,6 +242,22 @@
     background: transparent;
 }
 
+/* ── Quick launcher window ───────────────────────────────────────────────────
+   The launcher is a frameless TRANSPARENT window: the page background must be
+   transparent so the renderer's liquid-glass capsule (translucent tint + CSS
+   shadow in the gutter) floats directly over the desktop. Its input sits BELOW
+   the thread (not floating over it like the main composer), so the message
+   list's composer-clearance spacer shrinks to a small breathing gap. */
+.launcher,
+.launcher body {
+    background: transparent;
+}
+.launcher {
+    /* Clearance for the FLOATING input block (bottom-16 offset + h-14 input
+       + breathing room) so the thread's last message scrolls clear of it. */
+    --composer-h: 8.5rem;
+}
+
 /* Inset sidebar: the provider wrapper already paints bg-sidebar across the whole
    backdrop, so keep the rail itself transparent — otherwise the translucent
    vibrancy tint stacks twice on the rail and it reads darker than the gutter. */

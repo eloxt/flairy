@@ -20,6 +20,7 @@ import {
   type AuthUser,
   type SearchMessagesArgs,
   type SessionMenuAction,
+  type SessionMeta,
   type RecentDirMenuAction,
   type ViewerImage,
   type ChatWidth,
@@ -79,9 +80,14 @@ import {
   broadcast,
   getMainWindow,
   growMainWindowWidth,
+  hideLauncherWindow,
   openImageViewerWindow,
-  openSettingsWindow
+  openSettingsWindow,
+  resizeLauncherWindow,
+  showMainWindow,
+  toggleLauncherWindow
 } from '../windows'
+import { getLauncherShortcutStatus, setLauncherShortcut } from '../shortcuts'
 import { randomUUID } from 'node:crypto'
 
 /**
@@ -90,6 +96,12 @@ import { randomUUID } from 'node:crypto'
  * ImageViewerGet. Transient — never persisted.
  */
 const pendingViewerImages = new Map<string, ViewerImage>()
+
+/**
+ * A session handed off from the quick launcher while no main window was alive.
+ * The recreated main window consumes it (once) via LauncherTakePendingSession.
+ */
+let pendingLauncherSession: SessionMeta | null = null
 
 /**
  * Persist a freshly issued token + user, open the authenticated socket, and
@@ -127,13 +139,14 @@ export function registerIpcHandlers(
   agents: AgentManager,
   telegram: TelegramManager
 ): void {
-  // Default agent-event sink: forward every service's envelope to the live main
-  // window (resolved at send time so events still arrive after a close→reopen),
-  // stripping the internal `origin` tag before it crosses IPC. Wrapped in
-  // try/catch so a later (Telegram) subscriber that throws can't break this one.
+  // Default agent-event sink: fan every service's envelope out to ALL windows
+  // (the launcher runs its own chat store; other windows just ignore sessions
+  // they don't hold a runtime for), stripping the internal `origin` tag before
+  // it crosses IPC. Wrapped in try/catch so a later (Telegram) subscriber that
+  // throws can't break this one.
   agents.events.on('event', (env: AgentEventInternalEnvelope) => {
     try {
-      getMainWindow()?.webContents.send(IPC.AgentEvent, {
+      broadcast(IPC.AgentEvent, {
         sessionId: env.sessionId,
         event: env.event
       })
@@ -231,7 +244,7 @@ export function registerIpcHandlers(
       // Creating the service can throw (e.g. no LLM config delivered yet). Push
       // it back as a visible error event instead of a swallowed invoke rejection.
       const message = err instanceof Error ? err.message : String(err)
-      getMainWindow()?.webContents.send(IPC.AgentEvent, {
+      broadcast(IPC.AgentEvent, {
         sessionId: args.sessionId,
         event: { type: 'error', message }
       })
@@ -309,7 +322,13 @@ export function registerIpcHandlers(
     searchMessages(args.query, args.limit)
   )
 
-  ipcMain.handle(IPC.SessionCreate, (_e, args: CreateSessionArgs) => createSession(args))
+  ipcMain.handle(IPC.SessionCreate, (_e, args: CreateSessionArgs) => {
+    const meta = createSession(args)
+    // Sessions can now be created from any window (launcher included) — tell the
+    // others so e.g. the main sidebar picks a quick-launcher chat up immediately.
+    broadcast(IPC.SessionsChanged)
+    return meta
+  })
 
   // Pick a directory and set it as the session's cwd: persist it and rebind the
   // live agent's local tools. Returns the updated meta, or null if cancelled.
@@ -596,6 +615,40 @@ export function registerIpcHandlers(
 
   // Open the standalone Settings window (from the sidebar).
   ipcMain.handle(IPC.WindowOpenSettings, () => openSettingsWindow())
+
+  // Quick-launcher window controls. Show is the dev/tray fallback for the
+  // global shortcut; hide is the renderer's Esc; resize is renderer-driven
+  // (collapsed input vs expanded reply view).
+  ipcMain.handle(IPC.LauncherShow, () => toggleLauncherWindow())
+  ipcMain.handle(IPC.LauncherHide, () => hideLauncherWindow())
+  ipcMain.handle(IPC.LauncherResize, (_e, height: number) => resizeLauncherWindow(height))
+
+  // Hand the launcher's conversation off to the main window. Tolerates an
+  // empty/unknown sessionId (signed-out "Open Flairy" button): then it just
+  // brings the main window forward. If no main window is alive (closed for
+  // real), stash the meta for the recreated window to consume on mount.
+  ipcMain.handle(IPC.LauncherOpenInMain, (_e, sessionId: string) => {
+    const meta = sessionId ? getSession(sessionId) : undefined
+    if (meta) {
+      const win = getMainWindow()
+      if (win) win.webContents.send(IPC.LauncherOpenSession, meta)
+      else pendingLauncherSession = meta
+    }
+    showMainWindow()
+    hideLauncherWindow()
+  })
+  ipcMain.handle(IPC.LauncherTakePendingSession, () => {
+    const meta = pendingLauncherSession
+    pendingLauncherSession = null
+    return meta
+  })
+
+  // Quick-launcher summon chord: persist + re-register live; the returned
+  // status carries `registered:false` when another app owns the chord.
+  ipcMain.handle(IPC.SettingsGetLauncherShortcut, () => getLauncherShortcutStatus())
+  ipcMain.handle(IPC.SettingsSetLauncherShortcut, (_e, accelerator: string) =>
+    setLauncherShortcut(typeof accelerator === 'string' ? accelerator : '')
+  )
 
   // Widen the main window so opening the details panel doesn't squeeze the chat.
   ipcMain.handle(IPC.WindowGrowWidth, (_e, delta: number) => growMainWindowWidth(delta))

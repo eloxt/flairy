@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { Notification, type BrowserWindow } from 'electron'
+import { BrowserWindow, Notification } from 'electron'
 import { IPC, type ApprovalRequestPayload, type ApprovalScope } from '@shared/ipc'
 import { t } from '../locale'
-import { getMainWindow } from '../windows'
+import { broadcast, showMainWindow } from '../windows'
 
 /** A settled approval decision: whether to run, and how long to remember it. */
 export interface ApprovalDecision {
@@ -39,17 +39,16 @@ class ApprovalRegistry {
     const existing = this.inFlight.get(key)
     if (existing) return existing
 
-    // Resolve the live main window at request time (not a captured reference) so
-    // the prompt reaches the renderer even after a window close→reopen. With no
-    // window there's nobody to ask — deny rather than hang the tool call.
-    const win = getMainWindow()
-    if (!win) return Promise.resolve(DENIED)
+    // Fan the prompt out to every live window (resolved at request time, never
+    // captured): whichever window holds this session's runtime shows the card.
+    // With no window at all there's nobody to ask — deny rather than hang.
+    if (BrowserWindow.getAllWindows().length === 0) return Promise.resolve(DENIED)
 
     const approvalId = randomUUID()
     const decision = new Promise<ApprovalDecision>((resolve) => {
       this.pending.set(approvalId, { resolve, sessionId: payload.sessionId, key })
-      win.webContents.send(IPC.ApprovalRequest, { approvalId, ...payload })
-      this.notify(win, payload)
+      broadcast(IPC.ApprovalRequest, { approvalId, ...payload })
+      this.notify(payload)
     }).finally(() => this.inFlight.delete(key))
 
     this.inFlight.set(key, decision)
@@ -58,20 +57,15 @@ class ApprovalRegistry {
 
   /**
    * Raise a desktop notification so the user knows their input is needed when
-   * Flairy isn't the focused window — the inline approval card is intentionally
+   * no Flairy window is focused — the inline approval card is intentionally
    * non-blocking, so an out-of-focus user would otherwise miss it. Stays silent
-   * when the window is already focused (the card is right there). Clicking the
-   * notification brings the window forward.
+   * when any window is focused (the card is right there). Clicking the
+   * notification brings the main window forward (recreating it if needed).
    */
-  private notify(win: BrowserWindow, payload: Omit<ApprovalRequestPayload, 'approvalId'>): void {
-    if (!Notification.isSupported() || win.isDestroyed() || win.isFocused()) return
+  private notify(payload: Omit<ApprovalRequestPayload, 'approvalId'>): void {
+    if (!Notification.isSupported() || BrowserWindow.getFocusedWindow()) return
     const n = new Notification({ title: t('notificationTitle'), body: payload.reason })
-    n.on('click', () => {
-      if (win.isDestroyed()) return
-      if (win.isMinimized()) win.restore()
-      win.show()
-      win.focus()
-    })
+    n.on('click', () => showMainWindow())
     n.show()
   }
 

@@ -266,6 +266,22 @@ export function setCloseToTrayPref(value: boolean): void {
   setSetting('closeToTray', value ? '1' : '0')
 }
 
+/** Default quick-launcher summon chord (Electron accelerator string). */
+export const DEFAULT_LAUNCHER_SHORTCUT = 'Control+Space'
+
+/**
+ * Quick-launcher global shortcut preference. An Electron accelerator string;
+ * the empty string means the user turned the shortcut off. Missing (never set)
+ * falls back to the default chord.
+ */
+export function getLauncherShortcutPref(): string {
+  return getSetting('launcherShortcut') ?? DEFAULT_LAUNCHER_SHORTCUT
+}
+
+export function setLauncherShortcutPref(value: string): void {
+  setSetting('launcherShortcut', value)
+}
+
 /** Chat column width preference. Unknown/missing values fall back to "standard". */
 export function getChatWidthPref(): ChatWidth {
   const v = getSetting('chatWidth')

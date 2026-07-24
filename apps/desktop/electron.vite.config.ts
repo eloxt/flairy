@@ -31,7 +31,8 @@ export default defineConfig({
         input: {
           index: resolve('src/renderer/index.html'),
           settings: resolve('src/renderer/settings.html'),
-          'image-viewer': resolve('src/renderer/image-viewer.html')
+          'image-viewer': resolve('src/renderer/image-viewer.html'),
+          launcher: resolve('src/renderer/launcher.html')
         }
       }
     }
