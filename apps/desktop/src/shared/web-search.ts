@@ -134,7 +134,11 @@ export function parseSearchResults(text: string | undefined): SearchSource[] | n
 export function encodeFetchResult(source: SearchResultInput, content: string): string {
   const header = JSON.stringify({
     type: FETCH_MARKER,
-    instructions: `Cite information you use from this page inline as [${source.id}].`,
+    instructions:
+      `Cite information you use from this page inline as [${source.id}].` +
+      (source.images && source.images.length > 0
+        ? ' The "images" list holds this page\'s images. If one genuinely helps the answer (a chart, diagram, product shot), embed it inline as ![<alt>](#i<id>) using its exact "id". Only reference provided image ids; other image URLs will not render.'
+        : ''),
     source
   })
   return `${header}\n\n${content}`

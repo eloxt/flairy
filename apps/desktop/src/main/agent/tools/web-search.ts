@@ -37,20 +37,13 @@ export function resolveExaService(config: ConfigSnapshot | null): ExaRuntimeConf
 }
 
 /** A single result as returned by the Exa `/search` API (fields we use). */
-interface ExaResult {
+interface ExaResult extends ExaImageFields {
   title?: string | null
   url?: string | null
   text?: string | null
   highlights?: string[] | null
   favicon?: string | null
   publishedDate?: string | null
-  /** Representative image of the page (og:image), when Exa has one. */
-  image?: string | null
-  /** Populated by `contents.extras` — image URLs (plain / with alt) found in the page. */
-  extras?: {
-    imageLinks?: string[] | null
-    richImageLinks?: { url?: string | null; alt?: string | null }[] | null
-  } | null
 }
 
 /** Best preview image for a result: the page's own og:image, else the first in-page image link. */
@@ -70,14 +63,24 @@ function imageOf(r: ExaResult): string | undefined {
 /** Cap the model-facing alt text — it only needs to convey what the image shows. */
 const IMAGE_ALT_MAX = 80
 /** In-page images carried per result when `withImages` is set. */
-const IMAGES_PER_RESULT = 2
+export const IMAGES_PER_RESULT = 2
+
+/** The image-bearing fields both Exa endpoints (/search, /contents) return. */
+export interface ExaImageFields {
+  image?: string | null
+  extras?: {
+    imageLinks?: string[] | null
+    richImageLinks?: { url?: string | null; alt?: string | null }[] | null
+  } | null
+}
 
 /**
  * Embeddable in-page images for a result (from `extras.richImageLinks`): http(s)
  * only, the page's og:image dropped (it already backs the citation hover card),
  * deduped, alt normalized. Ids are assigned by the caller once totals are known.
+ * Shared with web_fetch, whose /contents results carry the same fields.
  */
-function imagesOf(r: ExaResult): { url: string; alt: string }[] {
+export function imagesOf(r: ExaImageFields): { url: string; alt: string }[] {
   const og = typeof r.image === 'string' ? r.image.trim() : ''
   const out: { url: string; alt: string }[] = []
   for (const link of r.extras?.richImageLinks ?? []) {

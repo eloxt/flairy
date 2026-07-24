@@ -1,13 +1,13 @@
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import type { ExaRuntimeConfig } from './web-search'
+import { imagesOf, IMAGES_PER_RESULT, type ExaImageFields, type ExaRuntimeConfig } from './web-search'
 import { encodeFetchResult, type SearchResultInput } from '@shared/web-search'
 
 /** Cap on returned page text, to bound the context cost of a single fetch. */
 const MAX_CHARACTERS = 8000
 
 /** A single result as returned by the Exa `/contents` API (fields we use). */
-interface ExaContent {
+interface ExaContent extends ExaImageFields {
   url?: string | null
   title?: string | null
   text?: string | null
@@ -33,7 +33,8 @@ interface ExaContent {
  */
 export function createWebFetchTool(
   resolve: () => ExaRuntimeConfig | null,
-  allocateIds?: (count: number) => number
+  allocateIds?: (count: number) => number,
+  allocateImageIds?: (count: number) => number
 ): AgentTool<any> {
   return {
     name: 'web_fetch',
@@ -48,12 +49,18 @@ Returns: Clean text content and metadata from the page.`,
         url: Type.String({
           minLength: 1,
           description: 'The absolute http(s) URL of the page to fetch.'
-        })
+        }),
+        withImages: Type.Optional(
+          Type.Boolean({
+            description:
+              'Set true ONLY when the answer would genuinely benefit from showing this page\'s images inline (charts, diagrams, product shots, artwork). The result then carries an "images" list; embed a valuable one in your answer as ![<alt>](#i<id>) using the exact image id. Default: false.'
+          })
+        )
       },
       { additionalProperties: false }
     ),
     executionMode: 'parallel',
-    execute: async (_id, { url }: any) => {
+    execute: async (_id, { url, withImages }: any) => {
       const u = typeof url === 'string' ? url.trim() : ''
       if (!u) throw new Error('web_fetch requires a non-empty "url"')
       let parsed: URL
@@ -80,8 +87,14 @@ Returns: Clean text content and metadata from the page.`,
             'x-api-key': cfg.apiKey
           },
           body: JSON.stringify({
-            ids: [u],
-            text: { maxCharacters: MAX_CHARACTERS }
+            urls: [u],
+            text: { maxCharacters: MAX_CHARACTERS },
+            // On demand only (token cost): the page's images with alt text the
+            // model can pick from and embed inline. Ask for one more than we
+            // keep so an og:image duplicate doesn't eat the whole budget.
+            ...(withImages === true
+              ? { extras: { richImageLinks: IMAGES_PER_RESULT + 1 } }
+              : {})
           })
         })
       } catch (err) {
@@ -109,6 +122,20 @@ Returns: Clean text content and metadata from the page.`,
         typeof result?.publishedDate === 'string' && result.publishedDate.trim()
           ? result.publishedDate.trim().slice(0, 10)
           : undefined
+      // Same og-image preview + embeddable-images treatment as a search result:
+      // `image` backs the citation hover card; `images` (withImages only) get
+      // ids from the shared turn-unique image namespace.
+      const ogImage =
+        typeof result?.image === 'string' && /^https?:\/\//i.test(result.image.trim())
+          ? result.image.trim()
+          : undefined
+      const pageImages = withImages === true && result ? imagesOf(result) : []
+      let imageId = allocateImageIds ? allocateImageIds(pageImages.length) : 0
+      const images = pageImages.map((img) => ({
+        id: ++imageId,
+        url: img.url,
+        ...(img.alt ? { alt: img.alt } : {})
+      }))
       // Reserve one id from the shared citation namespace and ship the page as a
       // citable source: header line for model + renderer, content below it.
       const source: SearchResultInput = {
@@ -116,7 +143,9 @@ Returns: Clean text content and metadata from the page.`,
         title,
         url: u,
         snippet: text.replace(/\s+/g, ' ').slice(0, 200),
-        ...(date ? { date } : {})
+        ...(date ? { date } : {}),
+        ...(ogImage ? { image: ogImage } : {}),
+        ...(images.length > 0 ? { images } : {})
       }
       return {
         content: [

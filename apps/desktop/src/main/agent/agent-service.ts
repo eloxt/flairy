@@ -585,14 +585,19 @@ export class AgentService {
           }
         )
       );
-      // Same citation-id allocator as web_search: fetched pages and search
-      // results share one turn-unique [n] namespace.
+      // Same citation-id and image-id allocators as web_search: fetched pages
+      // and search results share the turn-unique [n] and #i<n> namespaces.
       tools.push(
         createWebFetchTool(
           () => resolveExaService(this.server.getConfig()),
           (count) => {
             const start = this.searchIdOffset;
             this.searchIdOffset += count;
+            return start;
+          },
+          (count) => {
+            const start = this.searchImageIdOffset;
+            this.searchImageIdOffset += count;
             return start;
           }
         )
