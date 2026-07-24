@@ -585,7 +585,18 @@ export class AgentService {
           }
         )
       );
-      tools.push(createWebFetchTool(() => resolveExaService(this.server.getConfig())));
+      // Same citation-id allocator as web_search: fetched pages and search
+      // results share one turn-unique [n] namespace.
+      tools.push(
+        createWebFetchTool(
+          () => resolveExaService(this.server.getConfig()),
+          (count) => {
+            const start = this.searchIdOffset;
+            this.searchIdOffset += count;
+            return start;
+          }
+        )
+      );
     }
     if (!chat) tools.push(...this.mcp.getTools());
     return tools;

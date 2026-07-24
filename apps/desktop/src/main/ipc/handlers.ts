@@ -504,6 +504,10 @@ export function registerIpcHandlers(
   // param; the window fetches (and consumes) it once on load — never round-tripped
   // through a URL. The id is deleted on first read so the buffer doesn't linger.
   ipcMain.handle(IPC.ImageViewerOpen, (_e, image: ViewerImage) => {
+    // URL-backed images must be real web links — same scheme discipline as
+    // ShellOpenExternal, so a compromised renderer can't point the viewer at
+    // file:// or other local schemes.
+    if (image?.url && !/^https?:\/\//i.test(image.url)) return
     const id = randomUUID()
     pendingViewerImages.set(id, image)
     const win = openImageViewerWindow(id)

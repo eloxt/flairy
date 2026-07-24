@@ -37,6 +37,8 @@ export interface SearchSource {
   image?: string
   /** In-page images the model may embed inline (present only for `withImages` searches). */
   images?: SearchImage[]
+  /** Publication date (YYYY-MM-DD) when Exa knows it — freshness signal for model and UI. */
+  date?: string
 }
 
 /** The compact per-result shape the tool serializes (renderer derives the rest). */
@@ -47,10 +49,13 @@ export interface SearchResultInput {
   snippet: string
   image?: string
   images?: SearchImage[]
+  date?: string
 }
 
 /** Marker on the JSON payload, used to recognize our tool's output cheaply. */
 const MARKER = 'flairy_web_search'
+/** Marker on a web_fetch result's first-line JSON header (page becomes citable). */
+const FETCH_MARKER = 'flairy_web_fetch'
 
 /** Serialize results into the JSON text the tool returns. */
 export function encodeSearchResults(results: SearchResultInput[]): string {
@@ -75,6 +80,28 @@ function hostOf(url: string): string {
   }
 }
 
+/** Sanitize one serialized result into the renderer-facing {@link SearchSource}. */
+function toSource(r: SearchResultInput): SearchSource {
+  return {
+    i: Number(r.id),
+    title: typeof r.title === 'string' && r.title.trim() ? r.title.trim() : r.url,
+    url: r.url,
+    domain: hostOf(r.url),
+    snippet: typeof r.snippet === 'string' ? r.snippet : '',
+    image: typeof r.image === 'string' && r.image.trim() ? r.image.trim() : undefined,
+    images: Array.isArray(r.images)
+      ? r.images.filter(
+          (img): img is SearchImage =>
+            !!img &&
+            Number.isInteger((img as SearchImage).id) &&
+            typeof (img as SearchImage).url === 'string' &&
+            /^https?:\/\//i.test((img as SearchImage).url)
+        )
+      : undefined,
+    date: typeof r.date === 'string' && r.date.trim() ? r.date.trim() : undefined
+  }
+}
+
 /**
  * Parse a tool-result text into {@link SearchSource}s, or null if it isn't our
  * web-search JSON. Identified by the `type` marker — robust to the tool's name
@@ -91,26 +118,63 @@ export function parseSearchResults(text: string | undefined): SearchSource[] | n
     if (obj.type !== MARKER || !Array.isArray(obj.results)) return null
     return obj.results
       .filter((r): r is SearchResultInput => !!r && typeof (r as SearchResultInput).url === 'string')
-      .map((r) => ({
-        i: Number(r.id),
-        title: typeof r.title === 'string' && r.title.trim() ? r.title.trim() : r.url,
-        url: r.url,
-        domain: hostOf(r.url),
-        snippet: typeof r.snippet === 'string' ? r.snippet : '',
-        image: typeof r.image === 'string' && r.image.trim() ? r.image.trim() : undefined,
-        images: Array.isArray(r.images)
-          ? r.images.filter(
-              (img): img is SearchImage =>
-                !!img &&
-                Number.isInteger((img as SearchImage).id) &&
-                typeof (img as SearchImage).url === 'string' &&
-                /^https?:\/\//i.test((img as SearchImage).url)
-            )
-          : undefined
-      }))
+      .map(toSource)
   } catch {
     return null
   }
+}
+
+/**
+ * Serialize a web_fetch result: a single-line JSON header (the page's citation
+ * source + a cite-me instruction for the model) followed by the page content.
+ * One text serves all three consumers, like the search payload: the model reads
+ * the header inline, the renderer splits it off into the source registry, and
+ * the whole thing persists/syncs with the message.
+ */
+export function encodeFetchResult(source: SearchResultInput, content: string): string {
+  const header = JSON.stringify({
+    type: FETCH_MARKER,
+    instructions: `Cite information you use from this page inline as [${source.id}].`,
+    source
+  })
+  return `${header}\n\n${content}`
+}
+
+/** Parse a web_fetch text into its source + the header-free page content. */
+function parseFetchResult(
+  text: string
+): { sources: SearchSource[]; display: string } | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('{') || !trimmed.slice(0, 200).includes(FETCH_MARKER)) return null
+  const nl = trimmed.indexOf('\n')
+  const headerLine = nl === -1 ? trimmed : trimmed.slice(0, nl)
+  try {
+    const obj = JSON.parse(headerLine) as { type?: string; source?: SearchResultInput }
+    if (obj.type !== FETCH_MARKER || typeof obj.source?.url !== 'string') return null
+    return {
+      sources: [toSource(obj.source)],
+      display: nl === -1 ? '' : trimmed.slice(nl).trim()
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The renderer's single entry point for both web tools: recognize a tool-result
+ * text as web_search or web_fetch output and return the citation sources plus a
+ * clean display text (sources list / header-free page content). Null for every
+ * other tool's output.
+ */
+export function parseWebToolResult(
+  text: string | undefined
+): { sources: SearchSource[]; display: string } | null {
+  if (!text) return null
+  const fetched = parseFetchResult(text)
+  if (fetched) return fetched
+  const sources = parseSearchResults(text)
+  if (sources) return { sources, display: formatSourcesForDisplay(sources) }
+  return null
 }
 
 /**

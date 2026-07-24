@@ -143,7 +143,8 @@ Returns: Clean text content from top search results.
 
 Query tips:
 describe the ideal page, not keywords. "blog post comparing React and Vue performance" not "React vs Vue".
-Use category:people / category:company to search through Linkedin profiles / companies respectively.
+Use the "category" parameter to focus on a content type (news, research paper, github, people…), and "daysBack" for time-sensitive queries where only recent pages are useful.
+Each result may carry a "date" (publication date) — weigh it when the topic moves fast, and prefer newer sources for claims about the current state of things.
 If highlights are insufficient, follow up with web_fetch on the best URLs.`,
     parameters: Type.Object(
       {
@@ -162,12 +163,37 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
             description:
               'Set true ONLY when the answer would genuinely benefit from showing images inline (charts, diagrams, product shots, artwork). Results then carry an "images" list; embed a valuable one in your answer as ![<alt>](#i<id>) using the exact image id. Default: false.'
           })
+        ),
+        category: Type.Optional(
+          Type.Union(
+            [
+              Type.Literal('company'),
+              Type.Literal('research paper'),
+              Type.Literal('news'),
+              Type.Literal('pdf'),
+              Type.Literal('github'),
+              Type.Literal('tweet'),
+              Type.Literal('personal site'),
+              Type.Literal('linkedin profile'),
+              Type.Literal('financial report')
+            ],
+            {
+              description:
+                'Focus the search on one content type — e.g. "news" for current events, "research paper" for academic sources, "github" for code, "linkedin profile" for people. Omit for general search.'
+            }
+          )
+        ),
+        daysBack: Type.Optional(
+          Type.Number({
+            description:
+              'Only return pages published within the last N days. Use for time-sensitive queries (news, releases, "latest X") where stale results would mislead. Omit for topics where age does not matter.'
+          })
         )
       },
       { additionalProperties: false }
     ),
     executionMode: 'parallel',
-    execute: async (_id, { query, numResults, withImages }: any) => {
+    execute: async (_id, { query, numResults, withImages, category, daysBack }: any) => {
       const q = typeof query === 'string' ? query.trim() : ''
       if (!q) throw new Error('web_search requires a non-empty "query"')
 
@@ -193,6 +219,14 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
             query: q,
             numResults: count,
             type: 'auto',
+            ...(typeof category === 'string' && category ? { category } : {}),
+            ...(typeof daysBack === 'number' && daysBack > 0
+              ? {
+                  startPublishedDate: new Date(
+                    Date.now() - Math.min(Math.floor(daysBack), 3650) * 86_400_000
+                  ).toISOString()
+                }
+              : {}),
             contents: {
               text: { maxCharacters: 800 },
               highlights: true,
@@ -245,13 +279,20 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
           url: img.url,
           ...(img.alt ? { alt: img.alt } : {})
         }))
+        // Date only (no time-of-day): a freshness signal for model + UI at
+        // minimal token cost.
+        const date =
+          typeof r.publishedDate === 'string' && r.publishedDate.trim()
+            ? r.publishedDate.trim().slice(0, 10)
+            : undefined
         return {
           id: idStart + idx + 1,
           title: (r.title ?? url).replace(/\s+/g, ' ').trim(),
           url,
           snippet: snippetOf(r),
           image: imageOf(r),
-          ...(images.length > 0 ? { images } : {})
+          ...(images.length > 0 ? { images } : {}),
+          ...(date ? { date } : {})
         }
       })
 

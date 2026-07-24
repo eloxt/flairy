@@ -144,13 +144,15 @@ export interface Attachment {
 }
 
 /**
- * A displayable image (a user-attached picture). Carried on a chat bubble so the
- * renderer can show a thumbnail, and handed to the standalone image-viewer window
- * for full-size zoom/pan. `data` is raw base64 (no data: prefix).
+ * A displayable image, handed to the standalone image-viewer window for
+ * full-size zoom/pan. Either inline data (a user-attached picture; `data` is
+ * raw base64 without the data: prefix) or a remote `url` (a web-search image —
+ * the viewer window loads it itself, no round-trip through main).
  */
 export interface ViewerImage {
-  data: string
-  mimeType: string
+  data?: string
+  mimeType?: string
+  url?: string
 }
 
 /* ---------- command payloads ---------- */

@@ -1,6 +1,7 @@
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { ExaRuntimeConfig } from './web-search'
+import { encodeFetchResult, type SearchResultInput } from '@shared/web-search'
 
 /** Cap on returned page text, to bound the context cost of a single fetch. */
 const MAX_CHARACTERS = 8000
@@ -10,6 +11,7 @@ interface ExaContent {
   url?: string | null
   title?: string | null
   text?: string | null
+  publishedDate?: string | null
 }
 
 /**
@@ -17,9 +19,11 @@ interface ExaContent {
  *
  * The companion to `web_search`: where search returns short highlights across
  * many pages, this reads ONE known URL in depth (after a search, or when the
- * user hands over a link). It returns plain readable text — no citation `[n]`
- * machinery (that stays exclusive to web_search). Numbering/sources are not
- * involved, so the renderer shows the result as ordinary tool text.
+ * user hands over a link). The fetched page gets a citation id from the SAME
+ * turn-unique namespace as search results (`allocateIds` is the same allocator
+ * agent-service hands to web_search), carried in a first-line JSON header — so
+ * the common "search → fetch the best hit → answer from the full text" flow can
+ * cite the page it actually drew on, not just the search snippets.
  *
  * Runs in the main process, so it calls the HTTPS API directly with the
  * server-delivered key; the key never reaches the renderer. Config is read fresh
@@ -27,14 +31,18 @@ interface ExaContent {
  * takes effect immediately. Registered as a read-only tool (no approval prompt)
  * since it only reads the public web.
  */
-export function createWebFetchTool(resolve: () => ExaRuntimeConfig | null): AgentTool<any> {
+export function createWebFetchTool(
+  resolve: () => ExaRuntimeConfig | null,
+  allocateIds?: (count: number) => number
+): AgentTool<any> {
   return {
     name: 'web_fetch',
     label: 'web_fetch',
-    description: `Read a webpage's full content as clean markdown. Use after web_search_exa when highlights are insufficient or to read any URL.
+    description: `Read a webpage's full content as clean markdown. Use after web_search when highlights are insufficient or to read any URL.
+The result's first line assigns the page a citation id — cite information you use from it inline as [<id>], same as search-result citations.
 
-Best for: Extracting full content from known URLs. Batch multiple URLs in one call.
-Returns: Clean text content and metadata from the page(s).`,
+Best for: Extracting full content from known URLs.
+Returns: Clean text content and metadata from the page.`,
     parameters: Type.Object(
       {
         url: Type.String({
@@ -97,8 +105,23 @@ Returns: Clean text content and metadata from the page(s).`,
       }
 
       const title = (result?.title ?? u).replace(/\s+/g, ' ').trim()
+      const date =
+        typeof result?.publishedDate === 'string' && result.publishedDate.trim()
+          ? result.publishedDate.trim().slice(0, 10)
+          : undefined
+      // Reserve one id from the shared citation namespace and ship the page as a
+      // citable source: header line for model + renderer, content below it.
+      const source: SearchResultInput = {
+        id: (allocateIds ? allocateIds(1) : 0) + 1,
+        title,
+        url: u,
+        snippet: text.replace(/\s+/g, ' ').slice(0, 200),
+        ...(date ? { date } : {})
+      }
       return {
-        content: [{ type: 'text', text: `# ${title}\n${u}\n\n${text}` }],
+        content: [
+          { type: 'text', text: encodeFetchResult(source, `# ${title}\n${u}\n\n${text}`) }
+        ],
         details: { url: u, chars: text.length }
       }
     }

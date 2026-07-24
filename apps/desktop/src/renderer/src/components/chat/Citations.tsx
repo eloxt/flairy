@@ -44,6 +44,27 @@ function openSource(url: string): void {
 }
 
 /**
+ * A source's publication date as a short relative phrase ("3 days ago" /
+ * "3天前") in the UI language, or null when the date is missing/unparseable.
+ * Coarse buckets are enough — this is a freshness cue, not a timestamp.
+ */
+function relativeDate(iso: string | undefined, locale: string): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  try {
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    if (days < 1) return rtf.format(0, "day");
+    if (days < 30) return rtf.format(-days, "day");
+    if (days < 365) return rtf.format(-Math.round(days / 30), "month");
+    return rtf.format(-Math.round(days / 365), "year");
+  } catch {
+    return iso;
+  }
+}
+
+/**
  * Flatten a React children value (string | array | element | nested) to its
  * text. MUST recurse into elements: while a message streams, Streamdown's
  * entrance animation (a rehype pass) wraps every text run — including the
@@ -251,7 +272,8 @@ export function CitationImage(props: any): React.JSX.Element | null {
 /**
  * A registry-backed inline image in the answer body. Zero footprint until it
  * actually loads and gone entirely on error, so a dead link never leaves a
- * broken-image band in the prose. Click opens the image in the browser.
+ * broken-image band in the prose. Click opens the standalone image-viewer
+ * window (the same zoom/pan viewer user-attached images use).
  */
 function EmbeddedImage({ image }: { image: SearchImage }): React.JSX.Element | null {
   const [loaded, setLoaded] = useState(false);
@@ -265,9 +287,9 @@ function EmbeddedImage({ image }: { image: SearchImage }): React.JSX.Element | n
       loading="lazy"
       onLoad={() => setLoaded(true)}
       onError={() => setFailed(true)}
-      onClick={() => openSource(image.url)}
+      onClick={() => void window.api.openImageViewer({ url: image.url })}
       className={cn(
-        "block cursor-pointer object-contain",
+        "block cursor-zoom-in object-contain",
         loaded
           ? "my-2 max-h-72 max-w-full rounded-lg border border-border/60"
           : "h-0 w-0",
@@ -305,7 +327,7 @@ function SourceImage({ source }: { source: SearchSource }): React.JSX.Element | 
   );
 }
 
-/** The card body shown on hover: preview image, domain row, title, snippet. */
+/** The card body shown on hover: preview image, domain row (+date), title, snippet. */
 function SourceCardBody({
   source,
   onOpen,
@@ -313,6 +335,8 @@ function SourceCardBody({
   source: SearchSource;
   onOpen: () => void;
 }): React.JSX.Element {
+  const { i18n } = useTranslation();
+  const when = relativeDate(source.date, i18n.language);
   return (
     <button
       type="button"
@@ -323,6 +347,9 @@ function SourceCardBody({
       <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
         <Favicon source={source} className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate">{source.domain}</span>
+        {when && (
+          <span className="shrink-0 text-muted-foreground/70">· {when}</span>
+        )}
       </span>
       <span className="line-clamp-2 w-full wrap-break-word text-sm font-medium leading-snug text-foreground">
         {source.title}
@@ -346,7 +373,7 @@ export function SourcesList({
 }: {
   sources: SearchSource[];
 }): React.JSX.Element | null {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Collapsed by default — the answer carries itself; the source index is there
   // to expand on demand, not to crowd the thread. Mirrors the tool-row pattern.
   const [open, setOpen] = useState(false);
@@ -377,6 +404,26 @@ export function SourcesList({
         <span>
           {t("citations.sources")} · {sources.length}
         </span>
+        {/* Collapsed teaser: overlapping favicons of the first few distinct
+            domains, so "which sites" is visible without expanding. */}
+        {!open && (
+          <span className="ml-0.5 flex -space-x-1.5">
+            {ordered
+              .filter(
+                (s, i, arr) =>
+                  arr.findIndex((o) => o.domain === s.domain) === i,
+              )
+              .slice(0, 5)
+              .map((s) => (
+                <span
+                  key={s.domain}
+                  className="flex size-4 items-center justify-center rounded-full bg-background ring-1 ring-border"
+                >
+                  <Favicon source={s} className="size-3" />
+                </span>
+              ))}
+          </span>
+        )}
       </button>
       {/* grid-cols-1 forces the track to minmax(0,1fr) so it can't grow past
           the column; min-w-0 on each row lets it shrink below its content's
@@ -401,6 +448,11 @@ export function SourcesList({
               <span className="min-w-0 flex-1 truncate text-xs text-foreground/80 group-hover:text-foreground">
                 {s.title}
               </span>
+              {relativeDate(s.date, i18n.language) && (
+                <span className="shrink-0 text-xs text-muted-foreground/70">
+                  {relativeDate(s.date, i18n.language)}
+                </span>
+              )}
             </button>
           ))}
         </div>

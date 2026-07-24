@@ -10,11 +10,7 @@ import type {
   QuestionRequestPayload,
   SessionMeta
 } from '@shared/ipc'
-import {
-  formatSourcesForDisplay,
-  parseSearchResults,
-  type SearchSource
-} from '@shared/web-search'
+import { parseWebToolResult, type SearchSource } from '@shared/web-search'
 import { parseTodos, type TodoItem } from '@shared/todo'
 import { stripImageDescriptions } from '@shared/image-description'
 import { formatToolArgs, toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
@@ -913,15 +909,16 @@ function applyEvent(
               running: false
             }
           }
-          // The web-search tool returns a JSON payload; detect it by parsing (not
-          // tool name — robust to the tool being named differently or coming from
-          // MCP). When it parses, show a clean list instead of the raw JSON.
-          const sources = parseSearchResults(raw)
-          if (sources) {
+          // The web tools return structured payloads (search JSON / fetch header);
+          // detect by parsing, not tool name — robust to the tool being named
+          // differently or coming from MCP. When one parses, show the clean
+          // display text and register the citation sources.
+          const web = parseWebToolResult(raw)
+          if (web) {
             return {
               ...m,
-              text: formatSourcesForDisplay(sources),
-              sources,
+              text: web.display,
+              sources: web.sources,
               isError: e.isError,
               running: false
             }
@@ -1097,16 +1094,16 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
         const patch = readResultPatch(m)
         const existing = m.toolCallId ? toolBubbles.get(m.toolCallId) : undefined
         if (existing) {
-          // Mirror the live path: parse the todo plan / web-search JSON into
+          // Mirror the live path: parse the todo plan / web-tool payload into
           // structured data and show a clean list; other tools pass through.
           const todos = parseTodos(raw)
-          const sources = todos ? null : parseSearchResults(raw)
+          const web = todos ? null : parseWebToolResult(raw)
           if (todos) {
             existing.todos = todos
             existing.text = i18n.t('chat.planUpdated')
-          } else if (sources) {
-            existing.sources = sources
-            existing.text = formatSourcesForDisplay(sources) || i18n.t('chat.toolDone')
+          } else if (web) {
+            existing.sources = web.sources
+            existing.text = web.display || i18n.t('chat.toolDone')
           } else {
             existing.text = raw || i18n.t('chat.toolDone')
           }
@@ -1122,7 +1119,7 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
         // An orphan result (no matching call) stands alone in its own batch.
         else {
           const todos = parseTodos(raw)
-          const sources = todos ? null : parseSearchResults(raw)
+          const web = todos ? null : parseWebToolResult(raw)
           out.push({
             id: m.toolCallId ?? crypto.randomUUID(),
             role: 'tool',
@@ -1130,11 +1127,11 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
             text:
               (todos
                 ? i18n.t('chat.planUpdated')
-                : sources
-                  ? formatSourcesForDisplay(sources)
+                : web
+                  ? web.display
                   : raw) || i18n.t('chat.toolDone'),
             todos: todos ?? undefined,
-            sources: sources ?? undefined,
+            sources: web?.sources,
             diffPatch: patch ?? undefined,
             isError: Boolean(m.isError),
             batchId: m.toolCallId ?? crypto.randomUUID(),

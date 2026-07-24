@@ -124,7 +124,9 @@ export function ImageViewer(): React.JSX.Element {
     if (drag.current?.id === e.pointerId) drag.current = null
   }
 
-  const src = image ? `data:${image.mimeType};base64,${image.data}` : ''
+  const src = image
+    ? (image.url ?? (image.data ? `data:${image.mimeType};base64,${image.data}` : ''))
+    : ''
 
   return (
     <div
@@ -154,6 +156,7 @@ export function ImageViewer(): React.JSX.Element {
             ref={imgRef}
             src={src}
             onLoad={onImgLoad}
+            onError={() => setMissing(true)}
             draggable={false}
             alt=""
             className="absolute left-0 top-0 max-w-none origin-top-left"
