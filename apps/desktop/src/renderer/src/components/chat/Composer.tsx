@@ -88,15 +88,27 @@ function normalizeDir(path: string): string {
 
 /**
  * The current plan: the most recent todo-bearing message's list (`todo_write`
- * rewrites the whole plan each call). Returns the todos array by reference —
- * it lives on a settled tool-result message, so the selector stays
+ * rewrites the whole plan each call). A plan that was fully completed in an
+ * earlier round (a user message sits between it and now) is finished business —
+ * it doesn't resurface when the user starts the next turn; an unfinished one
+ * does, since the agent may be continuing it. Returns the todos array by
+ * reference — it lives on a settled tool-result message, so the selector stays
  * referentially stable across streamed tokens and doesn't re-render the
  * composer per token.
  */
-function selectLiveTodos(s: { messages: { todos?: TodoItem[] }[] }): TodoItem[] | null {
+function selectLiveTodos(s: {
+  messages: { role: string; todos?: TodoItem[] }[];
+}): TodoItem[] | null {
+  let previousRound = false;
   for (let i = s.messages.length - 1; i >= 0; i--) {
-    const todos = s.messages[i].todos;
-    if (todos?.length) return todos;
+    const m = s.messages[i];
+    if (m.todos?.length) {
+      if (previousRound && m.todos.every((t) => t.status === "completed")) {
+        return null;
+      }
+      return m.todos;
+    }
+    if (m.role === "user") previousRound = true;
   }
   return null;
 }
@@ -112,7 +124,7 @@ function LivePlanCard({ todos }: { todos: TodoItem[] }): React.JSX.Element {
   const { t } = useTranslation();
   const done = todos.filter((x) => x.status === "completed").length;
   return (
-    <div className="px-4 pb-1 pt-3">
+    <div className="rounded-t-lg border-b border-border bg-background/66 backdrop-blur px-4 pb-2.5 pt-3">
       <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t("composer.plan")}</span>
         <div className="flex-1" />
