@@ -33,6 +33,7 @@ import type { UiMessage } from "@/store/chat-store";
 import type { SearchSource } from "@shared/web-search";
 import {
   CitationChip,
+  CitationImage,
   CitationsProvider,
   remarkCitations,
   SourcesList,
@@ -66,7 +67,9 @@ const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk, renderers: cardRenderers 
 // remark-gfm). Re-add gfm here or GFM tables/strikethrough/task-lists/autolinks
 // stop parsing and render as plain text. gfm goes first to match the default order.
 const STREAMDOWN_REMARK_PLUGINS = [remarkGfm, remarkCitations];
-const STREAMDOWN_COMPONENTS = { sup: CitationChip };
+// `img` routes every markdown image through the search-image registry (see
+// CitationImage) — registry-backed `#i<id>` refs render, anything else doesn't.
+const STREAMDOWN_COMPONENTS = { sup: CitationChip, img: CitationImage };
 
 /**
  * Disclosure chevron shared by ToolEntry / ToolGroup / TurnFold: invisible at

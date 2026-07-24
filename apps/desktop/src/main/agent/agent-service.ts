@@ -198,6 +198,8 @@ export class AgentService {
    * `[n]` the model writes unambiguous when the renderer merges a turn's sources.
    */
   private searchIdOffset = 0;
+  /** Same discipline for the separate image-id namespace (`#i<n>` embeds). */
+  private searchImageIdOffset = 0;
   /**
    * Compressed summary of the conversation's OLDER messages, applied only in the
    * LLM-bound view (convertToLlm) — `agent.state.messages` stays fully intact for
@@ -506,8 +508,9 @@ export class AgentService {
       // renderer also keys off, so isRunning() matches what the UI shows.
       if (event.type === "agent_start") {
         this.running = true;
-        // New turn: restart per-turn web-search citation numbering.
+        // New turn: restart per-turn web-search citation + image numbering.
         this.searchIdOffset = 0;
+        this.searchImageIdOffset = 0;
       }
       if (event.type === "agent_end") {
         this.running = false;
@@ -573,6 +576,11 @@ export class AgentService {
           (count) => {
             const start = this.searchIdOffset;
             this.searchIdOffset += count;
+            return start;
+          },
+          (count) => {
+            const start = this.searchImageIdOffset;
+            this.searchImageIdOffset += count;
             return start;
           }
         )

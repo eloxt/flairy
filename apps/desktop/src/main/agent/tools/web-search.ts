@@ -44,6 +44,54 @@ interface ExaResult {
   highlights?: string[] | null
   favicon?: string | null
   publishedDate?: string | null
+  /** Representative image of the page (og:image), when Exa has one. */
+  image?: string | null
+  /** Populated by `contents.extras` — image URLs (plain / with alt) found in the page. */
+  extras?: {
+    imageLinks?: string[] | null
+    richImageLinks?: { url?: string | null; alt?: string | null }[] | null
+  } | null
+}
+
+/** Best preview image for a result: the page's own og:image, else the first in-page image link. */
+function imageOf(r: ExaResult): string | undefined {
+  const candidates = [
+    r.image,
+    ...(r.extras?.imageLinks ?? []),
+    ...(r.extras?.richImageLinks ?? []).map((l) => l?.url)
+  ]
+  for (const c of candidates) {
+    const url = typeof c === 'string' ? c.trim() : ''
+    if (/^https?:\/\//i.test(url)) return url
+  }
+  return undefined
+}
+
+/** Cap the model-facing alt text — it only needs to convey what the image shows. */
+const IMAGE_ALT_MAX = 80
+/** In-page images carried per result when `withImages` is set. */
+const IMAGES_PER_RESULT = 2
+
+/**
+ * Embeddable in-page images for a result (from `extras.richImageLinks`): http(s)
+ * only, the page's og:image dropped (it already backs the citation hover card),
+ * deduped, alt normalized. Ids are assigned by the caller once totals are known.
+ */
+function imagesOf(r: ExaResult): { url: string; alt: string }[] {
+  const og = typeof r.image === 'string' ? r.image.trim() : ''
+  const out: { url: string; alt: string }[] = []
+  for (const link of r.extras?.richImageLinks ?? []) {
+    const url = typeof link?.url === 'string' ? link.url.trim() : ''
+    if (!/^https?:\/\//i.test(url)) continue
+    if (url === og || out.some((i) => i.url === url)) continue
+    const alt =
+      typeof link?.alt === 'string'
+        ? link.alt.replace(/\s+/g, ' ').trim().slice(0, IMAGE_ALT_MAX)
+        : ''
+    out.push({ url, alt })
+    if (out.length >= IMAGES_PER_RESULT) break
+  }
+  return out
 }
 
 /** Best short snippet for a result: prefer Exa highlights, fall back to text. */
@@ -75,11 +123,13 @@ function snippetOf(r: ExaResult): string {
  * start of the block; it advances a per-run counter the caller resets at each
  * new turn. The advance is synchronous, so concurrent `executionMode:'parallel'`
  * searches still get disjoint ranges. Omitted (e.g. in isolation/tests) →
- * numbering falls back to a local 1-based block.
+ * numbering falls back to a local 1-based block. `allocateImageIds` is the same
+ * discipline for the separate image-id namespace (the `#i<n>` embeds).
  */
 export function createWebSearchTool(
   resolve: () => ExaRuntimeConfig | null,
-  allocateIds?: (count: number) => number
+  allocateIds?: (count: number) => number,
+  allocateImageIds?: (count: number) => number
 ): AgentTool<any> {
   return {
     name: 'web_search',
@@ -106,12 +156,18 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
           Type.Number({
             description: 'Number of search results to return (default: 10).'
           })
+        ),
+        withImages: Type.Optional(
+          Type.Boolean({
+            description:
+              'Set true ONLY when the answer would genuinely benefit from showing images inline (charts, diagrams, product shots, artwork). Results then carry an "images" list; embed a valuable one in your answer as ![<alt>](#i<id>) using the exact image id. Default: false.'
+          })
         )
       },
       { additionalProperties: false }
     ),
     executionMode: 'parallel',
-    execute: async (_id, { query, numResults }: any) => {
+    execute: async (_id, { query, numResults, withImages }: any) => {
       const q = typeof query === 'string' ? query.trim() : ''
       if (!q) throw new Error('web_search requires a non-empty "query"')
 
@@ -139,7 +195,15 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
             type: 'auto',
             contents: {
               text: { maxCharacters: 800 },
-              highlights: true
+              highlights: true,
+              extras: {
+                // One image URL per result, surfaced in the citation hover card.
+                imageLinks: 1,
+                // On demand only (token cost): in-page images with alt text the
+                // model can pick from and embed inline. Ask for one more than we
+                // keep so an og:image duplicate doesn't eat the whole budget.
+                ...(withImages === true ? { richImageLinks: IMAGES_PER_RESULT + 1 } : {})
+              }
             }
           })
         })
@@ -169,13 +233,25 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
       // reuse [1], [2], … (which the renderer would conflate when it merges a
       // turn's searches into one citation registry).
       const idStart = allocateIds ? allocateIds(found.length) : 0
+      // Image ids live in their own turn-unique namespace (`#i<n>`), allocated in
+      // one block per search — same disjoint-range discipline as citation ids.
+      const perResultImages = found.map((r) => (withImages === true ? imagesOf(r) : []))
+      const imageTotal = perResultImages.reduce((n, imgs) => n + imgs.length, 0)
+      let imageId = allocateImageIds ? allocateImageIds(imageTotal) : 0
       const results: SearchResultInput[] = found.map((r, idx) => {
         const url = String(r.url)
+        const images = perResultImages[idx].map((img) => ({
+          id: ++imageId,
+          url: img.url,
+          ...(img.alt ? { alt: img.alt } : {})
+        }))
         return {
           id: idStart + idx + 1,
           title: (r.title ?? url).replace(/\s+/g, ' ').trim(),
           url,
-          snippet: snippetOf(r)
+          snippet: snippetOf(r),
+          image: imageOf(r),
+          ...(images.length > 0 ? { images } : {})
         }
       })
 

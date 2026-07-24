@@ -7,7 +7,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Globe } from "lucide-react";
-import type { SearchSource } from "@shared/web-search";
+import type { SearchImage, SearchSource } from "@shared/web-search";
 import { getFaviconUrl } from "@/lib/favicon";
 import { cn } from "@/lib/utils";
 import {
@@ -74,6 +74,7 @@ export function remarkCitations() {
   type Node = {
     type: string;
     value?: string;
+    url?: string;
     children?: Node[];
     data?: unknown;
   };
@@ -121,6 +122,19 @@ export function remarkCitations() {
         child.value.includes("[")
       ) {
         next.push(...splitText(child.value));
+      } else if (
+        child.type === "image" &&
+        typeof child.url === "string" &&
+        /^#i\d+$/.test(child.url)
+      ) {
+        // `![alt](#i3)` — a search-image embed. Streamdown's rehype-harden pass
+        // BLOCKS fragment-only URLs on images (it allows them on links only,
+        // even under the "*" wildcard), so the node would be replaced before our
+        // `img` override ever ran. Path-relative URLs DO pass the wildcard —
+        // rewrite `#i3` → `/i3` here at the remark stage, upstream of harden.
+        // The model-facing format stays `#i<id>`; CitationImage accepts both.
+        child.url = `/${child.url.slice(1)}`;
+        next.push(child);
       } else {
         walk(child);
         next.push(child);
@@ -203,7 +217,95 @@ function Favicon({
   );
 }
 
-/** The card body shown on hover: domain row, title, snippet. */
+/**
+ * `![alt](#i12)` — the only image reference the chat markdown will render. The
+ * remark pass rewrites `#i12` → `/i12` to get past rehype-harden (which blocks
+ * fragment URLs on images), so match both spellings here.
+ */
+const IMAGE_REF = /^[#/]i(\d+)$/;
+
+/**
+ * Override for every `<img>` in assistant markdown. The model embeds search
+ * images as `![alt](#i<id>)`; the id is resolved against the message's source
+ * registry, which doubles as the URL allowlist — anything else (a hallucinated
+ * id, an arbitrary external URL, an injection-planted tracking pixel) never
+ * loads and degrades to its alt text.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function CitationImage(props: any): React.JSX.Element | null {
+  const sources = useContext(CitationsContext);
+  const src = typeof props.src === "string" ? props.src : "";
+  const m = IMAGE_REF.exec(src);
+  const image = m
+    ? sources
+        .flatMap((s) => s.images ?? [])
+        .find((i) => i.id === Number(m[1]))
+    : undefined;
+  if (!image) {
+    const alt = typeof props.alt === "string" ? props.alt.trim() : "";
+    return alt ? <span className="text-muted-foreground">{alt}</span> : null;
+  }
+  return <EmbeddedImage image={image} />;
+}
+
+/**
+ * A registry-backed inline image in the answer body. Zero footprint until it
+ * actually loads and gone entirely on error, so a dead link never leaves a
+ * broken-image band in the prose. Click opens the image in the browser.
+ */
+function EmbeddedImage({ image }: { image: SearchImage }): React.JSX.Element | null {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      src={image.url}
+      alt={image.alt ?? ""}
+      title={image.alt}
+      loading="lazy"
+      onLoad={() => setLoaded(true)}
+      onError={() => setFailed(true)}
+      onClick={() => openSource(image.url)}
+      className={cn(
+        "block cursor-pointer object-contain",
+        loaded
+          ? "my-2 max-h-72 max-w-full rounded-lg border border-border/60"
+          : "h-0 w-0",
+      )}
+    />
+  );
+}
+
+/**
+ * Page preview image at the top of the hover card. Renders nothing until the
+ * image has actually loaded (and nothing at all on error), so a dead or slow
+ * URL never leaves a blank band above the text.
+ */
+function SourceImage({ source }: { source: SearchSource }): React.JSX.Element | null {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (!source.image || failed) return null;
+  return (
+    <img
+      src={source.image}
+      alt=""
+      loading="lazy"
+      className={cn(
+        "object-cover",
+        // Bleed through HoverCardContent's p-2.5 so the image is flush with the
+        // card's top and side edges; only pull the margins once loaded, or the
+        // h-0 placeholder would shift the text content up by the padding.
+        loaded
+          ? "-mx-2.5 -mt-2.5 max-h-32 w-[calc(100%+1.25rem)] max-w-none rounded-t-lg"
+          : "h-0 w-full",
+      )}
+      onLoad={() => setLoaded(true)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** The card body shown on hover: preview image, domain row, title, snippet. */
 function SourceCardBody({
   source,
   onOpen,
@@ -217,6 +319,7 @@ function SourceCardBody({
       onClick={onOpen}
       className="flex w-full flex-col items-start gap-1 text-left"
     >
+      <SourceImage source={source} />
       <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
         <Favicon source={source} className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate">{source.domain}</span>
