@@ -109,9 +109,12 @@ The server is the sole source of skills / MCP / LLM configuration; the client re
 
 ## pi-agent-core API Notes (battle-tested pitfalls, must follow)
 
-Based on hands-on testing with 0.79.6; the README examples diverge from the actual types:
+Based on hands-on testing with 0.81.1; the README examples diverge from the actual types:
 
-- `getModel(provider, modelId)` **takes only 2 arguments** and does not accept an apiKey. Credentials are injected via `new Agent({ getApiKey: (provider) => ... })`.
+- `new Agent({ ... })` **requires `streamFn`**: pi-agent-core no longer reaches into pi-ai's provider registry itself. We pass `streamSimple`. (A host can instead install one globally via `setDefaultStreamFn`.)
+- 0.81 split the provider catalog out of pi-ai's main entry. The global api-dispatch helpers (`stream` / `streamSimple` / `complete`, plus the deprecated `getModel` / `getModels` / `getProviders`) now live at **`@earendil-works/pi-ai/compat`**, which upstream marks as temporary. Types like `Model<Api>` still come from the main entry.
+- Credentials are injected via `new Agent({ getApiKey: (provider) => ... })`, never baked into the model object.
+- `buildModel` sets `provider` to the api id, which deliberately never matches a builtin provider id — so compat's dispatch falls through to the api registry and our server-configured (incl. OpenAI-compatible) endpoints are used as-is. Don't "fix" `provider` to a real vendor name or requests start resolving against pi's builtin provider instead.
 - `AgentTool` **requires `label`**; the `execute` return value **requires `details`**; `params` must be explicitly typed as `any` (`Static<any>` actually resolves to `unknown`).
 - Messages need a `timestamp`: `agent.steer({ role, content, timestamp: Date.now() })`.
 - typebox is a **standalone package** (`typebox` v1.x), not `@sinclair/typebox`.

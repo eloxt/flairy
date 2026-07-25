@@ -181,7 +181,7 @@ export function CodeEditor(props: CodeEditorProps): React.JSX.Element {
       indentation: props.options?.showIndentLines ?? true
     },
     hover: {
-      enabled: !props.options?.disableHover
+      enabled: (props.options?.disableHover ? 'off' : 'on') as 'on' | 'off'
     },
     quickSuggestions: props.options?.quickSuggestions ?? false,
     wordBasedSuggestions: 'off',

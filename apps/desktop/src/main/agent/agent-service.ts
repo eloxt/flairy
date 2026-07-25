@@ -1,5 +1,10 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import { getModel, streamSimple } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
+// pi 0.81 split the provider catalog out of the main entry: the global
+// api-dispatch `streamSimple` now lives behind the `/compat` subpath. We build
+// every Model from server config, so the catalog itself is not needed — only
+// the dispatcher that turns a Model's `api` into a request.
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
   CHAT_PROMPT_NAME,
   IMAGE_DESCRIPTION_PROMPT_NAME,
@@ -321,6 +326,9 @@ export class AgentService {
     const mainLlm = config.llm.main;
 
     this.agent = new Agent({
+      // pi 0.81 made the stream function an explicit dependency (pi-agent-core no
+      // longer reaches into pi-ai's provider registry itself).
+      streamFn: streamSimple,
       // Credential is resolved per-request from the latest server config — never
       // embedded in the model object or sent to the renderer.
       getApiKey: () => server.getConfig()?.llm.main?.provider.credential,
@@ -1593,13 +1601,13 @@ function sanitizeTitle(raw: string): string {
   return collapsed.slice(0, 60).trim();
 }
 
-type PiModel = NonNullable<ReturnType<typeof getModel>>;
+type PiModel = Model<Api>;
 
 /**
  * Build a pi-ai Model entirely from the server-pushed config.
  *
  * The server is the single source of truth: we do NOT consult pi-ai's built-in
- * model registry (`getModel`). Every Model is constructed from the active LLM's
+ * model catalog (`getBuiltinModel`). Every Model is constructed from the active LLM's
  * provider API + the model's pushed runtime params, so custom / third-party /
  * OpenAI-compatible models work with zero client-side knowledge.
  *

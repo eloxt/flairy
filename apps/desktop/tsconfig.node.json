@@ -11,9 +11,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "types": ["electron-vite/node", "node"],
-    "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["./src/shared/*"]
     }
   }
 }

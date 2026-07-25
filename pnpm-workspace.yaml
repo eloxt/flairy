@@ -6,10 +6,15 @@ allowBuilds:
   better-sqlite3: true
   electron: true
   electron-liquid-glass: true
+  # electron-builder 26 pulls this in; only needed for Squirrel.Windows targets,
+  # and our win target is nsis — no need to run its Squirrel download script.
+  electron-winstaller: false
   esbuild: true
   protobufjs: true
 minimumReleaseAgeExclude:
-  - '@earendil-works/pi-agent-core@0.79.6'
-  - '@earendil-works/pi-ai@0.79.6'
-  - '@shadcn/react@0.1.0'
-  - shadcn@4.12.0
+  # pi-ai hard-pins @aws-sdk/client-bedrock-runtime (for Bedrock support we don't
+  # use). The AWS SDK publishes daily and its internal deps use caret ranges, so
+  # that subtree always resolves to releases younger than the age window —
+  # without these excludes no pi-ai version can be installed at all.
+  - '@aws-sdk/*'
+  - '@smithy/*'

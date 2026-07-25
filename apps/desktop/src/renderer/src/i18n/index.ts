@@ -4,7 +4,7 @@
  * Imported for side effects as the FIRST import of each entry point
  * (`main.tsx`, `settings.tsx`) so the instance is ready before first paint.
  * Resources are inlined (not lazily loaded) and init is synchronous
- * (`initImmediate: false`), so the first `useTranslation()` already sees a ready
+ * (`initAsync: false`), so the first `useTranslation()` already sees a ready
  * instance — no English→Chinese flash and no Suspense boundary required.
  *
  * The initial language is resolved synchronously by the main process
@@ -25,7 +25,7 @@ void i18n.use(initReactI18next).init({
   lng: window.api.getInitialLanguage(),
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
-  initImmediate: false, // synchronous init — resources are inlined
+  initAsync: false, // synchronous init — resources are inlined
   react: { useSuspense: false }, // no Suspense boundary exists
   returnNull: false
 })

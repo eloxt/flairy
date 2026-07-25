@@ -46,3 +46,41 @@ pub fn hash_password(password: &str) -> AppResult<String> {
 pub fn verify_password(password: &str, hashed: &str) -> AppResult<bool> {
     verify(password, hashed).map_err(|_| AppError::PasswordHash)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Guards a failure mode that compiles cleanly and only shows up at runtime:
+    /// jsonwebtoken 11 panics on the first sign/verify unless a crypto-provider
+    /// feature is selected (see the dependency comment in Cargo.toml). Without a
+    /// test, dropping that feature would break login and the socket.io handshake
+    /// with nothing failing at build time.
+    #[test]
+    fn jwt_round_trip_and_rejections() {
+        let secret = "test-secret";
+        let tok = issue_token("user-1", "admin", secret).expect("issue");
+        let claims = validate_token(&tok, secret).expect("validate");
+        assert_eq!(claims.sub, "user-1");
+        assert_eq!(claims.role, "admin");
+        assert!(validate_token(&tok, "wrong-secret").is_err());
+        assert!(validate_token("not.a.token", secret).is_err());
+    }
+
+    #[test]
+    fn password_hash_round_trip() {
+        let h = hash_password("s3cret").expect("hash");
+        assert!(h.starts_with("$2"));
+        assert!(verify_password("s3cret", &h).expect("verify"));
+        assert!(!verify_password("nope", &h).expect("verify"));
+    }
+
+    /// Passwords already stored in the database were hashed by an older bcrypt.
+    /// This fixture was produced by bcrypt 0.15 (the version in use before the
+    /// 0.19 upgrade), so a regression here means existing users cannot log in.
+    #[test]
+    fn verifies_hash_produced_by_older_bcrypt() {
+        let legacy = "$2b$12$2McrHI4fqlHAaIWq9j8PM.gT0/CAl8CVZoarVJbz7fVjqAk6p4h96";
+        assert!(verify_password("correct horse battery staple", legacy).expect("verify"));
+    }
+}

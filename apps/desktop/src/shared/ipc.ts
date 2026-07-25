@@ -20,6 +20,24 @@ import type {
 
 export type { Memory } from '@flairy/shared'
 
+/**
+ * `process.platform` values, spelled out rather than borrowed from `NodeJS.Platform`.
+ * This file is compiled by the renderer's tsconfig too, which deliberately excludes
+ * Node's type declarations so renderer code can't reach for Node APIs.
+ */
+export type Platform =
+  | 'aix'
+  | 'android'
+  | 'darwin'
+  | 'freebsd'
+  | 'haiku'
+  | 'linux'
+  | 'openbsd'
+  | 'sunos'
+  | 'win32'
+  | 'cygwin'
+  | 'netbsd'
+
 /** Channel name constants — never hardcode strings elsewhere. */
 export const IPC = {
   // commands (invoke)
@@ -733,7 +751,7 @@ export interface FlairyApi {
   /** Open the latest release page in the OS browser. */
   openReleasePage(): Promise<void>
   /** The OS platform, so the renderer can adapt chrome (e.g. macOS traffic lights). */
-  platform: NodeJS.Platform
+  platform: Platform
   /**
    * The language to render with on first paint, resolved synchronously by main
    * (saved setting, else system locale). Sync so i18n initializes before paint.

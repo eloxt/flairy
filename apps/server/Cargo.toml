@@ -8,17 +8,22 @@ axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 socketioxide = { version = "0.16", features = ["state", "tracing"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.7", features = ["cors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
-jsonwebtoken = "9"
-bcrypt = "0.15"
+# jsonwebtoken 11 no longer bundles a crypto backend: its default features carry
+# no provider, and any encode/decode then PANICS at runtime ("Could not
+# automatically determine the process-level CryptoProvider"). `rust_crypto` keeps
+# the build pure-Rust, matching sqlx's rustls runtime and the single-static-binary
+# distribution goal (aws_lc_rs would pull in a C toolchain).
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto", "use_pem"] }
+bcrypt = "0.19"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
-sha2 = "0.10"
-base64 = "0.22"
+sha2 = "0.11"
+base64 = "0.23"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
