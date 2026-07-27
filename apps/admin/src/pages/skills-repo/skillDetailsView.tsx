@@ -20,7 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { useDeleteSkill, useGetSkill, useUpdateSkill } from './queries'
 import type { SkillConfig } from '@flairy/shared'
 import type { SkillFileEntry } from '@/lib/types/skills'
-import { ArrowLeft, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { IconArrowLeft, IconLoader, IconDots, IconPencil, IconTrash } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { type SkillFormState, composeFrontmatter, useSkillForm } from './helpers'
@@ -163,7 +163,7 @@ export function SkillDetailView({
   if (isLoading) {
     return (
       <div className="flex w-full flex-1 items-center justify-center py-20">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <IconLoader className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -173,7 +173,7 @@ export function SkillDetailView({
       <div className="flex w-full flex-1 flex-col items-center justify-center p-4">
         <p className="text-muted-foreground text-sm">Skill not found</p>
         <Button variant="outline" size="sm" className="mt-3" onClick={onBack}>
-          <ArrowLeft className="h-3.5 w-3.5" />
+          <IconArrowLeft className="h-3.5 w-3.5" />
           Back to list
         </Button>
       </div>
@@ -232,7 +232,7 @@ export function SkillDetailView({
                   </Label>
                 </div>
                 <Button size="sm" onClick={() => setIsEditing(true)}>
-                  <Pencil className="h-3.5 w-3.5" />
+                  <IconPencil className="h-3.5 w-3.5" />
                   Edit
                 </Button>
                 <DropdownMenu>
@@ -246,7 +246,7 @@ export function SkillDetailView({
                       />
                     }
                   >
-                    <MoreHorizontal className="h-4 w-4" />
+                    <IconDots className="h-4 w-4" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
@@ -256,7 +256,7 @@ export function SkillDetailView({
                       closeOnClick={false}
                       onClick={() => setDeleteDialogOpen(true)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <IconTrash className="h-4 w-4" />
                       Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -275,7 +275,7 @@ export function SkillDetailView({
                       <AlertDialogAction onClick={() => void handleDelete()} disabled={isDeleting}>
                         {isDeleting ? (
                           <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting...
+                            <IconLoader className="h-3.5 w-3.5 animate-spin" /> Deleting...
                           </>
                         ) : (
                           'Delete skill'

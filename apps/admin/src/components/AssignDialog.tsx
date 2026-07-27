@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Search, Users } from "lucide-react";
+import { IconCheck, IconLoader, IconSearch, IconUsers } from "@tabler/icons-react";
 import type {
   Audience,
   ResourceAssignment,
@@ -115,7 +115,7 @@ export function AssignDialog({
           {audience === "specific" && (
             <div className="flex min-h-0 flex-1 flex-col gap-2">
               <div className="relative shrink-0">
-                <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                <IconSearch className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <Input
                   aria-label="Search users"
                   placeholder="Search users..."
@@ -128,7 +128,7 @@ export function AssignDialog({
               <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
                 {usersLoading ? (
                   <div className="flex items-center justify-center py-10">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                    <IconLoader className="size-5 animate-spin text-muted-foreground" />
                   </div>
                 ) : usersError ? (
                   <div className="text-destructive py-8 text-center text-sm">
@@ -158,7 +158,7 @@ export function AssignDialog({
                                     : "border-input",
                                 )}
                               >
-                                {checked && <Check className="size-3" />}
+                                {checked && <IconCheck className="size-3" />}
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium">
@@ -178,7 +178,7 @@ export function AssignDialog({
               </div>
 
               <p className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
-                <Users className="size-3" />
+                <IconUsers className="size-3" />
                 {selected.size} user{selected.size === 1 ? "" : "s"} selected
               </p>
             </div>
@@ -190,7 +190,7 @@ export function AssignDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={saving}>
-            {saving && <Loader2 className="size-4 animate-spin" />}
+            {saving && <IconLoader className="size-4 animate-spin" />}
             Save
           </Button>
         </div>

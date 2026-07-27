@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image as ImageIcon } from "lucide-react";
+import { IconPhoto as ImageIcon } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import {
   useMessageScroller,

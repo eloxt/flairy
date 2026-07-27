@@ -1,4 +1,4 @@
-import { Trash2, Plus } from 'lucide-react'
+import { IconTrash, IconPlus } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -196,7 +196,7 @@ export function ItemCard({
               className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={onRemove}
             >
-              <Trash2 className="size-3.5" />
+              <IconTrash className="size-3.5" />
             </Button>
           )}
         </div>
@@ -215,7 +215,7 @@ export function AddButton({
 }): React.JSX.Element {
   return (
     <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onClick}>
-      <Plus className="size-3.5" />
+      <IconPlus className="size-3.5" />
       {label}
     </Button>
   )
@@ -278,7 +278,7 @@ export function KeyValueEditor({
               className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={() => removeRow(i)}
             >
-              <Trash2 className="size-3.5" />
+              <IconTrash className="size-3.5" />
             </Button>
           </div>
         ))}

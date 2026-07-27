@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Bot, Server, Sparkles } from 'lucide-react'
+import { IconRobot, IconServer, IconSparkles } from '@tabler/icons-react'
 import { useConfig } from '@/hooks/useConfig'
 import { PageError, PageLoading } from '@/components/PageState'
 import { PageHeader } from '@/components/PageHeader'
@@ -34,7 +34,7 @@ export function DashboardPage(): React.JSX.Element {
           <Card className="hairline h-full transition-colors group-hover:bg-accent/50">
             <CardHeader>
               <CardDescription className="eyebrow flex items-center gap-1.5">
-                <Bot className="size-3.5" />
+                <IconRobot className="size-3.5" />
                 LLM
               </CardDescription>
               <CardTitle className="text-base">Main model</CardTitle>
@@ -54,7 +54,7 @@ export function DashboardPage(): React.JSX.Element {
           <Card className="hairline h-full transition-colors group-hover:bg-accent/50">
             <CardHeader>
               <CardDescription className="eyebrow flex items-center gap-1.5">
-                <Server className="size-3.5" />
+                <IconServer className="size-3.5" />
                 MCP Servers
               </CardDescription>
               <CardTitle className="text-base">Tool providers</CardTitle>
@@ -74,7 +74,7 @@ export function DashboardPage(): React.JSX.Element {
           <Card className="hairline h-full transition-colors group-hover:bg-accent/50">
             <CardHeader>
               <CardDescription className="eyebrow flex items-center gap-1.5">
-                <Sparkles className="size-3.5" />
+                <IconSparkles className="size-3.5" />
                 Skills
               </CardDescription>
               <CardTitle className="text-base">System-prompt presets</CardTitle>

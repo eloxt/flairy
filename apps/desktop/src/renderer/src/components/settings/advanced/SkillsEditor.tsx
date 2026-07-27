@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { IconTrash } from '@tabler/icons-react'
 import type { SkillConfig, SkillFile } from '@flairy/shared'
 import { Button } from '@/components/ui/button'
 import { AddButton, Field, ItemCard, SwitchRow, TextAreaField, TextField } from './primitives'
@@ -127,7 +127,7 @@ function FilesEditor({
                 className="mt-5 size-7 shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={() => onChange(files.filter((_, idx) => idx !== i))}
               >
-                <Trash2 className="size-3.5" />
+                <IconTrash className="size-3.5" />
               </Button>
             </div>
             <TextAreaField

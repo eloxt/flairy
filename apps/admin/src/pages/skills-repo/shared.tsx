@@ -23,28 +23,7 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { fetchSkillFileObjectUrl } from '@/api/client'
 import type { SkillFileEntry } from '@/lib/types/skills'
 import { cn } from '@/lib/utils'
-import {
-  Check,
-  Bot,
-  BookOpen,
-  Braces,
-  ChevronDown,
-  ChevronRight,
-  ChevronsDownUp,
-  ChevronsUpDown,
-  ArrowLeft,
-  Copy,
-  Download,
-  ExternalLink,
-  FileText,
-  Folder,
-  FolderOpen,
-  Hammer,
-  MoreHorizontal,
-  Scale,
-  Table2,
-  X
-} from 'lucide-react'
+import { IconCheck, IconRobot, IconBook, IconBraces, IconChevronDown, IconChevronRight, IconFold, IconSelector, IconArrowLeft, IconCopy, IconDownload, IconExternalLink, IconFileText, IconFolder, IconFolderOpen, IconHammer, IconDots, IconScale, IconTable, IconX } from '@tabler/icons-react'
 import { useState, useMemo } from 'react'
 import { formatYamlRecord } from './helpers'
 import { FilePreviewPane } from './filePreview'
@@ -71,7 +50,7 @@ export function RailRow({
   active,
   onClick
 }: {
-  icon: typeof FileText
+  icon: typeof IconFileText
   label: string
   active: boolean
   onClick: () => void
@@ -104,7 +83,7 @@ export function HeaderMetaItem({
   label: string
   value?: string
   missingText: string
-  icon: typeof Scale
+  icon: typeof IconScale
 }): React.JSX.Element {
   const hasValue = Boolean(value?.trim())
 
@@ -179,7 +158,7 @@ export function SkillHeader({
                 onClick={onBack}
                 aria-label="Go back"
               >
-                <ArrowLeft className="h-4 w-4" />
+                <IconArrowLeft className="h-4 w-4" />
               </Button>
             )}
             <h2 className="min-w-0 truncate text-xl font-semibold tracking-tight">{name}</h2>
@@ -206,18 +185,18 @@ export function SkillHeader({
         <p className="text-muted-foreground max-w-3xl text-xs">{description}</p>
         <TooltipProvider>
           <div className="mt-3 flex flex-wrap items-center gap-2 pb-2">
-            <HeaderMetaItem label="License" value={license} missingText="No license defined" icon={Scale} />
+            <HeaderMetaItem label="License" value={license} missingText="No license defined" icon={IconScale} />
             <HeaderMetaItem
               label="Compatibility"
               value={compatibility}
               missingText="No compatibility defined"
-              icon={Bot}
+              icon={IconRobot}
             />
             <HeaderMetaItem
               label="Allowed tools"
               value={allowedTools}
               missingText="No allowed tools defined"
-              icon={Hammer}
+              icon={IconHammer}
             />
           </div>
         </TooltipProvider>
@@ -240,10 +219,10 @@ export function SkillHeader({
                   onClick={() => void copyRawSkillMd(composedSkillMd)}
                   aria-label={copiedRawSkillMd ? 'Raw SKILL.md copied' : 'Copy raw SKILL.md'}
                 >
-                  {copiedRawSkillMd ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copiedRawSkillMd ? <IconCheck className="h-4 w-4" /> : <IconCopy className="h-4 w-4" />}
                 </Button>
                 <DialogClose className="text-muted-foreground hover:bg-background/80 hover:text-foreground cursor-pointer rounded-sm p-1.5 transition-colors">
-                  <X className="h-4 w-4" />
+                  <IconX className="h-4 w-4" />
                   <span className="sr-only">Close</span>
                 </DialogClose>
               </div>
@@ -423,7 +402,7 @@ export function ReadOnlySkillBody({ body }: { body: string }): React.JSX.Element
                 setExternalLink(null)
               }}
             >
-              <ExternalLink className="h-4 w-4" />
+              <IconExternalLink className="h-4 w-4" />
               Open link
             </Button>
           </DialogFooter>
@@ -468,8 +447,8 @@ function TreeRowChevron({
   isExpanded: boolean
 }): React.JSX.Element {
   if (!hasChildren) return <span className="w-3.5 shrink-0" />
-  if (isExpanded) return <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-  return <ChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+  if (isExpanded) return <IconChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+  return <IconChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
 }
 
 function TreeRowIcon({
@@ -483,10 +462,10 @@ function TreeRowIcon({
   isFolder: boolean
   isExpanded: boolean
 }): React.JSX.Element | null {
-  if (isSkillMd) return <BookOpen className="text-muted-foreground h-4 w-4 shrink-0" />
-  if (isFile) return <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
-  if (isFolder && isExpanded) return <FolderOpen className="text-muted-foreground h-4 w-4 shrink-0" />
-  if (isFolder) return <Folder className="text-muted-foreground h-4 w-4 shrink-0" />
+  if (isSkillMd) return <IconBook className="text-muted-foreground h-4 w-4 shrink-0" />
+  if (isFile) return <IconFileText className="text-muted-foreground h-4 w-4 shrink-0" />
+  if (isFolder && isExpanded) return <IconFolderOpen className="text-muted-foreground h-4 w-4 shrink-0" />
+  if (isFolder) return <IconFolder className="text-muted-foreground h-4 w-4 shrink-0" />
   return null
 }
 
@@ -701,11 +680,11 @@ export function ReadOnlyFileTree({
                         />
                       }
                     >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      <IconDots className="h-3.5 w-3.5" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem className="cursor-pointer" onClick={() => downloadFile()}>
-                        <Download className="h-3.5 w-3.5" />
+                        <IconDownload className="h-3.5 w-3.5" />
                         Download
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -730,7 +709,7 @@ export function ReadOnlyFileTree({
                         />
                       }
                     >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      <IconDots className="h-3.5 w-3.5" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
@@ -738,7 +717,7 @@ export function ReadOnlyFileTree({
                         disabled={isAllExpanded}
                         onClick={() => onExpandAll()}
                       >
-                        <ChevronsUpDown className="h-3.5 w-3.5" />
+                        <IconSelector className="h-3.5 w-3.5" />
                         Expand all
                       </DropdownMenuItem>
                       <DropdownMenuItem
@@ -746,7 +725,7 @@ export function ReadOnlyFileTree({
                         disabled={isAllCollapsed}
                         onClick={() => onCollapseAll()}
                       >
-                        <ChevronsDownUp className="h-3.5 w-3.5" />
+                        <IconFold className="h-3.5 w-3.5" />
                         Collapse all
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -808,7 +787,7 @@ export function SkillReadOnlyContent({
             <div className="flex flex-col gap-0.5">
               {hasMetadata && (
                 <RailRow
-                  icon={Table2}
+                  icon={IconTable}
                   label="Metadata"
                   active={selected === METADATA_KEY}
                   onClick={() => setSelected(METADATA_KEY)}
@@ -816,7 +795,7 @@ export function SkillReadOnlyContent({
               )}
               {hasFrontmatter && (
                 <RailRow
-                  icon={Braces}
+                  icon={IconBraces}
                   label="Extra frontmatter"
                   active={selected === FRONTMATTER_KEY}
                   onClick={() => setSelected(FRONTMATTER_KEY)}

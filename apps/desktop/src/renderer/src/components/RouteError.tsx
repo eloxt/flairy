@@ -1,6 +1,6 @@
 import { useRouteError } from "react-router";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle } from "lucide-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -36,7 +36,7 @@ export function RouteError(): React.JSX.Element {
 
       <div className="flex flex-1 flex-col items-center justify-center gap-5 overflow-auto px-8 pb-12 text-center">
         <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <AlertTriangle className="size-6" />
+          <IconAlertTriangle className="size-6" />
         </div>
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold tracking-tight">

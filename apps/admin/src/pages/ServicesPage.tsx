@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { IconLock, IconPencil, IconPlus, IconTrash, IconUsers } from "@tabler/icons-react";
 import type {
   AdminServiceConfig,
   ResourceAssignment,
@@ -174,7 +174,7 @@ export function ServicesPage(): React.JSX.Element {
         description="External integrations with secret credentials (e.g. Exa web search)."
         action={
           <Button onClick={() => setEditing(emptyForm())}>
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
             Add service
           </Button>
         }
@@ -211,7 +211,7 @@ export function ServicesPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-1 text-muted-foreground text-sm">
-                      <Lock className="size-3" />
+                      <IconLock className="size-3" />
                       ••••
                     </span>
                   </TableCell>
@@ -237,14 +237,14 @@ export function ServicesPage(): React.JSX.Element {
                         aria-label={`Assign ${s.name}`}
                         onClick={() => setAssigning(s)}
                       >
-                        <Users className="size-4" />
+                        <IconUsers className="size-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => setEditing(toForm(s))}
                       >
-                        <Pencil className="size-4" />
+                        <IconPencil className="size-4" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -252,7 +252,7 @@ export function ServicesPage(): React.JSX.Element {
                         onClick={() => void handleDelete(s.id)}
                         disabled={saving}
                       >
-                        <Trash2 className="size-4" />
+                        <IconTrash className="size-4" />
                       </Button>
                     </div>
                   </TableCell>

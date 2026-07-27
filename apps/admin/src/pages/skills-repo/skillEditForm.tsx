@@ -15,19 +15,7 @@ import { CodeEditor, type CompletionItem } from '@/components/ui/codeEditor'
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { cn } from '@/lib/utils'
 import type { SkillFileEntry } from '@/lib/types/skills'
-import {
-  AlertTriangle,
-  Braces,
-  Check,
-  Copy,
-  Eye,
-  FileText,
-  Loader2,
-  Plus,
-  Save,
-  Table2,
-  X
-} from 'lucide-react'
+import { IconAlertTriangle, IconBraces, IconCheck, IconCopy, IconEye, IconFileText, IconLoader, IconPlus, IconDeviceFloppy, IconTable, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { type SkillFormReturn, composeFrontmatter } from './helpers'
 import { FormSection, RailRow } from './shared'
@@ -47,10 +35,10 @@ const Markdown = (props: ComponentProps<typeof LazyMarkdown>): React.JSX.Element
 type DetailsPane = 'details' | 'metadata' | 'frontmatter'
 
 /** The non-file sections of a skill, shown as rows in the left navigator. */
-const SKILL_PANES: { key: DetailsPane; label: string; icon: typeof FileText }[] = [
-  { key: 'details', label: 'Details', icon: FileText },
-  { key: 'metadata', label: 'Metadata', icon: Table2 },
-  { key: 'frontmatter', label: 'Extra frontmatter', icon: Braces }
+const SKILL_PANES: { key: DetailsPane; label: string; icon: typeof IconFileText }[] = [
+  { key: 'details', label: 'Details', icon: IconFileText },
+  { key: 'metadata', label: 'Metadata', icon: IconTable },
+  { key: 'frontmatter', label: 'Extra frontmatter', icon: IconBraces }
 ]
 
 export function SkillEditView({
@@ -270,7 +258,7 @@ export function SkillEditView({
                         className="text-muted-foreground flex items-center gap-1.5 text-xs"
                         role="status"
                       >
-                        <AlertTriangle className="size-3.5 shrink-0" />
+                        <IconAlertTriangle className="size-3.5 shrink-0" />
                         {form.bodyWarning}
                       </p>
                     )}
@@ -292,16 +280,16 @@ export function SkillEditView({
           Cancel
         </Button>
         <Button variant="outline" size="sm" onClick={() => setShowPreviewDialog(true)}>
-          <Eye className="h-3.5 w-3.5" />
+          <IconEye className="h-3.5 w-3.5" />
           Preview Raw SKILL.md
         </Button>
         <Button size="sm" onClick={onSave} disabled={isSaving || form.hasErrors}>
           {isSaving ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <IconLoader className="h-3.5 w-3.5 animate-spin" />
           ) : isCreate ? (
-            <Plus className="h-3.5 w-3.5" />
+            <IconPlus className="h-3.5 w-3.5" />
           ) : (
-            <Save className="h-3.5 w-3.5" />
+            <IconDeviceFloppy className="h-3.5 w-3.5" />
           )}
           {isSaving ? (isCreate ? 'Creating...' : 'Saving...') : isCreate ? 'Create Skill' : 'Save'}
         </Button>
@@ -325,10 +313,10 @@ export function SkillEditView({
                 onClick={() => void copyPreviewContent(previewContent)}
                 aria-label={copiedPreviewContent ? 'Raw SKILL.md copied' : 'Copy raw SKILL.md'}
               >
-                {copiedPreviewContent ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copiedPreviewContent ? <IconCheck className="h-4 w-4" /> : <IconCopy className="h-4 w-4" />}
               </Button>
               <DialogClose className="text-muted-foreground hover:bg-background/80 hover:text-foreground cursor-pointer rounded-sm p-1.5 transition-colors">
-                <X className="h-4 w-4" />
+                <IconX className="h-4 w-4" />
                 <span className="sr-only">Close</span>
               </DialogClose>
             </div>

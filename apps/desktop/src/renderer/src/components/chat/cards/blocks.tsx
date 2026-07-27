@@ -1,14 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import {
-  CircleCheck,
-  Circle,
-  Info,
-  LoaderCircle,
-  OctagonAlert,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { IconCircleCheck, IconCircle, IconInfoCircle, IconLoader2, IconAlertOctagon, IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type {
   ChartBlock,
   CompareBlock,
@@ -183,18 +175,18 @@ function TimelineMarker({
   switch (status) {
     case "done":
       return (
-        <CircleCheck
+        <IconCircleCheck
           className={cn(cls, "text-emerald-600 dark:text-emerald-400")}
         />
       );
     case "active":
       return (
-        <LoaderCircle className={cn(cls, "animate-spin text-foreground")} />
+        <IconLoader2 className={cn(cls, "animate-spin text-foreground")} />
       );
     case "failed":
-      return <X className={cn(cls, "text-destructive")} />;
+      return <IconX className={cn(cls, "text-destructive")} />;
     default:
-      return <Circle className={cn(cls, "text-muted-foreground/40")} />;
+      return <IconCircle className={cn(cls, "text-muted-foreground/40")} />;
   }
 }
 
@@ -248,19 +240,19 @@ export function TimelineCard({ data }: { data: TimelineBlock }) {
 const NOTE_STYLE = {
   info: {
     box: "border-border bg-muted/40 text-muted-foreground",
-    icon: Info,
+    icon: IconInfoCircle,
   },
   warning: {
     box: "border-amber-300/60 bg-amber-500/5 text-amber-600 dark:border-amber-400/20 dark:text-amber-400",
-    icon: TriangleAlert,
+    icon: IconAlertTriangle,
   },
   danger: {
     box: "border-destructive/30 bg-destructive/5 text-destructive",
-    icon: OctagonAlert,
+    icon: IconAlertOctagon,
   },
   success: {
     box: "border-emerald-300/60 bg-emerald-500/5 text-emerald-600 dark:border-emerald-400/20 dark:text-emerald-400",
-    icon: CircleCheck,
+    icon: IconCircleCheck,
   },
 } as const;
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Loader2, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { IconLoader, IconPencil, IconPlus, IconSearch, IconTrash, IconUsers } from "@tabler/icons-react";
 import type {
   LlmModelConfig,
   LlmModelInput,
@@ -333,7 +333,7 @@ export function LlmPage(): React.JSX.Element {
             size="sm"
             onClick={() => setEditingProvider(emptyProviderForm())}
           >
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
             Add provider
           </Button>
         </div>
@@ -371,7 +371,7 @@ export function LlmPage(): React.JSX.Element {
                           size="icon"
                           onClick={() => setEditingProvider(providerToForm(p))}
                         >
-                          <Pencil className="size-4" />
+                          <IconPencil className="size-4" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -384,7 +384,7 @@ export function LlmPage(): React.JSX.Element {
                           }
                           disabled={saving}
                         >
-                          <Trash2 className="size-4" />
+                          <IconTrash className="size-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -407,7 +407,7 @@ export function LlmPage(): React.JSX.Element {
               setEditingModel(emptyModelForm(providers[0]?.id ?? ""))
             }
           >
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
             Add model
           </Button>
         </div>
@@ -451,7 +451,7 @@ export function LlmPage(): React.JSX.Element {
                           size="icon"
                           onClick={() => setEditingModel(modelToForm(m))}
                         >
-                          <Pencil className="size-4" />
+                          <IconPencil className="size-4" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -464,7 +464,7 @@ export function LlmPage(): React.JSX.Element {
                           }
                           disabled={saving}
                         >
-                          <Trash2 className="size-4" />
+                          <IconTrash className="size-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -512,7 +512,7 @@ export function LlmPage(): React.JSX.Element {
                       onClick={() => setOverridesRole(role)}
                       disabled={saving}
                     >
-                      <Users className="size-4" />
+                      <IconUsers className="size-4" />
                       {overrideCount > 0
                         ? `${overrideCount} override${overrideCount === 1 ? "" : "s"}`
                         : "Overrides"}
@@ -711,7 +711,7 @@ function RoleOverridesDialog({
 
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           <div className="relative shrink-0">
-            <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <IconSearch className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input
               aria-label="Search users"
               placeholder="Search users..."
@@ -724,7 +724,7 @@ function RoleOverridesDialog({
           <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
             {usersLoading ? (
               <div className="flex items-center justify-center py-10">
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                <IconLoader className="size-5 animate-spin text-muted-foreground" />
               </div>
             ) : usersError ? (
               <div className="text-destructive py-8 text-center text-sm">
@@ -792,7 +792,7 @@ function RoleOverridesDialog({
           </div>
 
           <p className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
-            <Users className="size-3" />
+            <IconUsers className="size-3" />
             {overrides.length} override{overrides.length === 1 ? "" : "s"}
           </p>
         </div>

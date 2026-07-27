@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react'
+import { IconPlus, IconX } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -48,7 +48,7 @@ export function KeyValueEditor({
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">{label}</span>
         <Button type="button" variant="outline" size="sm" onClick={add}>
-          <Plus className="size-3.5" />
+          <IconPlus className="size-3.5" />
           Add
         </Button>
       </div>
@@ -69,7 +69,7 @@ export function KeyValueEditor({
                 onChange={(e) => update(i, { value: e.target.value })}
               />
               <Button type="button" variant="ghost" size="icon" onClick={() => remove(i)}>
-                <X className="size-4" />
+                <IconX className="size-4" />
               </Button>
             </div>
           ))}

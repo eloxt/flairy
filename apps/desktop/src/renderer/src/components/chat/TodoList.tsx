@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, LoaderCircle } from 'lucide-react'
+import { IconCircle, IconCircleCheck, IconLoader2 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import type { TodoItem } from '@shared/todo'
 
@@ -22,11 +22,11 @@ export function TodoList({
         return (
           <li key={i} className="flex items-start gap-2 text-sm leading-relaxed">
             {t.status === 'completed' ? (
-              <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
+              <IconCircleCheck className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
             ) : t.status === 'in_progress' ? (
-              <LoaderCircle className="mt-0.5 size-3.5 shrink-0 animate-spin text-foreground" strokeWidth={2} />
+              <IconLoader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-foreground" strokeWidth={2} />
             ) : (
-              <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/40" strokeWidth={2} />
+              <IconCircle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/40" strokeWidth={2} />
             )}
             <span
               className={cn(

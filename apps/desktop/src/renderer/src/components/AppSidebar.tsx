@@ -31,17 +31,7 @@ import {
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
 import type { SessionMeta, SocketConnectionStatus } from "@shared/ipc";
-import {
-  Folder,
-  LoaderCircle,
-  Plus,
-  Search,
-  Send,
-  Settings,
-  SquarePen,
-  Trash2,
-  X,
-} from "lucide-react";
+import { IconFolder, IconLoader2, IconPlus, IconSearch, IconSend, IconSettings, IconEdit, IconTrash, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -177,7 +167,7 @@ export function AppSidebar(): React.JSX.Element {
                 navigate("/");
               }}
             >
-              <SquarePen className="size-4" />
+              <IconEdit className="size-4" />
               <span>{t('chat.newChat')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -187,7 +177,7 @@ export function AppSidebar(): React.JSX.Element {
               isActive={onSearch}
               className="app-no-drag h-9 rounded-lg cursor-default"
             >
-              <Search className="size-4" />
+              <IconSearch className="size-4" />
               <span>{t('chat.search')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -208,7 +198,7 @@ export function AppSidebar(): React.JSX.Element {
                   disabled={!hasSelection}
                   onClick={() => setConfirmBulkDelete(true)}
                 >
-                  <Trash2 className="size-3.5" />
+                  <IconTrash className="size-3.5" />
                 </button>
                 <button
                   type="button"
@@ -216,7 +206,7 @@ export function AppSidebar(): React.JSX.Element {
                   aria-label={t('chat.cancel')}
                   onClick={exitSelectionMode}
                 >
-                  <X className="size-3.5" />
+                  <IconX className="size-3.5" />
                 </button>
               </div>
             </SidebarGroupLabel>
@@ -238,7 +228,7 @@ export function AppSidebar(): React.JSX.Element {
                       void addProject();
                     }}
                   >
-                    <Plus className="text-sidebar-foreground" />
+                    <IconPlus className="text-sidebar-foreground" />
                   </SidebarMenuAction>
                 }
               >
@@ -252,7 +242,7 @@ export function AppSidebar(): React.JSX.Element {
                       <Section
                         key={group.path}
                         label={group.label}
-                        icon={Folder}
+                        icon={IconFolder}
                         title={group.path}
                         triggerClassName="text-muted-foreground/90"
                         action={
@@ -266,7 +256,7 @@ export function AppSidebar(): React.JSX.Element {
                               navigate("/");
                             }}
                           >
-                            <SquarePen className="size-3.5! text-sidebar-foreground"/>
+                            <IconEdit className="size-3.5! text-sidebar-foreground"/>
                           </SidebarMenuAction>
                         }
                       >
@@ -327,7 +317,7 @@ export function AppSidebar(): React.JSX.Element {
               className="app-no-drag relative h-9 rounded-lg pr-8 text-muted-foreground"
               onClick={() => void window.api.openSettings()}
             >
-              <Settings className="size-4" />
+              <IconSettings className="size-4" />
               <span className="min-w-0 flex-1 truncate">{t('common.settings')}</span>
               <i
                 aria-hidden="true"
@@ -498,12 +488,12 @@ function SessionRow({
               aria-label={t('chat.fromTelegram')}
               title={t('chat.fromTelegram')}
             >
-              <Send className="size-3" />
+              <IconSend className="size-3" />
             </span>
           )}
           {running && (
             <span className="ml-auto flex shrink-0" aria-label={t('chat.running')} title={t('chat.running')}>
-              <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />
+              <IconLoader2 className="size-3.5 animate-spin text-muted-foreground" />
             </span>
           )}
         </SidebarMenuButton>

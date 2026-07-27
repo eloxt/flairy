@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Check } from 'lucide-react'
+import { IconArrowLeft, IconCheck } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useChat } from '@/store/chat-store'
@@ -151,7 +151,7 @@ export function QuestionCard({
                               </span>
                             )}
                           </span>
-                          {checked && <Check className="size-3.5 shrink-0" strokeWidth={2.5} />}
+                          {checked && <IconCheck className="size-3.5 shrink-0" strokeWidth={2.5} />}
                         </button>
                       )
                     })}
@@ -198,7 +198,7 @@ export function QuestionCard({
                 className="rounded-full px-3 text-muted-foreground"
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
               >
-                <ArrowLeft className="size-3.5" strokeWidth={2} />
+                <IconArrowLeft className="size-3.5" strokeWidth={2} />
                 {t('question.back')}
               </Button>
             )}

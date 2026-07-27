@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import { Loader2 } from 'lucide-react'
+import { IconLoader } from '@tabler/icons-react'
 import type { editor } from 'monaco-editor'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 
@@ -9,7 +9,7 @@ const MonacoEditorLazy = lazy(() =>
 )
 
 const MonacoEditor = (props: React.ComponentProps<typeof MonacoEditorLazy>): React.JSX.Element => (
-  <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin p-4" />}>
+  <Suspense fallback={<IconLoader className="h-4 w-4 animate-spin p-4" />}>
     <MonacoEditorLazy {...props} />
   </Suspense>
 )
@@ -196,7 +196,7 @@ export function CodeEditor(props: CodeEditorProps): React.JSX.Element {
           props.containerClassName
         )}
       >
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <IconLoader className="h-4 w-4 animate-spin" />
       </div>
     )
   }
@@ -215,7 +215,7 @@ export function CodeEditor(props: CodeEditorProps): React.JSX.Element {
         value={code || ''}
         theme="vs"
         options={editorOptions}
-        loading={<Loader2 className="h-4 w-4 animate-spin" />}
+        loading={<IconLoader className="h-4 w-4 animate-spin" />}
         onChange={(value) => {
           if (onChange) onChange(value || '')
         }}

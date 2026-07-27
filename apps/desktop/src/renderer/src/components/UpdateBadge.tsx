@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUpCircle } from "lucide-react";
+import { IconArrowUpCircle } from "@tabler/icons-react";
 import type { UpdateInfo } from "@shared/ipc";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +34,7 @@ export function UpdateBadge(): React.JSX.Element | null {
         "text-primary transition-colors hover:bg-accent",
       )}
     >
-      <ArrowUpCircle className="h-[1.05rem] w-[1.05rem]" />
+      <IconArrowUpCircle className="h-[1.05rem] w-[1.05rem]" />
       {/* Pulsing dot to draw the eye to the new-version hint. */}
     </button>
   );

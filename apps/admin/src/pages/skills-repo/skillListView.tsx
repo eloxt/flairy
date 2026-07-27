@@ -27,21 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useDeleteSkill, useListSkills, useSetSkillAssignment } from './queries'
 import type { ResourceAssignment, SkillListItem } from '@flairy/shared'
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Loader2,
-  MoreHorizontal,
-  Plus,
-  Search,
-  Trash2,
-  Users,
-  BookOpenText
-} from 'lucide-react'
+import { IconArrowDown, IconArrowUp, IconArrowsSort, IconChevronLeft, IconChevronRight, IconFileText, IconLoader, IconDots, IconPlus, IconSearch, IconTrash, IconUsers, IconBook2 } from '@tabler/icons-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useUsers } from '@/hooks/useUsers'
@@ -67,9 +53,9 @@ function SortableHeader({
   onToggle: (column: SortColumn) => void
 }): React.JSX.Element {
   const isActive = sortBy === column
-  let Icon = ArrowUpDown
-  if (isActive && order === 'desc') Icon = ArrowDown
-  else if (isActive) Icon = ArrowUp
+  let Icon = IconArrowsSort
+  if (isActive && order === 'desc') Icon = IconArrowDown
+  else if (isActive) Icon = IconArrowUp
   return (
     <Button
       variant="ghost"
@@ -112,7 +98,7 @@ function SkillActionsMenu({
             />
           }
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <IconDots className="h-4 w-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
@@ -123,7 +109,7 @@ function SkillActionsMenu({
               setIsOpen(false)
             }}
           >
-            <Users className="h-4 w-4" />
+            <IconUsers className="h-4 w-4" />
             Assign users
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -136,7 +122,7 @@ function SkillActionsMenu({
               setIsOpen(false)
             }}
           >
-            <Trash2 className="h-4 w-4" />
+            <IconTrash className="h-4 w-4" />
             Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -155,7 +141,7 @@ function SkillActionsMenu({
             <AlertDialogAction onClick={() => void onDelete(skill.id)} disabled={isDeleting}>
               {isDeleting ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting...
+                  <IconLoader className="h-3.5 w-3.5 animate-spin" /> Deleting...
                 </>
               ) : (
                 'Delete skill'
@@ -242,7 +228,7 @@ export function SkillsListView({
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center py-20">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <IconLoader className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -262,7 +248,7 @@ export function SkillsListView({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 py-16 text-center">
         <div className="text-muted-foreground">
-          <BookOpenText className="h-24 w-24" strokeWidth={1} />
+          <IconBook2 className="h-24 w-24" strokeWidth={1} />
         </div>
         <div className="flex flex-col gap-1">
           <h1 className="text-muted-foreground text-xl font-medium">
@@ -292,7 +278,7 @@ export function SkillsListView({
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={onCreateNew} size="sm">
-            <Plus className="h-4 w-4" />
+            <IconPlus className="h-4 w-4" />
             New Skill
           </Button>
         </div>
@@ -301,7 +287,7 @@ export function SkillsListView({
       {/* Search */}
       <div className="flex items-center gap-3 mb-4">
         <div className="relative max-w-sm flex-1">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <IconSearch className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             aria-label="Search skills by name"
             placeholder="Search skills..."
@@ -352,13 +338,13 @@ export function SkillsListView({
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
-                    <FileText className="h-8 w-8 text-muted-foreground" />
+                    <IconFileText className="h-8 w-8 text-muted-foreground" />
                     <p className="text-muted-foreground text-sm">
                       {search ? 'No skills match your search' : 'No skills created yet'}
                     </p>
                     {!search && (
                       <Button variant="outline" size="sm" onClick={onCreateNew} className="mt-2">
-                        <Plus className="h-3.5 w-3.5" />
+                        <IconPlus className="h-3.5 w-3.5" />
                         Create your first skill
                       </Button>
                     )}
@@ -450,7 +436,7 @@ export function SkillsListView({
               disabled={offset === 0 || isFetching}
               aria-label="Previous page"
             >
-              <ChevronLeft className="size-3" />
+              <IconChevronLeft className="size-3" />
             </Button>
             <div className="flex items-center gap-1">
               <span>Page</span>
@@ -464,7 +450,7 @@ export function SkillsListView({
               disabled={offset + PAGE_SIZE >= total || isFetching}
               aria-label="Next page"
             >
-              <ChevronRight className="size-3" />
+              <IconChevronRight className="size-3" />
             </Button>
           </div>
         </div>

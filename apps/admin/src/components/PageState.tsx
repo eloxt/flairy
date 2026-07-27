@@ -1,9 +1,9 @@
-import { Loader2 } from 'lucide-react'
+import { IconLoader } from '@tabler/icons-react'
 
 export function PageLoading(): React.JSX.Element {
   return (
     <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
-      <Loader2 className="size-4 animate-spin" />
+      <IconLoader className="size-4 animate-spin" />
       Loading…
     </div>
   )

@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import type { SkillFileEntry } from '@/lib/types/skills'
 import { fetchSkillFileObjectUrl, fetchSkillFileText, skillFileServeUrl } from '@/api/client'
-import { Download, File as FileIcon, Info, Loader2 } from 'lucide-react'
+import { IconDownload, IconFile as FileIcon, IconInfoCircle, IconLoader } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { formatFileSize } from './helpers'
 
@@ -218,7 +218,7 @@ export function FilePreview({
     if (fetchState === 'loading') {
       return (
         <div className="text-muted-foreground flex h-full items-center justify-center gap-2 text-xs">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <IconLoader className="h-4 w-4 animate-spin" />
           Loading…
         </div>
       )
@@ -303,7 +303,7 @@ function DownloadButton({
         className="text-muted-foreground hover:text-foreground h-7 px-2"
         render={<a href={source.directUrl} download={fileName} aria-label={`Download ${fileName}`} />}
       >
-        <Download className="h-3.5 w-3.5" />
+        <IconDownload className="h-3.5 w-3.5" />
       </Button>
     )
   }
@@ -339,9 +339,9 @@ function DownloadButton({
       aria-label={`Download ${fileName}`}
     >
       {downloading ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <IconLoader className="h-3.5 w-3.5 animate-spin" />
       ) : (
-        <Download className="h-3.5 w-3.5" />
+        <IconDownload className="h-3.5 w-3.5" />
       )}
     </Button>
   )
@@ -420,7 +420,7 @@ function FileSourceEditor({
           />
         </div>
         <div className="flex items-start gap-2 rounded-sm border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <IconInfoCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>
             This source is saved as a live reference. The file is read from this URL when the skill
             is retrieved.
@@ -433,7 +433,7 @@ function FileSourceEditor({
   if (needsFetch && fetchState === 'loading') {
     return (
       <div className="text-muted-foreground flex h-full items-center justify-center gap-2 text-xs">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <IconLoader className="h-4 w-4 animate-spin" />
         Loading…
       </div>
     )
@@ -511,7 +511,7 @@ function FallbackBlock({
       {children && <p className="text-muted-foreground text-xs">{children}</p>}
       {downloadUrl && (
         <Button variant="outline" size="sm" render={<a href={downloadUrl} download={fileName} />}>
-          <Download className="h-3.5 w-3.5" />
+          <IconDownload className="h-3.5 w-3.5" />
           Download
         </Button>
       )}

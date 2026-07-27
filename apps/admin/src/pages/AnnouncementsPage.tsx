@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import type {
   AnnouncementConfig,
   AnnouncementInput,
@@ -149,7 +149,7 @@ export function AnnouncementsPage(): React.JSX.Element {
         description="Banners shown atop the empty chat screen on every client."
         action={
           <Button onClick={() => setEditing(emptyForm())}>
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
             Add announcement
           </Button>
         }
@@ -196,7 +196,7 @@ export function AnnouncementsPage(): React.JSX.Element {
                         size="icon"
                         onClick={() => setEditing(toForm(a))}
                       >
-                        <Pencil className="size-4" />
+                        <IconPencil className="size-4" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -204,7 +204,7 @@ export function AnnouncementsPage(): React.JSX.Element {
                         onClick={() => void handleDelete(a.id)}
                         disabled={saving}
                       >
-                        <Trash2 className="size-4" />
+                        <IconTrash className="size-4" />
                       </Button>
                     </div>
                   </TableCell>

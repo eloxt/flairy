@@ -1,4 +1,4 @@
-import { Check, Loader2 } from 'lucide-react'
+import { IconCheck, IconLoader } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 
 export function SaveBar({
@@ -16,12 +16,12 @@ export function SaveBar({
   return (
     <div className="mt-6 flex items-center gap-3 border-t border-border pt-4">
       <Button onClick={onSave} disabled={saving || disabled}>
-        {saving && <Loader2 className="size-4 animate-spin" />}
+        {saving && <IconLoader className="size-4 animate-spin" />}
         Save changes
       </Button>
       {recentlySaved && !saving && (
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground animate-rise-in">
-          <Check className="size-4 text-foreground" />
+          <IconCheck className="size-4 text-foreground" />
           Published to all clients
         </span>
       )}

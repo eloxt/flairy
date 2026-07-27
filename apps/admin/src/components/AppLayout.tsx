@@ -1,15 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import {
-  Bot,
-  Globe,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  MessageSquare,
-  Server,
-  Sparkles,
-  Users
-} from 'lucide-react'
+import { IconRobot, IconGlobe, IconLayoutDashboard, IconLogout, IconSpeakerphone, IconMessage, IconServer, IconSparkles, IconUsers } from '@tabler/icons-react'
 import {
   Sidebar,
   SidebarContent,
@@ -30,14 +20,14 @@ import { useAuth } from '@/auth/useAuth'
 import { useConfig } from '@/hooks/useConfig'
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/llm', label: 'LLM', icon: Bot, end: false },
-  { to: '/mcp', label: 'MCP Servers', icon: Server, end: false },
-  { to: '/skills', label: 'Skills', icon: Sparkles, end: false },
-  { to: '/system-prompts', label: 'System Prompts', icon: MessageSquare, end: false },
-  { to: '/announcements', label: 'Announcements', icon: Megaphone, end: false },
-  { to: '/services', label: 'Services', icon: Globe, end: false },
-  { to: '/users', label: 'Users', icon: Users, end: false }
+  { to: '/', label: 'Dashboard', icon: IconLayoutDashboard, end: true },
+  { to: '/llm', label: 'LLM', icon: IconRobot, end: false },
+  { to: '/mcp', label: 'MCP Servers', icon: IconServer, end: false },
+  { to: '/skills', label: 'Skills', icon: IconSparkles, end: false },
+  { to: '/system-prompts', label: 'System Prompts', icon: IconMessage, end: false },
+  { to: '/announcements', label: 'Announcements', icon: IconSpeakerphone, end: false },
+  { to: '/services', label: 'Services', icon: IconGlobe, end: false },
+  { to: '/users', label: 'Users', icon: IconUsers, end: false }
 ] as const
 
 export function AppLayout(): React.JSX.Element {
@@ -105,7 +95,7 @@ export function AppLayout(): React.JSX.Element {
             className="w-full justify-start group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
             onClick={handleLogout}
           >
-            <LogOut className="size-4" />
+            <IconLogout className="size-4" />
             <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
           </Button>
         </SidebarFooter>

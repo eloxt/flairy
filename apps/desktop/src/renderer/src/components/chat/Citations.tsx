@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Globe } from "lucide-react";
+import { IconChevronRight, IconGlobe } from "@tabler/icons-react";
 import type { SearchImage, SearchSource } from "@shared/web-search";
 import { getFaviconUrl } from "@/lib/favicon";
 import { cn } from "@/lib/utils";
@@ -226,7 +226,7 @@ function Favicon({
   const [failed, setFailed] = useState(false);
   const url = getFaviconUrl(source.favicon, source.url);
   if (!url || failed)
-    return <Globe className={cn("text-muted-foreground", className)} />;
+    return <IconGlobe className={cn("text-muted-foreground", className)} />;
   return (
     <img
       src={url}
@@ -394,7 +394,7 @@ export function SourcesList({
         aria-expanded={open}
         className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <ChevronRight
+        <IconChevronRight
           className={cn(
             "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
             open && "rotate-90",

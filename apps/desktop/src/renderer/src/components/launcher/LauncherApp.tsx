@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, HandMetal, Sparkles, Square } from 'lucide-react'
+import { IconArrowUp, IconHandLoveYou, IconSparkles, IconSquare } from '@tabler/icons-react'
 import { useChat } from '@/store/chat-store'
 import { useAuth } from '@/store/auth-store'
 import { MessageList } from '@/components/chat/MessageList'
@@ -216,7 +216,7 @@ export function LauncherApp(): React.JSX.Element {
         {phase === 'anon' ? (
           // Signed out: one plain-language line + a way into the main app.
           <div className="flex flex-1 items-center gap-3 px-6">
-            <Sparkles className="size-5 shrink-0 text-muted-foreground" />
+            <IconSparkles className="size-5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-base text-muted-foreground">
               {t('launcher.signedOutHint')}
             </span>
@@ -232,7 +232,7 @@ export function LauncherApp(): React.JSX.Element {
             // conversation is going.
             const inputRow = (
               <>
-                <HandMetal className="size-5 shrink-0 text-muted-foreground" />
+                <IconHandLoveYou className="size-5 shrink-0 text-muted-foreground" />
                 <textarea
                   ref={taRef}
                   autoFocus
@@ -262,7 +262,7 @@ export function LauncherApp(): React.JSX.Element {
                     title={t('launcher.stop')}
                     className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80"
                   >
-                    <Square className="size-3 fill-current" />
+                    <IconSquare className="size-3 fill-current" />
                   </button>
                 ) : (
                   <button
@@ -278,7 +278,7 @@ export function LauncherApp(): React.JSX.Element {
                       text.trim() ? 'opacity-100' : 'pointer-events-none opacity-0'
                     )}
                   >
-                    <ArrowUp className="size-4" />
+                    <IconArrowUp className="size-4" />
                   </button>
                 )}
               </>

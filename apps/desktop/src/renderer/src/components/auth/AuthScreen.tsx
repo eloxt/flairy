@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { TentTree } from 'lucide-react'
+import { BrandMark } from '@/components/BrandMark'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
@@ -45,7 +45,7 @@ export function AuthScreen(): React.JSX.Element {
         {/* Wordmark */}
         <div className="mb-8 flex flex-col items-center gap-3">
           <div className="flex size-11 items-center justify-center rounded-xl border border-black/10 bg-white text-black">
-            <TentTree className="size-6" aria-hidden />
+            <BrandMark className="size-6" />
           </div>
           <div className="text-center">
             <h1 className="text-base font-semibold tracking-tight">Flairy</h1>

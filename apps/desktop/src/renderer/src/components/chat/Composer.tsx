@@ -1,19 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ArrowUp,
-  Check,
-  ChevronDown,
-  Folder,
-  Paperclip,
-  Plus,
-  Send,
-  ShieldAlert,
-  ShieldCheck,
-  Square,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { IconArrowUp, IconCheck, IconChevronDown, IconFolder, IconPaperclip, IconPlus, IconSend, IconShieldExclamation, IconShieldCheck, IconSquare, IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type { Attachment, PermissionMode } from "@shared/ipc";
 import type { TodoItem } from "@shared/todo";
 import { cn } from "@/lib/utils";
@@ -274,7 +261,7 @@ export function Composer(): React.JSX.Element {
         <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
           <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
             <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-              <Send className="size-4 shrink-0" />
+              <IconSend className="size-4 shrink-0" />
               <span>{t('composer.telegramReadOnly')}</span>
             </div>
           </div>
@@ -347,7 +334,7 @@ export function Composer(): React.JSX.Element {
                       aria-label={t('composer.removeAttachment')}
                       className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
-                      <X className="size-3.5" />
+                      <IconX className="size-3.5" />
                     </button>
                   </div>
                 ))}
@@ -356,14 +343,14 @@ export function Composer(): React.JSX.Element {
 
             {imagesIgnored && (
               <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
-                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                <IconAlertTriangle className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesIgnored")}</span>
               </div>
             )}
 
             {imagesExtracted && (
               <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-600 dark:text-amber-500">
-                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                <IconAlertTriangle className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesExtracted")}</span>
               </div>
             )}
@@ -409,7 +396,7 @@ export function Composer(): React.JSX.Element {
                   aria-label={t('composer.addImage')}
                   className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
-                  <Paperclip className="size-4" />
+                  <IconPaperclip className="size-4" />
                 </TooltipTrigger>
                 <TooltipContent>
                   {imageSupported
@@ -429,7 +416,7 @@ export function Composer(): React.JSX.Element {
                   aria-label={t('composer.stop')}
                   className="flex size-9 items-center justify-center rounded-xl bg-secondary text-secondary-foreground transition-colors hover:bg-accent active:translate-y-px"
                 >
-                  <Square className="size-3.5 fill-current" strokeWidth={0} />
+                  <IconSquare className="size-3.5 fill-current" strokeWidth={0} />
                 </button>
               ) : (
                 <button
@@ -443,7 +430,7 @@ export function Composer(): React.JSX.Element {
                       : "cursor-not-allowed bg-muted text-muted-foreground",
                   )}
                 >
-                  <ArrowUp className="size-4" strokeWidth={2.5} />
+                  <IconArrowUp className="size-4" strokeWidth={2.5} />
                 </button>
               )}
             </div>
@@ -459,7 +446,7 @@ export function Composer(): React.JSX.Element {
                 title={t('composer.workspaceLockedTitle', { path: cwd ?? "~" })}
                 className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground"
               >
-                <Folder className="size-4" />
+                <IconFolder className="size-4" />
                 <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
               </div>
             ) : (
@@ -474,7 +461,7 @@ export function Composer(): React.JSX.Element {
                 title={t('composer.workingDirectoryTitle', { path: cwd ?? "~" })}
                 className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <Folder className="size-4" />
+                <IconFolder className="size-4" />
                 <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-56">
@@ -497,7 +484,7 @@ export function Composer(): React.JSX.Element {
                           }}
                           className="items-start gap-2"
                         >
-                          <Check
+                          <IconCheck
                             className={cn(
                               "mt-0.5 size-4 shrink-0",
                               normalizeDir(dir) === normalizeDir(cwd ?? "")
@@ -518,7 +505,7 @@ export function Composer(): React.JSX.Element {
                   </>
                 )}
                 <DropdownMenuItem onClick={() => void setWorkingDirectory()}>
-                  <Plus className="size-4" />
+                  <IconPlus className="size-4" />
                   {t('composer.addAnotherDirectory')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -538,14 +525,14 @@ export function Composer(): React.JSX.Element {
                 )}
               >
                 {permissionMode === "full" ? (
-                  <ShieldAlert className="size-4" />
+                  <IconShieldExclamation className="size-4" />
                 ) : (
-                  <ShieldCheck className="size-4" />
+                  <IconShieldCheck className="size-4" />
                 )}
                 <span>
                   {permissionMode === "full" ? t('composer.fullAccess') : t('composer.askForApproval')}
                 </span>
-                <ChevronDown className="size-3 opacity-60" />
+                <IconChevronDown className="size-3 opacity-60" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-72">
                 <DropdownMenuRadioGroup
@@ -557,7 +544,7 @@ export function Composer(): React.JSX.Element {
                     value="ask"
                     className="items-start gap-2.5 py-2"
                   >
-                    <ShieldCheck className="mt-0.5 size-4 text-muted-foreground" />
+                    <IconShieldCheck className="mt-0.5 size-4 text-muted-foreground" />
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium text-foreground">
                         {t('composer.askForApproval')}
@@ -572,7 +559,7 @@ export function Composer(): React.JSX.Element {
                     value="full"
                     className="items-start gap-2.5 py-2"
                   >
-                    <ShieldAlert className="mt-0.5 size-4 text-destructive" />
+                    <IconShieldExclamation className="mt-0.5 size-4 text-destructive" />
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium text-destructive">
                         {t('composer.fullAccess')}

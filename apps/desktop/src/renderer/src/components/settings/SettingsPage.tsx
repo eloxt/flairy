@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  ChevronDown,
-  ChevronRight,
-  Info,
-  Send,
-  SlidersHorizontal,
-  Sparkles,
-  TentTree,
-  Wrench
-} from 'lucide-react'
+import { IconChevronDown, IconChevronRight, IconInfoCircle, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconTool } from '@tabler/icons-react'
+import { BrandMark } from '@/components/BrandMark'
 import type {
   AppLanguage,
   ChatWidth,
@@ -61,12 +53,12 @@ export function SettingsPage(): React.JSX.Element {
 
   const navItems: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] =
     [
-      { id: 'general', label: t('settings.navGeneral'), icon: SlidersHorizontal },
-      { id: 'memory', label: t('settings.tabMemory'), icon: Sparkles },
-      { id: 'telegram', label: t('settings.tabTelegram'), icon: Send },
-      { id: 'about', label: t('settings.tabAbout'), icon: Info },
+      { id: 'general', label: t('settings.navGeneral'), icon: IconAdjustmentsHorizontal },
+      { id: 'memory', label: t('settings.tabMemory'), icon: IconSparkles },
+      { id: 'telegram', label: t('settings.tabTelegram'), icon: IconSend },
+      { id: 'about', label: t('settings.tabAbout'), icon: IconInfoCircle },
       ...(advancedUnlocked
-        ? [{ id: 'advanced' as const, label: t('settings.tabAdvanced'), icon: Wrench }]
+        ? [{ id: 'advanced' as const, label: t('settings.tabAdvanced'), icon: IconTool }]
         : [])
     ]
 
@@ -218,7 +210,7 @@ function GeneralSection(): React.JSX.Element {
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-[6.5px] bg-background px-2.5 py-1 text-xs shadow-[inset_0_0_0_0.5px_var(--input),0_1px_1.5px_rgb(0_0_0/0.07)] transition-colors hover:bg-muted">
               {currentLanguage}
-              <ChevronDown className="size-3 text-muted-foreground" />
+              <IconChevronDown className="size-3 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {languages.map(({ lng, label }) => (
@@ -275,7 +267,7 @@ function GeneralSection(): React.JSX.Element {
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-[6.5px] bg-background px-2.5 py-1 text-xs shadow-[inset_0_0_0_0.5px_var(--input),0_1px_1.5px_rgb(0_0_0/0.07)] transition-colors hover:bg-muted">
               {currentShortcutLabel}
-              <ChevronDown className="size-3 text-muted-foreground" />
+              <IconChevronDown className="size-3 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {shortcutOptions.map(({ value, label }) => (
@@ -659,10 +651,10 @@ function AboutSection(): React.JSX.Element {
   return (
     <>
       <div className="pt-4 pb-6 text-center">
-        {/* Mini of the app icon: white squircle tile + the tent-tree mark
-            (same lucide glyph scripts/generate-icons.mjs rasterizes). */}
+        {/* Mini of the app icon: white squircle tile + the same mark
+            scripts/generate-icons.mjs rasterizes from build/icon.svg. */}
         <div className="mx-auto mb-3 grid size-16 place-items-center rounded-[15px] border border-black/10 bg-white shadow-lg">
-          <TentTree className="size-10 text-black" aria-hidden />
+          <BrandMark className="size-10 text-black" />
         </div>
         <h2 className="text-[17px] font-semibold tracking-tight">Flairy</h2>
         <p className="mt-0.5 text-[12.5px] text-muted-foreground">{t('settings.appTagline')}</p>
@@ -683,7 +675,7 @@ function AboutSection(): React.JSX.Element {
         {justUnlocked && (
           <Row label={t('settings.advancedUnlockedToast')}>
             <RowValue>
-              <Wrench className="size-3.5 text-muted-foreground" />
+              <IconTool className="size-3.5 text-muted-foreground" />
             </RowValue>
           </Row>
         )}
@@ -695,7 +687,7 @@ function AboutSection(): React.JSX.Element {
                 {t('settings.troubleshootingDescription')}
               </div>
             </div>
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/cfg:rotate-90" />
+            <IconChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/cfg:rotate-90" />
           </summary>
           <pre className="overflow-x-auto border-t border-border/60 px-3.5 py-3 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
             {!loaded

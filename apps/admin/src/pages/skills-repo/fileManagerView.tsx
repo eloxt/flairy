@@ -32,20 +32,7 @@ import {
   validateSkillFileSize,
   validateSourceType
 } from '@/lib/validators/skills'
-import {
-  AlertCircle,
-  BookOpen,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  FileText,
-  Folder,
-  Info,
-  Loader2,
-  MoreHorizontal,
-  Plus,
-  X
-} from 'lucide-react'
+import { IconAlertCircle, IconBook, IconCheck, IconChevronDown, IconChevronRight, IconFileText, IconFolder, IconInfoCircle, IconLoader, IconDots, IconPlus, IconX } from '@tabler/icons-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { formatFileSize } from './helpers'
 import { cn } from '@/lib/utils'
@@ -259,15 +246,15 @@ function FileAddForm({
             className="h-7 w-7 p-0"
             onClick={() => void handleSubmit()}
           >
-            <Check className="h-3 w-3" />
+            <IconCheck className="h-3 w-3" />
           </Button>
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onCancel}>
-            <X className="h-3 w-3" />
+            <IconX className="h-3 w-3" />
           </Button>
         </div>
         {error && (
           <div className="text-destructive flex items-center gap-2 text-xs" role="alert">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <IconAlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {error}
           </div>
         )}
@@ -343,14 +330,14 @@ function FileAddForm({
 
       {sourceType === 'url' && (
         <div className="flex items-start gap-2 rounded-sm border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <IconInfoCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>This source is saved as a live reference, read from this URL when retrieved.</span>
         </div>
       )}
 
       {error && (
         <div className="text-destructive flex items-center gap-2 text-xs" role="alert">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <IconAlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {error}
         </div>
       )}
@@ -367,12 +354,12 @@ function FileAddForm({
         >
           {uploadSkillFile.isPending ? (
             <>
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <IconLoader className="h-3 w-3 animate-spin" />
               Uploading...
             </>
           ) : (
             <>
-              <Plus className="h-3 w-3" />
+              <IconPlus className="h-3 w-3" />
               {submitLabel ?? (sourceType === 'upload' ? 'Upload & add' : 'Add')}
             </>
           )}
@@ -996,7 +983,7 @@ export function FileManagerSection({
             selected && 'bg-primary/10 text-primary hover:bg-primary/10'
           )}
         >
-          <BookOpen
+          <IconBook
             className={cn(
               'h-3.5 w-3.5 shrink-0',
               selected ? 'text-primary' : showError ? 'text-destructive' : 'text-muted-foreground'
@@ -1034,7 +1021,7 @@ export function FileManagerSection({
               className="h-7 w-7 p-0"
               onClick={() => addFolder(item.path)}
             >
-              <Check className="h-3 w-3" />
+              <IconCheck className="h-3 w-3" />
             </Button>
             <Button
               variant="ghost"
@@ -1046,12 +1033,12 @@ export function FileManagerSection({
                 setNewFolderError(null)
               }}
             >
-              <X className="h-3 w-3" />
+              <IconX className="h-3 w-3" />
             </Button>
           </div>
           {newFolderError && (
             <div className="text-destructive flex items-center gap-2 text-xs" role="alert">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <IconAlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {newFolderError}
             </div>
           )}
@@ -1128,7 +1115,7 @@ export function FileManagerSection({
             role={!isRenaming && onSelectFile ? 'button' : undefined}
             tabIndex={!isRenaming && onSelectFile ? 0 : undefined}
           >
-            <FileText
+            <IconFileText
               className={cn(
                 'h-3.5 w-3.5 shrink-0',
                 isSelected ? 'text-primary' : 'text-muted-foreground'
@@ -1202,7 +1189,7 @@ export function FileManagerSection({
                     />
                   }
                 >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  <IconDots className="h-3.5 w-3.5" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   {fileMeta && (
@@ -1301,18 +1288,18 @@ export function FileManagerSection({
             aria-hidden="true"
           >
             {isExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              <IconChevronDown className="h-3.5 w-3.5 shrink-0" />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+              <IconChevronRight className="h-3.5 w-3.5 shrink-0" />
             )}
           </span>
         ) : (
           <span className="h-4 w-4" />
         )}
         {isRoot ? (
-          <BookOpen className="text-muted-foreground h-4 w-4" />
+          <IconBook className="text-muted-foreground h-4 w-4" />
         ) : (
-          <Folder className="text-muted-foreground h-4 w-4" />
+          <IconFolder className="text-muted-foreground h-4 w-4" />
         )}
         <span
           className="min-w-0 flex-1 truncate font-mono text-xs font-medium"
@@ -1341,7 +1328,7 @@ export function FileManagerSection({
                   />
                 }
               >
-                <MoreHorizontal className="h-3.5 w-3.5" />
+                <IconDots className="h-3.5 w-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuSub>
@@ -1487,7 +1474,7 @@ export function FileManagerSection({
       />
       {folderUploadState && (
         <div className="mb-2 flex items-center gap-2 rounded-sm border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+          <IconLoader className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
           <span>
             Uploading files {folderUploadState.completed}/{folderUploadState.total}
             {folderUploadState.folderPath ? ` into ${folderUploadState.folderPath}/` : ' into root'}
@@ -1499,7 +1486,7 @@ export function FileManagerSection({
           className="border-destructive/30 bg-destructive/10 text-destructive mb-2 flex items-center gap-2 rounded-sm border px-3 py-2 text-xs"
           role="alert"
         >
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <IconAlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {folderUploadError}
         </div>
       )}

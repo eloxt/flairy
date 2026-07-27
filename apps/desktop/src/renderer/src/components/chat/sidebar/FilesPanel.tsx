@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
+import { IconArrowLeft } from '@tabler/icons-react'
 import { FileTree, useFileTree } from '@pierre/trees/react'
 import { themeToTreeStyles } from '@pierre/trees'
 import { DEFAULT_THEMES, resolveTheme } from '@pierre/diffs'
@@ -184,7 +184,7 @@ export function FilesPanel({ workspacePath }: { workspacePath: string }): React.
               title={t('panel.filesBack')}
               className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              <ArrowLeft className="size-3.5" />
+              <IconArrowLeft className="size-3.5" />
             </button>
             <span className="min-w-0 truncate text-[0.75rem] text-foreground" title={preview.path}>
               {preview.path}

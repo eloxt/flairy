@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Streamdown } from "streamdown";
-import { CircleAlert, ChevronRight } from "lucide-react";
+import { IconAlertCircle, IconChevronRight } from "@tabler/icons-react";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import {
@@ -712,7 +712,7 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
           )}
           {m.imagesIgnored && (
             <span className="flex items-center gap-1 px-1 text-xs text-muted-foreground">
-              <CircleAlert className="size-3" />
+              <IconAlertCircle className="size-3" />
               {t("chat.imagesIgnored")}
             </span>
           )}
@@ -905,7 +905,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
               {m.toolArg}
             </span>
           )}
-          <ChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
+          <IconChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
         </MarkerContent>
       </Marker>
       <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
@@ -989,7 +989,7 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
               · {doneCount}
             </span>
           )}
-          <ChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
+          <IconChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
         </MarkerContent>
       </Marker>
       <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
@@ -1038,7 +1038,7 @@ function TurnFold({
                 ? summarizeTools(tools, t)
                 : t("chat.processDone")}
             </span>
-            <ChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
+            <IconChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
           </MarkerContent>
         </Marker>
       </div>

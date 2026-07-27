@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createHashRouter, RouterProvider, Outlet } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ChatWidth, SessionMeta } from "@shared/ipc";
-import { PanelRight } from "lucide-react";
+import { IconLayoutSidebarRight } from "@tabler/icons-react";
 import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
 import { useUi } from "@/store/ui-store";
@@ -212,7 +212,7 @@ function ChatHeader(): React.JSX.Element {
           "text-muted-foreground hover:text-foreground",
         )}
       >
-        <PanelRight className="size-4" />
+        <IconLayoutSidebarRight className="size-4" />
       </button>
     </header>
   );

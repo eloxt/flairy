@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Copy } from "lucide-react";
+import { IconCheck, IconCopy } from "@tabler/icons-react";
 import { MessageFooter } from "@/components/ui/message";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -83,9 +83,9 @@ function CopyButton({ text }: { text: string }): React.JSX.Element {
         className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         {copied ? (
-          <Check className="size-3.5" />
+          <IconCheck className="size-3.5" />
         ) : (
-          <Copy className="size-3.5" />
+          <IconCopy className="size-3.5" />
         )}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>

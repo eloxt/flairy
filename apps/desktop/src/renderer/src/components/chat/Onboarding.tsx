@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Folder, ShieldCheck } from "lucide-react";
+import { IconFolder, IconShieldCheck } from "@tabler/icons-react";
 
 /** Where the "first run is over" flag lives. Per-install, never sensitive. */
 const SEEN_KEY = "flairy.onboarding.seen";
@@ -41,12 +41,12 @@ export function Onboarding(): React.JSX.Element | null {
       style={{ animationDelay: "180ms" }}
     >
       <Hint
-        icon={<Folder className="size-4" strokeWidth={1.75} />}
+        icon={<IconFolder className="size-4" strokeWidth={1.75} />}
         title={t("onboarding.cwdTitle")}
         body={t("onboarding.cwdBody")}
       />
       <Hint
-        icon={<ShieldCheck className="size-4" strokeWidth={1.75} />}
+        icon={<IconShieldCheck className="size-4" strokeWidth={1.75} />}
         title={t("onboarding.permTitle")}
         body={t("onboarding.permBody")}
       />

@@ -1,12 +1,5 @@
 import { useTranslation } from "react-i18next";
-import {
-  CircleAlert,
-  CircleCheck,
-  Info,
-  TriangleAlert,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { IconAlertCircle, IconCircleCheck, IconInfoCircle, IconAlertTriangle, IconX, type Icon as TablerIcon } from "@tabler/icons-react";
 import type { AnnouncementConfig, AnnouncementKind } from "@flairy/shared";
 import { cn } from "@/lib/utils";
 import { useAnnouncements } from "@/hooks/use-announcements";
@@ -14,28 +7,28 @@ import { useAnnouncements } from "@/hooks/use-announcements";
 /** Per-kind icon + tone classes. Soft tinted card so banners read as ambient. */
 const KIND_STYLE: Record<
   AnnouncementKind,
-  { icon: LucideIcon; container: string; icon_: string }
+  { icon: TablerIcon; container: string; icon_: string }
 > = {
   info: {
-    icon: Info,
+    icon: IconInfoCircle,
     container:
       "border-sky-500/25 bg-sky-500/5 text-sky-900 dark:text-sky-100",
     icon_: "text-sky-600 dark:text-sky-400",
   },
   success: {
-    icon: CircleCheck,
+    icon: IconCircleCheck,
     container:
       "border-emerald-500/25 bg-emerald-500/5 text-emerald-900 dark:text-emerald-100",
     icon_: "text-emerald-600 dark:text-emerald-400",
   },
   warning: {
-    icon: TriangleAlert,
+    icon: IconAlertTriangle,
     container:
       "border-amber-500/25 bg-amber-500/5 text-amber-900 dark:text-amber-100",
     icon_: "text-amber-600 dark:text-amber-400",
   },
   error: {
-    icon: CircleAlert,
+    icon: IconAlertCircle,
     container:
       "border-red-500/25 bg-red-500/5 text-red-900 dark:text-red-100",
     icon_: "text-red-600 dark:text-red-400",
@@ -96,7 +89,7 @@ function AnnouncementBanner({
         title={t("chat.dismissAnnouncement")}
         className="-mr-1 -mt-0.5 rounded-md p-1 opacity-60 transition-opacity hover:opacity-100"
       >
-        <X className="size-3.5" />
+        <IconX className="size-3.5" />
       </button>
     </div>
   );

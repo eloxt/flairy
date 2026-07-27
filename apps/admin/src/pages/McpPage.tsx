@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { IconPencil, IconPlus, IconTrash, IconUsers } from "@tabler/icons-react";
 import type {
   AdminMcpServerConfig,
   McpServerConfig,
@@ -224,7 +224,7 @@ export function McpPage(): React.JSX.Element {
         description="Tool providers connected on each client."
         action={
           <Button onClick={() => setEditing(emptyForm())}>
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
             Add server
           </Button>
         }
@@ -290,14 +290,14 @@ export function McpPage(): React.JSX.Element {
                         aria-label={`Assign ${s.name}`}
                         onClick={() => setAssigning(s)}
                       >
-                        <Users className="size-4" />
+                        <IconUsers className="size-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => setEditing(toForm(s))}
                       >
-                        <Pencil className="size-4" />
+                        <IconPencil className="size-4" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -305,7 +305,7 @@ export function McpPage(): React.JSX.Element {
                         onClick={() => void handleDelete(s.id)}
                         disabled={saving}
                       >
-                        <Trash2 className="size-4" />
+                        <IconTrash className="size-4" />
                       </Button>
                     </div>
                   </TableCell>

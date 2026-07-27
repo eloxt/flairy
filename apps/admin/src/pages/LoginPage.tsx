@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { IconLoader } from '@tabler/icons-react'
 import { ApiError } from '@/api/client'
 import { useAuth } from '@/auth/useAuth'
 import { Button } from '@/components/ui/button'
@@ -79,7 +79,7 @@ export function LoginPage(): React.JSX.Element {
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting && <Loader2 className="size-4 animate-spin" />}
+              {submitting && <IconLoader className="size-4 animate-spin" />}
               Sign in
             </Button>
           </form>

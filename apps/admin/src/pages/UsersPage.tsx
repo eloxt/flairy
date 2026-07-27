@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2, UserCheck, UserX } from "lucide-react";
+import { IconPencil, IconPlus, IconTrash, IconUserCheck, IconUserX } from "@tabler/icons-react";
 import type {
   CreateUserRequest,
   UpdateUserRequest,
@@ -127,7 +127,7 @@ export function UsersPage(): React.JSX.Element {
         description="People who can sign in. Administrators can also manage server configuration; everyone else is a regular app user."
         action={
           <Button size="sm" onClick={() => setEditing(emptyForm())}>
-            <Plus className="size-4" /> Add user
+            <IconPlus className="size-4" /> Add user
           </Button>
         }
       />
@@ -211,9 +211,9 @@ export function UsersPage(): React.JSX.Element {
                           }
                         >
                           {u.activated ? (
-                            <UserX className="size-4" />
+                            <IconUserX className="size-4" />
                           ) : (
-                            <UserCheck className="size-4 text-primary" />
+                            <IconUserCheck className="size-4 text-primary" />
                           )}
                         </Button>
                         <Button
@@ -222,7 +222,7 @@ export function UsersPage(): React.JSX.Element {
                           title="Edit user"
                           onClick={() => setEditing(userToForm(u))}
                         >
-                          <Pencil className="size-4" />
+                          <IconPencil className="size-4" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -231,7 +231,7 @@ export function UsersPage(): React.JSX.Element {
                           disabled={deleteDisabled}
                           onClick={() => setDeleteTarget(u)}
                         >
-                          <Trash2 className="size-4" />
+                          <IconTrash className="size-4" />
                         </Button>
                       </div>
                     </TableCell>

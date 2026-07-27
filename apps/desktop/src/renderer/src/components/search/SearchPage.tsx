@@ -3,7 +3,7 @@ import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useChat } from "@/store/chat-store";
 import type { SearchHit } from "@shared/ipc";
-import { Search } from "lucide-react";
+import { IconSearch } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -108,7 +108,7 @@ export function SearchPage(): React.JSX.Element {
       {/* Search box pinned below the header, above the scrolling results. */}
       <div className="shrink-0 border-b border-border/70 px-3 py-3">
         <div className="relative mx-auto w-full max-w-2xl">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <IconSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             autoFocus
             value={query}

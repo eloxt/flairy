@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import type { SystemPromptConfig, SystemPromptInput } from "@flairy/shared";
 import { useConfig } from "@/hooks/useConfig";
 import {
@@ -120,7 +120,7 @@ export function SystemPromptsPage(): React.JSX.Element {
         description="Base prompts pushed to every client."
         action={
           <Button onClick={() => setEditing(emptyForm())}>
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
             Add prompt
           </Button>
         }
@@ -161,7 +161,7 @@ export function SystemPromptsPage(): React.JSX.Element {
                         size="icon"
                         onClick={() => setEditing(toForm(p))}
                       >
-                        <Pencil className="size-4" />
+                        <IconPencil className="size-4" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -169,7 +169,7 @@ export function SystemPromptsPage(): React.JSX.Element {
                         onClick={() => void handleDelete(p.id)}
                         disabled={saving}
                       >
-                        <Trash2 className="size-4" />
+                        <IconTrash className="size-4" />
                       </Button>
                     </div>
                   </TableCell>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ShieldQuestion } from 'lucide-react'
+import { IconChevronDown, IconShieldQuestion } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { toolDisplayKey } from '@/lib/tool-display'
@@ -33,7 +33,7 @@ export function ApprovalCard({
   return (
     <div className="px-4 pb-3.5 pt-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <ShieldQuestion className="size-3.5 shrink-0" strokeWidth={2} />
+        <IconShieldQuestion className="size-3.5 shrink-0" strokeWidth={2} />
         <span className="font-medium text-foreground">{t('approval.allowThisAction')}</span>
         <div className="flex-1" />
         {queuedCount > 0 && (
@@ -51,7 +51,7 @@ export function ApprovalCard({
           onClick={() => setShowDetails((v) => !v)}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          <ChevronDown
+          <IconChevronDown
             className={cn('size-3.5 transition-transform', showDetails && 'rotate-180')}
             strokeWidth={2}
           />
