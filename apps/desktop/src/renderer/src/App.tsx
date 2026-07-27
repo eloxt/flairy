@@ -119,7 +119,9 @@ function AppLayout(): React.JSX.Element {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-xl! m-2!">
+      {/* corner-shape as an arbitrary utility, not a style prop: csstype has no
+          `cornerShape` key yet, so the inline-style form fails typecheck. */}
+      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-2xl! m-2! [corner-shape:squircle]">
         <Outlet />
       </SidebarInset>
     </SidebarProvider>

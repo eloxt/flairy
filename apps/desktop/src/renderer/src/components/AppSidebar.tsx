@@ -155,9 +155,13 @@ export function AppSidebar(): React.JSX.Element {
   return (
     // Inset variant: the rail blends into the wrapper's bg-sidebar backdrop and
     // the chat surface floats as a rounded panel (SidebarInset) beside it.
-    // px-1 narrows the rail's own side gutters (the container default is p-2).
-    <Sidebar variant="inset" className="px-1">
-      <SidebarHeader className={cn("app-drag gap-2 px-3 pb-2", isMac ? "pt-11" : "pt-2")}>
+    // The rail owns its whole horizontal gutter here, and it is deliberately
+    // one-sided: SidebarInset already floats the panel 8px off the rail, so any
+    // padding on the right would stack on top of that and rows would sit twice
+    // as far from the panel as from the window edge. Left 8px + right 0 makes
+    // both visual gaps 8px. Children run px-0 so they all share this one edge.
+    <Sidebar variant="inset" className="pl-2 pr-0">
+      <SidebarHeader className={cn("app-drag gap-2 px-0 pb-2", isMac ? "pt-11" : "pt-2")}>
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -186,8 +190,10 @@ export function AppSidebar(): React.JSX.Element {
 
       {/* scroll-fade-y: the history list fades at whichever edge has more to
           scroll (scroll-driven, so no fade when it all fits). */}
-      <SidebarContent className="px-1 scroll-fade-y">
-        <SidebarGroup>
+      <SidebarContent className="px-0 scroll-fade-y">
+        {/* px-0: the rail's gutter lives on Sidebar; the group's default p-2
+            would stack another 8px on top of it. */}
+        <SidebarGroup className="px-0">
           {selecting && (
             <SidebarGroupLabel className="eyebrow px-2">
               <div className="flex w-full min-w-0 items-center justify-end gap-1.5">
@@ -310,7 +316,7 @@ export function AppSidebar(): React.JSX.Element {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="px-1 pb-2">
+      <SidebarFooter className="p-0">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

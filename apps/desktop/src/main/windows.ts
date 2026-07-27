@@ -110,7 +110,7 @@ export function createMainWindow(): BrowserWindow {
     // Center the traffic lights inside the 48px (h-12) custom title bar, which
     // now sits 8px lower (the inset panel's top gutter): ~14px cluster →
     // y = 8 + (48 - 14) / 2 ≈ 25.
-    trafficLightPosition: { x: 20, y: 23 },
+    trafficLightPosition: { x: 20, y: 25 },
     // Transparent rails on macOS: the renderer paints the chat surface opaque and
     // leaves the side rails translucent (the `.vibrancy` class), so the desktop
     // shows through the sidebar/details panel. We use a genuinely transparent
