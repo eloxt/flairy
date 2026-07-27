@@ -119,9 +119,12 @@ function AppLayout(): React.JSX.Element {
   return (
     <SidebarProvider>
       <AppSidebar />
-      {/* corner-shape as an arbitrary utility, not a style prop: csstype has no
-          `cornerShape` key yet, so the inline-style form fails typecheck. */}
-      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-2xl! m-2! [corner-shape:squircle]">
+      {/* Deliberately a plain rounded corner, NOT [corner-shape:squircle]: in
+          Chromium a corner-shape clipping ancestor stops descendant mask-image
+          from confining backdrop-filter, which collapses the header's
+          ProgressiveBlur ramp into one flat milky band with a hard edge. At 16px
+          the two silhouettes are near-identical anyway. */}
+      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-lg! m-2!">
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
