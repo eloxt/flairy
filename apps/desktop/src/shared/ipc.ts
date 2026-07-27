@@ -96,8 +96,10 @@ export const IPC = {
   SettingsGetLauncherShortcut: 'settings:get-launcher-shortcut',
   SettingsSetLauncherShortcut: 'settings:set-launcher-shortcut',
   AppGetVersion: 'app:get-version',
-  UpdateGetStatus: 'update:get-status',
+  UpdateGetState: 'update:get-state',
   UpdateOpenRelease: 'update:open-release',
+  UpdateDownload: 'update:download',
+  UpdateInstall: 'update:install',
   SettingsGetLanguage: 'settings:get-language',
   SettingsSetLanguage: 'settings:set-language',
   SettingsGetCloseToTray: 'settings:get-close-to-tray',
@@ -113,7 +115,7 @@ export const IPC = {
   LocalConfigSave: 'local-config:save',
   // event streams (send)
   TelegramStatusChanged: 'telegram:status-changed',
-  UpdateAvailable: 'update:available',
+  UpdateStateChanged: 'update:state-changed',
   AgentEvent: 'agent:event',
   ApprovalRequest: 'agent:approval-request',
   QuestionRequest: 'agent:question-request',
@@ -143,7 +145,7 @@ export type ChatWidth = 'standard' | 'wide' | 'full'
 
 /**
  * A newer release the main process found on GitHub. Surfaced as a header badge;
- * `url` is the release page opened (externally) when the user clicks it.
+ * `url` is the release page opened (externally) when the app can't self-install.
  */
 export interface UpdateInfo {
   /** Latest version, normalized without a leading "v" (e.g. "0.2.0"). */
@@ -152,6 +154,39 @@ export interface UpdateInfo {
   url: string
   /** Optional release title/name for display. */
   notes?: string
+}
+
+/**
+ * Where the app sits in the update lifecycle. Only a packaged Windows build
+ * reaches `downloading`/`ready` — everywhere else the badge stops at
+ * `available` and clicking it just opens the release page.
+ */
+export type UpdateStage = 'idle' | 'available' | 'downloading' | 'ready' | 'error'
+
+/** Download telemetry, mirrored from electron-updater's progress events. */
+export interface UpdateProgress {
+  /** 0–100. */
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+/** The whole update picture, recomputed in main and broadcast to every window. */
+export interface UpdateState {
+  stage: UpdateStage
+  /** The newer release once one is known; null while idle. */
+  info: UpdateInfo | null
+  /** Set only while `stage === 'downloading'`. */
+  progress: UpdateProgress | null
+  /** Failure reason when `stage === 'error'` (already localized-agnostic, raw). */
+  error?: string
+  /**
+   * True when this build can download and install the update itself — i.e. a
+   * packaged Windows/NSIS build. False elsewhere, where the badge degrades to
+   * opening the release page in the browser.
+   */
+  canInstall: boolean
 }
 
 /** A single attachment for multimodal prompts. */
@@ -746,10 +781,17 @@ export interface FlairyApi {
   getViewerImage(id: string): Promise<ViewerImage | null>
   /** This app's version (from package.json), resolved synchronously by main. */
   getAppVersion(): string
-  /** The newer release the app already knows about, or null if up to date. */
-  getUpdateStatus(): Promise<UpdateInfo | null>
+  /** The current update lifecycle state (stage + known release + progress). */
+  getUpdateState(): Promise<UpdateState>
   /** Open the latest release page in the OS browser. */
   openReleasePage(): Promise<void>
+  /**
+   * Start downloading the available update in the background. No-op unless
+   * `canInstall` — on macOS/Linux use `openReleasePage()` instead.
+   */
+  downloadUpdate(): Promise<void>
+  /** Quit and run the downloaded installer. Only valid once stage is `ready`. */
+  installUpdate(): Promise<void>
   /** The OS platform, so the renderer can adapt chrome (e.g. macOS traffic lights). */
   platform: Platform
   /**
@@ -803,8 +845,8 @@ export interface FlairyApi {
   onAdvancedUnlockedChanged(cb: (unlocked: boolean) => void): () => void
   /** Fires when the config source (server ↔ local) changes (from any window). */
   onConfigModeChanged(cb: (mode: ConfigMode) => void): () => void
-  /** Fires when the app detects a newer release is available. */
-  onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void
+  /** Fires whenever the update lifecycle advances (found / progress / ready / failed). */
+  onUpdateState(cb: (state: UpdateState) => void): () => void
   /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */
   onCompressStatus(cb: (payload: CompressStatusPayload) => void): () => void
   /** Fires in the launcher window each time it is summoned (fresh chat vs continue). */

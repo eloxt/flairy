@@ -81,6 +81,12 @@
           "to": "tray"
         }
       ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "differentialPackage": true
     }
   },
   "scripts": {
@@ -123,6 +129,7 @@
     "diff": "^9.0.0",
     "drizzle-orm": "^0.45.2",
     "electron-liquid-glass": "^1.1.1",
+    "electron-updater": "^6.8.9",
     "grammy": "^1.45.1",
     "i18next": "^26.3.6",
     "katex": "^0.18.1",

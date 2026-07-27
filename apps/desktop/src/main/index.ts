@@ -9,7 +9,7 @@ import { ServerClient } from "./sync/server-client";
 import { McpManager } from "./agent/mcp";
 import { AgentManager } from "./agent/agent-manager";
 import { TelegramManager } from "./telegram/telegram-manager";
-import { UpdateManager } from "./update/update-checker";
+import { UpdateManager } from "./update";
 import { createMainWindow, markQuitting, showMainWindow } from "./windows";
 import { syncLauncherShortcut, unregisterShortcuts } from "./shortcuts";
 import { createTray, destroyTray } from "./tray";
@@ -59,7 +59,8 @@ if (!app.requestSingleInstanceLock()) {
     // interaction channel + outbound bus subscriber on construction; auto-starts
     // below only if a stored token + enabled binding already exist.
     const telegram = new TelegramManager(server, agents);
-    // Polls GitHub for a newer release and badges the header when one exists.
+    // Watches for newer releases and badges the header. On packaged Windows it
+    // also downloads and installs them in place; elsewhere it just links out.
     const updates = new UpdateManager();
     createMainWindow();
     registerIpcHandlers(server, updates, agents, telegram);
@@ -80,6 +81,7 @@ if (!app.requestSingleInstanceLock()) {
     // window actually close instead of hiding to the tray.
     app.on("before-quit", () => {
       markQuitting();
+      updates.stop();
       void telegram.stop();
       agents.disposeAll();
       mcp.dispose();

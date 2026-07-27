@@ -15,7 +15,7 @@ import {
   type SessionTitleUpdatedPayload,
   type SocketConnectionStatus,
   type TelegramStatus,
-  type UpdateInfo
+  type UpdateState
 } from '@shared/ipc'
 
 /**
@@ -79,8 +79,10 @@ const api: FlairyApi = {
   openImageViewer: (image) => ipcRenderer.invoke(IPC.ImageViewerOpen, image),
   getViewerImage: (id) => ipcRenderer.invoke(IPC.ImageViewerGet, id),
   getAppVersion: () => ipcRenderer.sendSync(IPC.AppGetVersion) as string,
-  getUpdateStatus: () => ipcRenderer.invoke(IPC.UpdateGetStatus),
+  getUpdateState: () => ipcRenderer.invoke(IPC.UpdateGetState),
   openReleasePage: () => ipcRenderer.invoke(IPC.UpdateOpenRelease),
+  downloadUpdate: () => ipcRenderer.invoke(IPC.UpdateDownload),
+  installUpdate: () => ipcRenderer.invoke(IPC.UpdateInstall),
   platform: process.platform,
   getInitialLanguage: () => ipcRenderer.sendSync(IPC.SettingsGetLanguage) as AppLanguage,
   setLanguage: (lng) => ipcRenderer.invoke(IPC.SettingsSetLanguage, lng),
@@ -160,10 +162,10 @@ const api: FlairyApi = {
     ipcRenderer.on(IPC.ConfigModeChanged, listener)
     return () => ipcRenderer.removeListener(IPC.ConfigModeChanged, listener)
   },
-  onUpdateAvailable: (cb) => {
-    const listener = (_e: unknown, info: UpdateInfo): void => cb(info)
-    ipcRenderer.on(IPC.UpdateAvailable, listener)
-    return () => ipcRenderer.removeListener(IPC.UpdateAvailable, listener)
+  onUpdateState: (cb) => {
+    const listener = (_e: unknown, state: UpdateState): void => cb(state)
+    ipcRenderer.on(IPC.UpdateStateChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.UpdateStateChanged, listener)
   },
   onTelegramStatusChanged: (cb) => {
     const listener = (_e: unknown, s: TelegramStatus): void => cb(s)

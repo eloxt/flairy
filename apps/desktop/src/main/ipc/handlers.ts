@@ -73,7 +73,7 @@ import {
 } from '../store/db'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
-import type { UpdateManager } from '../update/update-checker'
+import type { UpdateManager } from '../update'
 import { redactConfig } from '../sync/config-redact'
 import { readLocalConfigDraft, seedDraftFromServer, writeLocalConfigDraft } from '../sync/local-config-draft'
 import {
@@ -673,10 +673,15 @@ export function registerIpcHandlers(
     broadcast(IPC.ChatWidthChanged, width)
   })
 
-  // A window that mounts after the update check ran reads the current status so
+  // A window that mounts after the update check ran reads the current state so
   // its header badge reflects an already-known update (the broadcast it missed).
-  ipcMain.handle(IPC.UpdateGetStatus, () => updates.getStatus())
+  ipcMain.handle(IPC.UpdateGetState, () => updates.getState())
 
-  // User clicked the update badge: open the release page in the OS browser.
+  // The manual path (macOS/Linux, or an escape hatch after a failed download):
+  // open the release page in the OS browser.
   ipcMain.handle(IPC.UpdateOpenRelease, () => updates.openReleasePage())
+
+  // Windows only: fetch the installer in the background, then quit into it.
+  ipcMain.handle(IPC.UpdateDownload, () => updates.download())
+  ipcMain.handle(IPC.UpdateInstall, () => updates.install())
 }

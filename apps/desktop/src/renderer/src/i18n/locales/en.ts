@@ -362,7 +362,11 @@ const en = {
   },
   update: {
     available: 'Update available',
-    tooltip: 'Version {{version}} is available — click to download'
+    tooltip: 'Version {{version}} is available — click to download',
+    download: 'Version {{version}} is available — click to install it',
+    downloading: 'Getting version {{version}} ready… {{percent}}%',
+    ready: 'Version {{version}} is ready — click to restart and finish',
+    failed: "Couldn't finish the update — click to download it instead"
   },
   tools: {
     read: 'Read',

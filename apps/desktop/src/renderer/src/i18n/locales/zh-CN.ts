@@ -338,7 +338,11 @@ const zhCN: typeof En = {
   },
   update: {
     available: '有可用更新',
-    tooltip: '新版本 {{version}} 已发布 — 点击下载'
+    tooltip: '新版本 {{version}} 已发布 — 点击下载',
+    download: '新版本 {{version}} 已发布 — 点击安装',
+    downloading: '正在准备新版本 {{version}}… {{percent}}%',
+    ready: '新版本 {{version}} 已就绪 — 点击重启完成更新',
+    failed: '更新没能完成 — 点击改为手动下载'
   },
   tools: {
     read: '读取文件',
