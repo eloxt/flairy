@@ -75,6 +75,14 @@ function groupSessions(sessions: SessionMeta[]): {
   };
 }
 
+// Reveal a section's action only while that section's own header row is
+// hovered. SidebarMenuAction's built-in `showOnHover` keys off
+// group/menu-item, which sits on the <li> wrapping the collapsible content
+// too — so hovering a session row revealed its project's and the Projects
+// header's buttons as well. Section scopes group/row to the header row alone.
+const rowHoverAction =
+  "group-focus-within/row:opacity-100 group-hover/row:opacity-100 aria-expanded:opacity-100 md:opacity-0";
+
 /**
  * Left navigation: New Chat, Search (its own page at /search), then the session
  * history. Selecting a chat navigates back to the chat route.
@@ -230,7 +238,7 @@ export function AppSidebar(): React.JSX.Element {
                 triggerClassName="font-semibold text-sidebar-foreground"
                 action={
                   <SidebarMenuAction
-                    showOnHover
+                    className={rowHoverAction}
                     title={t('chat.addProject')}
                     onClick={(e) => {
                       e.preventDefault();
@@ -257,7 +265,7 @@ export function AppSidebar(): React.JSX.Element {
                         triggerClassName="text-muted-foreground/90"
                         action={
                           <SidebarMenuAction
-                            showOnHover
+                            className={rowHoverAction}
                             title={t('chat.newInProject', { project: group.label })}
                             onClick={(e) => {
                               e.preventDefault();
@@ -383,19 +391,26 @@ function Section({
   return (
     <Collapsible defaultOpen>
       <SidebarMenuItem>
-        <CollapsibleTrigger
-          render={
-            <SidebarMenuButton
-              size="sm"
-              title={title}
-              className={cn("group/collapsible", triggerClassName)}
-            />
-          }
-        >
-          {Icon && <Icon className="shrink-0 opacity-80" />}
-          <span className={cn("min-w-0 truncate", !hugText && "flex-1")}>{label}</span>
-        </CollapsibleTrigger>
-        {action}
+        {/* group/row wraps the header row ONLY — the <li>'s own
+            group/menu-item also covers CollapsibleContent, so keying the
+            action off it lit up every ancestor's button whenever a nested
+            session row was hovered. `relative` keeps the absolutely
+            positioned action anchored to this row. */}
+        <div className="group/row relative">
+          <CollapsibleTrigger
+            render={
+              <SidebarMenuButton
+                size="sm"
+                title={title}
+                className={cn("group/collapsible", triggerClassName)}
+              />
+            }
+          >
+            {Icon && <Icon className="shrink-0 opacity-80" />}
+            <span className={cn("min-w-0 truncate", !hugText && "flex-1")}>{label}</span>
+          </CollapsibleTrigger>
+          {action}
+        </div>
         <CollapsibleContent>{children}</CollapsibleContent>
       </SidebarMenuItem>
     </Collapsible>
