@@ -340,16 +340,24 @@ export function MessageList({
   // had to fake). `defaultScrollPosition="last-anchor"` opens at the most recent
   // turn; user rows are anchors, so each turn settles cleanly into view.
   return (
-    <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+    <MessageScrollerProvider autoScroll scrollPreviousItemPeek={10} defaultScrollPosition="last-anchor">
       <MessageScroller className="absolute inset-0">
         <MessageScrollerViewport>
           {/* gap-0: rows carry their own vertical rhythm via per-row padding, so
-              the container must not add the primitive's default gap between them. */}
-          <MessageScrollerContent className="gap-0">
-            {/* Taller than the usual spacer: clears the floating header so the
-                first row starts below its blur fade. */}
-            <div className="h-16 shrink-0" />
-            {rows.map((row) => (
+              the container must not add the primitive's default gap between them.
+              The head/tail clearances are the CONTENT'S OWN PADDING, never spacer
+              children: the scroller finds a newly appended anchor by index
+              (`children[oldCount…]`), so any child after the rows shifts that
+              window past the new turn and the "pin the turn to the top" scroll
+              never fires — the list just sticks to the bottom instead. Padding
+              also participates in the primitive's own scroll math, so an anchored
+              turn settles below the floating header (pt) and the last row clears
+              the floating composer (pb, tracking its live height). */}
+          <MessageScrollerContent
+            className="gap-0 pt-16"
+            style={{ paddingBottom: "var(--composer-h, 9rem)" }}
+          >
+            {rows.map((row, i) => (
               <MessageScrollerItem
                 key={row.key}
                 messageId={row.key}
@@ -378,9 +386,17 @@ export function MessageList({
                     row.kind === "msg" && footerCopyIds.has(row.m.id)
                   }
                 />
+                {/* The transient tail rides INSIDE the last row's item rather
+                    than as a sibling — see the childList note above. It also
+                    keeps those rows above the scroller's own spacer, so the
+                    thinking dots sit right under the last message instead of
+                    below the blank space a pinned turn opens up. */}
+                {i === rows.length - 1 && <ThreadFooter />}
               </MessageScrollerItem>
             ))}
-            <ThreadFooter />
+            {/* No rows at all (a compression on an empty thread): nothing to
+                nest into, and with zero items there is no index math to skew. */}
+            {rows.length === 0 && <ThreadFooter />}
           </MessageScrollerContent>
         </MessageScrollerViewport>
         {/* Left-edge navigation rail: one tick per user turn, click to jump.
@@ -531,10 +547,10 @@ function RowView({
 
 
 /**
- * Transient status rows at the thread's tail (compression, retry, thinking),
- * plus room at the bottom so the last item clears the floating composer.
- * Height tracks the composer's live size via the `--composer-h` CSS variable it
- * publishes (falls back to 9rem before the composer has measured itself).
+ * Transient status rows at the thread's tail (compression, retry, thinking).
+ * The bottom clearance for the floating composer is NOT here — it is the
+ * content element's padding, so it can't act as a trailing child (see the
+ * childList note in {@link MessageList}).
  */
 const ThreadFooter = (): React.JSX.Element => {
   // One PERSISTENT wrapper, deliberately not a fragment: the scroller watches
@@ -542,13 +558,13 @@ const ThreadFooter = (): React.JSX.Element => {
   // heuristic misfires on equal-count swaps — a transient row (e.g. thinking
   // dots) vanishing in the same commit a message row appears would net out to
   // zero and jump the viewport to a historical anchor. Behind one constant
-  // div, these rows' churn is invisible to the observer.
+  // div — itself nested inside the last item, out of the observed childList —
+  // these rows' churn is invisible to the observer.
   return (
     <div>
       <CompressionRow />
       <RetryRow />
       <ThinkingRow />
-      <div style={{ height: "var(--composer-h, 9rem)" }} />
     </div>
   );
 };
