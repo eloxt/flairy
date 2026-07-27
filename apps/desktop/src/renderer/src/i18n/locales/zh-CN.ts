@@ -35,6 +35,8 @@ const zhCN: typeof En = {
     resultCount_one: '{{count}} 条结果',
     resultCount_other: '{{count}} 条结果',
     projects: '项目',
+    addProject: '添加项目文件夹',
+    noProjects: '添加一个文件夹来开始项目',
     chats: '对话',
     chatsWillAppearHere: '你的对话会显示在这里',
     untitled: '未命名对话',

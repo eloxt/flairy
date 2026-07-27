@@ -168,6 +168,12 @@ export function Composer(): React.JSX.Element {
     (s) => !!s.sessions.find((x) => x.id === s.sessionId)?.workspacePath,
   );
 
+  // The workspace + permission row belongs to projects only. A plain chat has no
+  // folder and no file/shell tools, so both controls are noise there — projects
+  // are started from the sidebar's Projects "+" instead. On the home screen a
+  // pending folder pick means the next message opens a project session.
+  const isProject = useChat((s) => (s.sessionId ? false : !!s.pendingCwd)) || workspaceLocked;
+
   // Interaction cards docked in the composer shell: the pending `ask` question
   // and tool approval (each the head of its queue) and the live plan while a
   // run is in flight.
@@ -443,6 +449,7 @@ export function Composer(): React.JSX.Element {
             </div>
           </div>
 
+          {isProject && (
           <div className="flex items-center gap-1 px-2 py-1.5">
             {/* Working directory: hover to open recents, or add another. Fixed
                 once the session has a workspace — render a static label then. */}
@@ -579,6 +586,7 @@ export function Composer(): React.JSX.Element {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          )}
           </div>
         </div>
       </div>

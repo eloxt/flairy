@@ -119,7 +119,7 @@ function AppLayout(): React.JSX.Element {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-md! m-2!">
+      <SidebarInset className="relative z-10 min-w-0 overflow-hidden ring-1 ring-sidebar-border rounded-xl! m-2!">
         <Outlet />
       </SidebarInset>
     </SidebarProvider>

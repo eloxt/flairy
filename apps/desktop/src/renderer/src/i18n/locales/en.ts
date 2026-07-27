@@ -36,6 +36,8 @@ const en = {
     resultCount_one: '{{count}} result',
     resultCount_other: '{{count}} results',
     projects: 'Projects',
+    addProject: 'Add a project folder',
+    noProjects: 'Add a folder to start a project',
     chats: 'Chats',
     chatsWillAppearHere: 'Your chats will appear here',
     untitled: 'Untitled chat',

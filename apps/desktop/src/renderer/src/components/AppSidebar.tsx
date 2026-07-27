@@ -38,6 +38,7 @@ import {
   Search,
   Send,
   Settings,
+  SquarePen,
   Trash2,
   X,
 } from "lucide-react";
@@ -90,7 +91,7 @@ function groupSessions(sessions: SessionMeta[]): {
  */
 export function AppSidebar(): React.JSX.Element {
   const { t } = useTranslation();
-  const { sessions, sessionId, newChat, deleteSession } = useChat();
+  const { sessions, sessionId, newChat, deleteSession, loadRecentDirs } = useChat();
   const navigate = useNavigate();
   const onSearch = useLocation().pathname === "/search";
   // Only macOS has traffic lights to clear; Windows/Linux need no top inset.
@@ -140,6 +141,18 @@ export function AppSidebar(): React.JSX.Element {
     });
   };
 
+  // "+" beside the Projects header: pick a folder, then land on the home screen
+  // with that folder pending — the first message turns it into a project session.
+  // This is now the ONLY way to start a project: the composer no longer offers a
+  // folder picker for plain chats.
+  const addProject = async (): Promise<void> => {
+    const dir = await window.api.pickDirectory();
+    if (!dir) return; // user cancelled
+    await newChat(dir);
+    void loadRecentDirs(); // main recorded the pick
+    navigate("/");
+  };
+
   const deleteSelectedSessions = async (): Promise<void> => {
     const ids = [...selectedIds];
     setConfirmBulkDelete(false);
@@ -164,7 +177,7 @@ export function AppSidebar(): React.JSX.Element {
                 navigate("/");
               }}
             >
-              <Plus className="size-4" />
+              <SquarePen className="size-4" />
               <span>{t('chat.newChat')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -210,82 +223,97 @@ export function AppSidebar(): React.JSX.Element {
           )}
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {sessions.length === 0 ? (
+              {/* Projects always renders (even empty): its "+" is the only way
+                  to start one — the composer's folder picker is gone. */}
+              <Section
+                label={t('chat.projects')}
+                triggerClassName="font-semibold text-sidebar-foreground"
+                action={
+                  <SidebarMenuAction
+                    showOnHover
+                    title={t('chat.addProject')}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void addProject();
+                    }}
+                  >
+                    <Plus className="text-sidebar-foreground" />
+                  </SidebarMenuAction>
+                }
+              >
+                {grouped.projects.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-muted-foreground">
+                    {t('chat.noProjects')}
+                  </p>
+                ) : (
+                  <SidebarMenu className="gap-0.5">
+                    {grouped.projects.map((group) => (
+                      <Section
+                        key={group.path}
+                        label={group.label}
+                        icon={Folder}
+                        title={group.path}
+                        triggerClassName="text-muted-foreground/90"
+                        action={
+                          <SidebarMenuAction
+                            showOnHover
+                            title={t('chat.newInProject', { project: group.label })}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void newChat(group.path);
+                              navigate("/");
+                            }}
+                          >
+                            <SquarePen className="size-3.5! text-sidebar-foreground"/>
+                          </SidebarMenuAction>
+                        }
+                      >
+                        {/* Keep the left indent + guide line but let rows
+                            stretch to the sidebar's right edge (the default
+                            mr-3.5/pr-2.5 leaves a dead gutter on the right). */}
+                        <SidebarMenuSub className="mr-0 pr-0">
+                          {group.sessions.map((s) => (
+                            <SessionRow
+                              key={s.id}
+                              s={s}
+                              active={s.id === sessionId}
+                              selecting={selecting}
+                              selected={selectedIds.has(s.id)}
+                              onEnterSelectionMode={enterSelectionMode}
+                              onToggleSelected={toggleSelected}
+                            />
+                          ))}
+                        </SidebarMenuSub>
+                      </Section>
+                    ))}
+                  </SidebarMenu>
+                )}
+              </Section>
+              {grouped.chats.length === 0 ? (
                 <p className="px-2 py-6 text-center text-xs text-muted-foreground">
                   {t('chat.chatsWillAppearHere')}
                 </p>
               ) : (
-                <>
-                  {grouped.projects.length > 0 && (
-                    <Section
-                      label={t('chat.projects')}
-                      triggerClassName="font-semibold text-sidebar-foreground"
-                    >
-                      <SidebarMenu className="gap-0.5">
-                        {grouped.projects.map((group) => (
-                          <Section
-                            key={group.path}
-                            label={group.label}
-                            icon={Folder}
-                            title={group.path}
-                            triggerClassName="text-muted-foreground/90"
-                            action={
-                              <SidebarMenuAction
-                                showOnHover
-                                title={t('chat.newInProject', { project: group.label })}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  void newChat(group.path);
-                                  navigate("/");
-                                }}
-                              >
-                                <Plus className="text-sidebar-foreground"/>
-                              </SidebarMenuAction>
-                            }
-                          >
-                            {/* Keep the left indent + guide line but let rows
-                                stretch to the sidebar's right edge (the default
-                                mr-3.5/pr-2.5 leaves a dead gutter on the right). */}
-                            <SidebarMenuSub className="mr-0 pr-0">
-                              {group.sessions.map((s) => (
-                                <SessionRow
-                                  key={s.id}
-                                  s={s}
-                                  active={s.id === sessionId}
-                                  selecting={selecting}
-                                  selected={selectedIds.has(s.id)}
-                                  onEnterSelectionMode={enterSelectionMode}
-                                  onToggleSelected={toggleSelected}
-                                />
-                              ))}
-                            </SidebarMenuSub>
-                          </Section>
-                        ))}
-                      </SidebarMenu>
-                    </Section>
-                  )}
-                  {grouped.chats.length > 0 && (
-                    <Section
-                      label={t('chat.chats')}
-                      triggerClassName="font-semibold text-sidebar-foreground"
-                    >
-                      <SidebarMenuSub className="mr-0 pr-0">
-                        {grouped.chats.map((s) => (
-                          <SessionRow
-                            key={s.id}
-                            s={s}
-                            active={s.id === sessionId}
-                            selecting={selecting}
-                            selected={selectedIds.has(s.id)}
-                            onEnterSelectionMode={enterSelectionMode}
-                            onToggleSelected={toggleSelected}
-                          />
-                        ))}
-                      </SidebarMenuSub>
-                    </Section>
-                  )}
-                </>
+                <Section
+                  label={t('chat.chats')}
+                  triggerClassName="font-semibold text-sidebar-foreground"
+                >
+                  <SidebarMenuSub className="mr-0 pr-0">
+                    {grouped.chats.map((s) => (
+                      <SessionRow
+                        key={s.id}
+                        s={s}
+                        active={s.id === sessionId}
+                        selecting={selecting}
+                        selected={selectedIds.has(s.id)}
+                        onEnterSelectionMode={enterSelectionMode}
+                        onToggleSelected={toggleSelected}
+                      />
+                    ))}
+                  </SidebarMenuSub>
+                </Section>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
