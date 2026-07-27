@@ -70,9 +70,34 @@
     /* Motion is allowed — but only where it carries meaning: a message
        settling into place, the agent's quiet "thinking" bob. */
     --animate-message-in: message-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-message-pop: message-pop 0.31s var(--ease-spring-bounce) both;
     --animate-rise-in: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
     --animate-thinking: thinking 1.3s ease-in-out infinite;
 
+    /* The sent bubble's entrance: shadcn's "Spring Bounce" message preset
+       (motion spring, stiffness 520 / damping 30 / mass 0.7) solved into a
+       `linear()` easing — same curve, no animation runtime. Underdamped by
+       design: it overshoots ~1.8% at 0.19s and settles at 0.31s, which is the
+       whole point of the preset (values past 100% ARE the bounce, so the
+       keyframe must stay a plain from/to and let the easing overshoot it). */
+    --ease-spring-bounce: linear(
+        0 0%, 0.0505 4%, 0.1677 8%, 0.3125 13%, 0.4599 17%, 0.5951 21%,
+        0.7108 25%, 0.8044 29%, 0.8767 33%, 0.9298 38%, 0.9671 42%, 0.9916 46%,
+        1.0066 50%, 1.0147 54%, 1.018 58%, 1.0182 63%, 1.0166 67%, 1.0142 71%,
+        1.0115 75%, 1.0088 79%, 1.0065 83%, 1.0045 88%, 1.003 92%, 1.0018 96%,
+        1.001 100%
+    );
+
+    @keyframes message-pop {
+        from {
+            opacity: 0;
+            transform: translateY(12px) scale(0.96);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
     @keyframes message-in {
         from {
             opacity: 0;
@@ -413,6 +438,7 @@
    one ongoing "agent is awake" signal.) */
 @media (prefers-reduced-motion: reduce) {
     .animate-message-in,
+    .animate-message-pop,
     .animate-rise-in {
         animation: none !important;
     }

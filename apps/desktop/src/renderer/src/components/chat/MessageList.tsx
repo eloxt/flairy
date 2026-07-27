@@ -526,17 +526,27 @@ function RowView({
         showActions={showActions}
       />
     );
-  // `animate-message-in`: a one-shot slide-up + fade as the row enters (the
-  // shared keyframe — transform + opacity only, so it never fights the scroller's
-  // positioning). Set only on genuinely new rows; the class then persists, and a
-  // CSS animation fires once per mount, so streamed re-renders can't restart or
-  // cut it short. Transient ring after a search/timeline jump fades as
-  // `highlight` flips back to false.
+  // A one-shot entrance as the row enters — transform + opacity only, so it
+  // never fights the scroller's positioning (animating height/margin/padding
+  // here would). A just-sent prompt gets the springy `animate-message-pop`, the
+  // tactile "it left your hands" beat; everything the agent produces slides in
+  // quietly with `animate-message-in` so a streaming answer doesn't bounce.
+  // Set only on genuinely new rows; the class then persists, and a CSS animation
+  // fires once per mount, so streamed re-renders can't restart or cut it short.
+  // Transient ring after a search/timeline jump fades as `highlight` flips back
+  // to false.
+  const sent = row.kind === "msg" && row.m.role === "user";
   return (
     <div
       className={cn(
         "transition-colors duration-700",
-        animate && "animate-message-in",
+        // The row is full-width but the sent bubble hugs its trailing edge, so
+        // the pop scales from that corner — scaling about the row's center
+        // would drag the bubble sideways as it settles.
+        animate &&
+          (sent
+            ? "animate-message-pop origin-bottom-right"
+            : "animate-message-in"),
         highlight && "bg-accent/40",
       )}
     >
