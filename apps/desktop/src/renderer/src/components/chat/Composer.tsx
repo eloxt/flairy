@@ -111,7 +111,7 @@ function LivePlanCard({ todos }: { todos: TodoItem[] }): React.JSX.Element {
   const { t } = useTranslation();
   const done = todos.filter((x) => x.status === "completed").length;
   return (
-    <div className="rounded-t-lg border-b border-border bg-background/66 backdrop-blur px-4 pb-2.5 pt-3">
+    <div className="rounded-t-2xl [corner-shape:squircle] border-b border-border bg-background/66 backdrop-blur px-4 pb-2.5 pt-3">
       <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t("composer.plan")}</span>
         <div className="flex-1" />
@@ -260,7 +260,7 @@ export function Composer(): React.JSX.Element {
       <div ref={rootRef} className="pointer-events-none absolute bottom-0 left-0 right-0 pt-10">
         <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
           <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
-            <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 rounded-2xl [corner-shape:squircle] border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
               <IconSend className="size-4 shrink-0" />
               <span>{t('composer.telegramReadOnly')}</span>
             </div>
@@ -277,7 +277,7 @@ export function Composer(): React.JSX.Element {
     >
       <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
-          <div className="rounded-lg border border-border bg-muted/60">
+          <div className="rounded-2xl [corner-shape:squircle] border border-border bg-muted/60">
             {/* Interaction cards slide out of the shell above the input: plan
                 progress on top, the question card below it (closer to the input,
                 waiting on the user's next action). Question keyed per request so
@@ -310,12 +310,12 @@ export function Composer(): React.JSX.Element {
                 {attachments.map((a, i) => (
                   <div
                     key={i}
-                    className="group/att relative flex items-center gap-2.5 rounded-lg border border-border bg-card p-1.5 pr-8"
+                    className="group/att relative flex items-center gap-2.5 rounded-2xl [corner-shape:squircle] border border-border bg-card p-1.5 pr-8"
                   >
                     <img
                       src={`data:${a.attachment.mimeType};base64,${a.attachment.data}`}
                       alt={a.name}
-                      className="size-11 shrink-0 rounded-lg object-cover"
+                      className="size-11 shrink-0 rounded-2xl [corner-shape:squircle] object-cover"
                     />
                     <div className="min-w-0 pr-1">
                       <div className="max-w-40 truncate text-xs font-medium text-foreground">
@@ -332,7 +332,7 @@ export function Composer(): React.JSX.Element {
                         )
                       }
                       aria-label={t('composer.removeAttachment')}
-                      className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-xl [corner-shape:squircle] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
                       <IconX className="size-3.5" />
                     </button>
@@ -342,20 +342,20 @@ export function Composer(): React.JSX.Element {
             )}
 
             {imagesIgnored && (
-              <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
+              <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-2xl [corner-shape:squircle] bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
                 <IconAlertTriangle className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesIgnored")}</span>
               </div>
             )}
 
             {imagesExtracted && (
-              <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-600 dark:text-amber-500">
+              <div className="mx-2 mb-1.5 flex items-start gap-2 rounded-2xl [corner-shape:squircle] bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-600 dark:text-amber-500">
                 <IconAlertTriangle className="mt-px size-3.5 shrink-0" />
                 <span>{t("composer.imagesExtracted")}</span>
               </div>
             )}
 
-            <div className="group relative -m-px flex flex-col rounded-lg border border-foreground/15 bg-background/66 backdrop-blur shadow-xs transition-colors focus-within:border-foreground/25">
+            <div className="group relative -m-px flex flex-col rounded-2xl [corner-shape:squircle] border border-foreground/15 bg-background/66 backdrop-blur shadow-xs transition-colors focus-within:border-foreground/25">
             <textarea
               ref={taRef}
               value={text}
@@ -394,7 +394,7 @@ export function Composer(): React.JSX.Element {
                 <TooltipTrigger
                   onClick={() => fileRef.current?.click()}
                   aria-label={t('composer.addImage')}
-                  className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="flex size-8 items-center justify-center rounded-2xl [corner-shape:squircle] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   <IconPaperclip className="size-4" />
                 </TooltipTrigger>
@@ -414,7 +414,7 @@ export function Composer(): React.JSX.Element {
                 <button
                   onClick={abort}
                   aria-label={t('composer.stop')}
-                  className="flex size-9 items-center justify-center rounded-xl bg-secondary text-secondary-foreground transition-colors hover:bg-accent active:translate-y-px"
+                  className="flex size-9 items-center justify-center rounded-2xl [corner-shape:squircle] bg-secondary text-secondary-foreground transition-colors hover:bg-accent active:translate-y-px"
                 >
                   <IconSquare className="size-3.5 fill-current" strokeWidth={0} />
                 </button>
@@ -424,7 +424,7 @@ export function Composer(): React.JSX.Element {
                   disabled={!canSend}
                   aria-label={running ? t('composer.steer') : t('composer.send')}
                   className={cn(
-                    "flex size-9 items-center justify-center rounded-xl transition-all active:translate-y-px",
+                    "flex size-9 items-center justify-center rounded-2xl [corner-shape:squircle] transition-all active:translate-y-px",
                     canSend
                       ? "bg-primary text-primary-foreground hover:opacity-90"
                       : "cursor-not-allowed bg-muted text-muted-foreground",
@@ -444,7 +444,7 @@ export function Composer(): React.JSX.Element {
               <div
                 aria-label={t('composer.workingDirectory')}
                 title={t('composer.workspaceLockedTitle', { path: cwd ?? "~" })}
-                className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground"
+                className="flex h-8 items-center gap-1.5 rounded-2xl [corner-shape:squircle] px-2 text-xs text-muted-foreground"
               >
                 <IconFolder className="size-4" />
                 <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
@@ -459,7 +459,7 @@ export function Composer(): React.JSX.Element {
                 openOnHover
                 aria-label={t('composer.workingDirectory')}
                 title={t('composer.workingDirectoryTitle', { path: cwd ?? "~" })}
-                className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex h-8 items-center gap-1.5 rounded-2xl [corner-shape:squircle] px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <IconFolder className="size-4" />
                 <span className="max-w-32 truncate">{cwdLabel(cwd) ?? t('composer.home')}</span>
@@ -518,7 +518,7 @@ export function Composer(): React.JSX.Element {
                 openOnHover
                 aria-label={t('composer.toolPermission')}
                 className={cn(
-                  "flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors hover:bg-accent",
+                  "flex h-8 items-center gap-1.5 rounded-2xl [corner-shape:squircle] px-2 text-xs transition-colors hover:bg-accent",
                   permissionMode === "full"
                     ? "text-destructive hover:text-destructive"
                     : "text-muted-foreground hover:text-foreground",
