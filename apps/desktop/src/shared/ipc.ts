@@ -822,6 +822,10 @@ export interface FlairyApi {
     compressing: boolean
     /** Non-null while a model-request auto-retry is in flight (backoff window). */
     retrying: { attempt: number; max: number } | null
+    /** Unanswered tool approvals for this session (re-seeded so the card reappears). */
+    pendingApprovals: ApprovalRequestPayload[]
+    /** Unanswered `ask` questions for this session (re-seeded so the card reappears). */
+    pendingQuestions: QuestionRequestPayload[]
   }>
   /** Full-text search over message content + session titles. */
   searchMessages(args: SearchMessagesArgs): Promise<SearchHit[]>

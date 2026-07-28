@@ -18,10 +18,16 @@ import { broadcast, showMainWindow } from '../windows'
  */
 class QuestionRegistry {
   // questionId -> how to settle it, plus the owning session so we can reject
-  // everything for a session when it's deleted/aborted mid-question.
+  // everything for a session when it's deleted/aborted mid-question. The full
+  // payload is retained so an orphaned question (renderer lost the broadcast)
+  // can be re-surfaced when the session is opened.
   private pending = new Map<
     string,
-    { resolve: (answers: QuestionAnswer[] | null) => void; sessionId: string }
+    {
+      resolve: (answers: QuestionAnswer[] | null) => void
+      sessionId: string
+      payload: QuestionRequestPayload
+    }
   >()
 
   request(
@@ -34,11 +40,19 @@ class QuestionRegistry {
     if (BrowserWindow.getAllWindows().length === 0) return Promise.resolve(null)
 
     const questionId = randomUUID()
+    const full: QuestionRequestPayload = { questionId, ...payload }
     return new Promise<QuestionAnswer[] | null>((resolve) => {
-      this.pending.set(questionId, { resolve, sessionId: payload.sessionId })
-      broadcast(IPC.QuestionRequest, { questionId, ...payload })
+      this.pending.set(questionId, { resolve, sessionId: payload.sessionId, payload: full })
+      broadcast(IPC.QuestionRequest, full)
       this.notify(payload)
     })
+  }
+
+  /** Still-unanswered questions for a session, oldest first (recovery on open). */
+  pendingForSession(sessionId: string): QuestionRequestPayload[] {
+    return [...this.pending.values()]
+      .filter((e) => e.sessionId === sessionId)
+      .map((e) => e.payload)
   }
 
   /**

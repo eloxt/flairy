@@ -368,7 +368,12 @@ export function registerIpcHandlers(
       messages: svc ? svc.getLiveMessages() : loadMessages(sessionId),
       running: svc?.isRunning() ?? false,
       compressing: svc?.isCompressing() ?? false,
-      retrying: svc?.getRetryStatus() ?? null
+      retrying: svc?.getRetryStatus() ?? null,
+      // Orphan recovery: approvals/questions whose broadcast this renderer
+      // missed (window recreated, runtime pruned) would otherwise block the
+      // turn forever with no visible card — re-seed them on open.
+      pendingApprovals: approvals.pendingForSession(sessionId),
+      pendingQuestions: questions.pendingForSession(sessionId)
     }
   })
 

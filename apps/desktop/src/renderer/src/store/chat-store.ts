@@ -451,13 +451,20 @@ export const useChat = create<ChatState>((set, get) => ({
     // Cold open: seed from the main process's LIVE state (in-memory messages +
     // running flag for a session running in the background; persisted snapshot
     // otherwise). Permission mode is per-session in-memory, defaulting to 'ask'.
-    const { messages, running, compressing, retrying } = await window.api.loadSessionLive(meta.id)
+    const { messages, running, compressing, retrying, pendingApprovals, pendingQuestions } =
+      await window.api.loadSessionLive(meta.id)
     const rt: SessionRuntime = {
       ...emptyRuntime(),
       messages: hydrateMessages(messages),
       running,
       compressing,
       retrying,
+      // Orphan recovery: approvals/questions requested while this window had no
+      // runtime for the session (recreated window, pruned runtime) never reached
+      // us via broadcast — seed them so the cards render instead of the turn
+      // silently hanging on an invisible prompt.
+      approvalQueue: pendingApprovals ?? [],
+      questionQueue: pendingQuestions ?? [],
       fromTelegram: Boolean(meta.fromTelegram)
     }
     set((s) => ({

@@ -28,9 +28,18 @@ const DENIED: ApprovalDecision = { approved: false, scope: 'once' }
 class ApprovalRegistry {
   // approvalId -> how to settle it, plus the owning session and inFlight key so
   // we can reject everything for a session (e.g. when it's deleted mid-prompt).
+  // The full request payload is retained so an orphaned approval (renderer lost
+  // the broadcast: window recreated, runtime pruned) can be re-surfaced when the
+  // session is opened — without this the gate waits forever on a card nobody
+  // can see.
   private pending = new Map<
     string,
-    { resolve: (decision: ApprovalDecision) => void; sessionId: string; key: string }
+    {
+      resolve: (decision: ApprovalDecision) => void
+      sessionId: string
+      key: string
+      payload: ApprovalRequestPayload
+    }
   >()
   private inFlight = new Map<string, Promise<ApprovalDecision>>()
 
@@ -45,9 +54,10 @@ class ApprovalRegistry {
     if (BrowserWindow.getAllWindows().length === 0) return Promise.resolve(DENIED)
 
     const approvalId = randomUUID()
+    const full: ApprovalRequestPayload = { approvalId, ...payload }
     const decision = new Promise<ApprovalDecision>((resolve) => {
-      this.pending.set(approvalId, { resolve, sessionId: payload.sessionId, key })
-      broadcast(IPC.ApprovalRequest, { approvalId, ...payload })
+      this.pending.set(approvalId, { resolve, sessionId: payload.sessionId, key, payload: full })
+      broadcast(IPC.ApprovalRequest, full)
       this.notify(payload)
     }).finally(() => this.inFlight.delete(key))
 
@@ -67,6 +77,13 @@ class ApprovalRegistry {
     const n = new Notification({ title: t('notificationTitle'), body: payload.reason })
     n.on('click', () => showMainWindow())
     n.show()
+  }
+
+  /** Still-unanswered approvals for a session, oldest first (recovery on open). */
+  pendingForSession(sessionId: string): ApprovalRequestPayload[] {
+    return [...this.pending.values()]
+      .filter((e) => e.sessionId === sessionId)
+      .map((e) => e.payload)
   }
 
   resolve(approvalId: string, decision: ApprovalDecision): void {
