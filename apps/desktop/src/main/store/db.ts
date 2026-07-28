@@ -493,6 +493,7 @@ export function updateSessionTitle(id: string, title: string): SessionMeta | und
 export function deleteSession(id: string): boolean {
   // Build the transaction at call time: `db` is only assigned in initDb(), so a
   // module-eval `db.transaction(...)` would touch an undefined binding.
+  ftsWatermarks.delete(id)
   return db.transaction((sid: string): boolean => {
     db.prepare('DELETE FROM messages WHERE sessionId = ?').run(sid)
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts WHERE sessionId = ?').run(sid)
@@ -514,6 +515,7 @@ export function deleteSession(id: string): boolean {
  * under the NEXT account that signs in on this machine.
  */
 export function clearAllSessions(): void {
+  ftsWatermarks.clear()
   db.transaction(() => {
     db.prepare('DELETE FROM messages').run()
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts').run()
@@ -555,7 +557,7 @@ export async function saveMessages(sessionId: string, messages: unknown[]): Prom
        ON CONFLICT(sessionId) DO UPDATE SET json = excluded.json, updatedAt = excluded.updatedAt`
     ).run(sessionId, JSON.stringify(stored), now)
     db.prepare('UPDATE sessions SET updatedAt = ? WHERE id = ?').run(now, sessionId)
-    reindexMessages(sessionId, stored)
+    updateMessagesFts(sessionId, messages, stored)
   })()
   return stored
 }
@@ -1018,6 +1020,65 @@ function extractMessageText(message: unknown): { role: 'user' | 'assistant'; tex
   return { role: m.role, text }
 }
 
+/**
+ * Per-session FTS high-watermark: how many messages are already indexed, plus
+ * the OBJECT IDENTITIES that message[count-1] may present as on the next save
+ * (the live in-memory array and/or its dehydrated clone — image extraction
+ * clones image-bearing messages, and the agent adopts the clone array at run
+ * end). If the next save's prefix still ends in one of these objects, history
+ * was append-only and only the new tail needs indexing. In-memory only: the
+ * first save of a session per app run does one full reindex, then increments.
+ */
+type FtsWatermark = { count: number; lastMsgIds: unknown[] }
+const ftsWatermarks = new Map<string, FtsWatermark>()
+
+function setFtsWatermark(sessionId: string, live: unknown[], stored?: unknown[]): void {
+  const n = live.length
+  const ids: unknown[] = []
+  if (n > 0) {
+    ids.push(live[n - 1])
+    if (stored && stored[n - 1] !== live[n - 1]) ids.push(stored[n - 1])
+  }
+  ftsWatermarks.set(sessionId, { count: n, lastMsgIds: ids })
+}
+
+/**
+ * Incremental FTS update for a routine save. History is append-only between
+ * saves in the common case (pi only appends complete messages at turn
+ * boundaries), verified via the watermark's object-identity check — so only
+ * the new tail is inserted, skipping both the full-table DELETE scan
+ * (`sessionId` is UNINDEXED in fts5, so that DELETE walks the ENTIRE index)
+ * and the trigram re-tokenization of the whole history (~90ms on a 2MB
+ * session, previously paid on every model round-trip). Any shrink or prefix
+ * divergence (retry pop, remote restore) falls back to a full reindex.
+ */
+function updateMessagesFts(sessionId: string, live: unknown[], stored: unknown[]): void {
+  if (!ftsAvailable) return
+  const wm = ftsWatermarks.get(sessionId)
+  const n = stored.length
+  const prefixIntact =
+    wm !== undefined &&
+    wm.count <= n &&
+    (wm.count === 0 ||
+      wm.lastMsgIds.includes(live[wm.count - 1]) ||
+      wm.lastMsgIds.includes(stored[wm.count - 1]))
+  if (!prefixIntact) {
+    reindexMessages(sessionId, stored)
+    setFtsWatermark(sessionId, live, stored)
+    return
+  }
+  if (wm.count < n) {
+    const ins = db.prepare(
+      'INSERT INTO messages_fts (sessionId, msgIndex, role, text) VALUES (?, ?, ?, ?)'
+    )
+    for (let i = wm.count; i < n; i++) {
+      const ex = extractMessageText(stored[i])
+      if (ex) ins.run(sessionId, i, ex.role, ex.text)
+    }
+  }
+  setFtsWatermark(sessionId, live, stored)
+}
+
 /** Rewrite a session's message rows in the FTS index (keeps the title row intact). */
 function reindexMessages(sessionId: string, messages: unknown[]): void {
   if (!ftsAvailable) return
@@ -1029,6 +1090,7 @@ function reindexMessages(sessionId: string, messages: unknown[]): void {
     const ex = extractMessageText(msg)
     if (ex) ins.run(sessionId, i, ex.role, ex.text)
   })
+  setFtsWatermark(sessionId, messages)
 }
 
 /** Rewrite a session's single title row in the FTS index (msgIndex = -1). */

@@ -183,6 +183,19 @@ const MAX_IDLE_RUNTIMES = 2
 const runtimeUsedAt = new Map<string, number>()
 
 /**
+ * Tell main this window folds events for `sessionId` (targeted delivery — see
+ * FlairyApi.watchSession). Fire-and-forget and idempotent; paired with
+ * `unwatch` at the same lifecycle points that create/drop a runtime.
+ */
+function watch(sessionId: string): void {
+  void window.api.watchSession(sessionId)
+}
+
+function unwatch(sessionId: string): void {
+  void window.api.unwatchSession(sessionId)
+}
+
+/**
  * Drop idle background runtimes beyond the LRU budget. `keepId` (the session
  * being switched to) is always kept. Returns the same object when nothing needs
  * dropping so Zustand consumers keep their references.
@@ -207,8 +220,14 @@ function pruneRuntimes(
   if (keep.size === ids.length) return runtimes
   const next: Record<string, SessionRuntime> = {}
   for (const id of ids) {
-    if (keep.has(id)) next[id] = runtimes[id]
-    else runtimeUsedAt.delete(id)
+    if (keep.has(id)) {
+      next[id] = runtimes[id]
+    } else {
+      runtimeUsedAt.delete(id)
+      // No runtime here any more — stop main from streaming this session's
+      // events into this window.
+      unwatch(id)
+    }
   }
   return next
 }
@@ -380,6 +399,7 @@ export const useChat = create<ChatState>((set, get) => ({
           // screen rather than render a now-orphaned conversation, and discard
           // its runtime.
           runtimeUsedAt.delete(current)
+          unwatch(current)
           set((s) => {
             const { [current]: _gone, ...runtimes } = s.runtimes
             return {
@@ -413,6 +433,7 @@ export const useChat = create<ChatState>((set, get) => ({
   openSession: async (meta, msgIndex) => {
     const scrollIndex = typeof msgIndex === 'number' && msgIndex >= 0 ? msgIndex : null
     runtimeUsedAt.set(meta.id, Date.now())
+    watch(meta.id)
     // Already live in this renderer (foreground earlier, or running in the
     // background): just bring it to front from its runtime — DON'T reload, that
     // would overwrite an in-flight stream with a stale persisted snapshot.
@@ -487,6 +508,9 @@ export const useChat = create<ChatState>((set, get) => ({
       // there's nothing session-specific to carry over here.
       sessionId = meta.id
       runtimeUsedAt.set(meta.id, Date.now())
+      // Register BEFORE the prompt below: IPC is handled in order, so main
+      // knows this window watches the session before its first event fires.
+      watch(meta.id)
       const rt = emptyRuntime()
       set((s) => ({
         sessions: [meta, ...s.sessions],
@@ -671,6 +695,7 @@ export const useChat = create<ChatState>((set, get) => ({
   deleteSession: async (sessionId) => {
     await window.api.deleteSession({ sessionId })
     runtimeUsedAt.delete(sessionId)
+    unwatch(sessionId)
     set((s) => {
       const current = s.sessionId === sessionId
       const { [sessionId]: _gone, ...runtimes } = s.runtimes

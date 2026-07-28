@@ -49,6 +49,8 @@ export const IPC = {
   AgentQuestionResponse: 'agent:question-response',
   AgentSetPermissionMode: 'agent:set-permission-mode',
   AgentCompressContext: 'agent:compress-context',
+  AgentWatchSession: 'agent:watch-session',
+  AgentUnwatchSession: 'agent:unwatch-session',
   SessionList: 'session:list',
   SessionLoad: 'session:load',
   SessionLoadLive: 'session:load-live',
@@ -641,6 +643,17 @@ export interface FlairyApi {
   prompt(args: PromptArgs): Promise<void>
   steer(args: SteerArgs): Promise<void>
   abort(args: AbortArgs): Promise<void>
+  /**
+   * Register/unregister THIS window's interest in a session's agent event
+   * stream. Main delivers agent events only to watching windows (falling back
+   * to a broadcast for sessions nobody watches), so a streaming session no
+   * longer structured-clones every token into windows that don't hold it.
+   * Idempotent per window; watches are dropped automatically when the window
+   * is destroyed. Call watch when a session runtime is created and unwatch
+   * when it is pruned/deleted.
+   */
+  watchSession(sessionId: string): Promise<void>
+  unwatchSession(sessionId: string): Promise<void>
   respondApproval(args: ApprovalResponseArgs): Promise<void>
   /** Submit the user's answers to an `ask` tool call (null when cancelled). */
   respondQuestion(args: QuestionResponseArgs): Promise<void>

@@ -204,7 +204,9 @@ function ChatHeader(): React.JSX.Element {
       >
         <ProgressiveBlur
           direction="top"
-          blurIntensity={1}
+          // 5 layers × 1.4px ≈ the old 8-layer 7px max, at ~60% of the
+          // per-frame backdrop-filter cost.
+          blurIntensity={1.4}
           className="absolute inset-0"
         />
         <div className="absolute inset-0 bg-linear-to-b from-background/90 via-background/40 to-transparent" />

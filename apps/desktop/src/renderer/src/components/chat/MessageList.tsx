@@ -1,8 +1,8 @@
 import {
   lazy,
+  memo,
   Suspense,
   useEffect,
-  useMemo,
   useReducer,
   useRef,
   useState,
@@ -278,6 +278,83 @@ function foldTurns(rows: Row[], running: boolean): Row[] {
   return out;
 }
 
+/**
+ * Whether `next` is `prev` with ONLY its last message replaced by a same-id
+ * update — the shape every streaming delta flush produces. Prefix compared by
+ * object identity (the store copies the array but reuses message objects).
+ */
+function sameExceptLast(prev: UiMessage[], next: UiMessage[]): boolean {
+  if (prev.length !== next.length || next.length === 0) return false;
+  for (let i = 0; i < next.length - 1; i++) if (prev[i] !== next[i]) return false;
+  const a = prev[prev.length - 1];
+  const b = next[next.length - 1];
+  return a.id === b.id && a.role === b.role;
+}
+
+type RowsCache = { messages: UiMessage[]; running: boolean; rows: Row[] };
+
+/**
+ * Tail-incremental row computation. A streaming flush only replaces the last
+ * message, so only the last row needs rebuilding — every other Row keeps its
+ * identity, which is what lets the memoized RowView below bail out for the
+ * whole history. Anything that isn't a pure last-message update (new message,
+ * tool events, run end) falls back to the full toRows+foldTurns pass.
+ */
+function computeRows(
+  cache: { current: RowsCache | null },
+  messages: UiMessage[],
+  running: boolean,
+): Row[] {
+  const prev = cache.current;
+  if (prev && prev.running === running && sameExceptLast(prev.messages, messages)) {
+    const last = messages[messages.length - 1];
+    const lastRow = prev.rows[prev.rows.length - 1];
+    if (lastRow?.kind === "msg" && lastRow.m.id === last.id) {
+      const rows = [
+        ...prev.rows.slice(0, -1),
+        { kind: "msg", key: last.id, m: last } as Row,
+      ];
+      cache.current = { messages, running, rows };
+      return rows;
+    }
+  }
+  const rows = foldTurns(toRows(messages), running);
+  cache.current = { messages, running, rows };
+  return rows;
+}
+
+/** Cheap "has visible text" check that doesn't allocate a trimmed copy. */
+function hasVisibleText(text: string): boolean {
+  return text !== "" && /\S/.test(text);
+}
+
+/** Stable empty-sources fallback (see AssistantRow). */
+const EMPTY_SOURCES: SearchSource[] = [];
+
+/**
+ * Fingerprint of everything the citation-sources pass depends on. Pure text
+ * growth on an already-texted assistant doesn't change it, so during streaming
+ * the sources map / footer sets keep their identities (CitationsProvider values
+ * and fold props stay stable) instead of being rebuilt per flush.
+ */
+function sourcesFingerprint(messages: UiMessage[], running: boolean): string {
+  let key = running ? "r" : "f";
+  for (const m of messages) {
+    if (m.role === "user") key += "|u" + m.id;
+    else if (m.role === "tool" && m.sources?.length)
+      key += "|s" + m.id + ":" + m.sources.length;
+    else if (m.role === "assistant")
+      key += "|a" + m.id + (hasVisibleText(m.text) ? "t" : "");
+  }
+  return key;
+}
+
+interface SourcesInfo {
+  sourcesByMessage: Map<string, SearchSource[]>;
+  footerIds: Set<string>;
+  footerCopyIds: Set<string>;
+}
+
 export function MessageList(): React.JSX.Element {
   // Own subscription (not a prop): this is the only component tree that needs
   // per-token re-renders, so the every-delta reference change stops here
@@ -286,10 +363,8 @@ export function MessageList(): React.JSX.Element {
   const compressing = useChat((s) => s.compressing);
   const running = useChat((s) => s.running);
   const sessionId = useChat((s) => s.sessionId);
-  const rows = useMemo(
-    () => foldTurns(toRows(messages), running),
-    [messages, running],
-  );
+  const rowsCacheRef = useRef<RowsCache | null>(null);
+  const rows = computeRows(rowsCacheRef, messages, running);
   // Per-assistant-message citation registry: ALL web_search sources gathered so
   // far in the current turn (reset at each user message), so an answer can cite
   // any search in the turn — not just the nearest one. Ids are turn-unique (the
@@ -309,7 +384,14 @@ export function MessageList(): React.JSX.Element {
   // but the copy affordance belongs on the turn's LAST answer only — not under
   // every intermediate answer. Same finalize-at-user-boundary / finalize-when-
   // done rules so the button never appears mid-turn.
-  const { sourcesByMessage, footerIds, footerCopyIds } = useMemo(() => {
+  // Recomputed only when the fingerprint changes (a new message, a source-
+  // bearing tool result, first text on an assistant, run end) — NOT on every
+  // streamed flush. Keeping the map/set identities stable across flushes is
+  // what keeps the memoized rows (and their CitationsProviders) from
+  // re-rendering while an answer streams.
+  const srcCacheRef = useRef<{ key: string; value: SourcesInfo } | null>(null);
+  const srcKey = sourcesFingerprint(messages, running);
+  if (srcCacheRef.current?.key !== srcKey) {
     const map = new Map<string, SearchSource[]>();
     const footers = new Set<string>();
     const copyFooters = new Set<string>();
@@ -345,12 +427,16 @@ export function MessageList(): React.JSX.Element {
     // The last turn closes here — but only attach its footer once it's no longer
     // running, so a mid-turn answer doesn't show the list before the turn ends.
     if (!running) finalizeTurn();
-    return {
-      sourcesByMessage: map,
-      footerIds: footers,
-      footerCopyIds: copyFooters,
+    srcCacheRef.current = {
+      key: srcKey,
+      value: {
+        sourcesByMessage: map,
+        footerIds: footers,
+        footerCopyIds: copyFooters,
+      },
     };
-  }, [messages, running]);
+  }
+  const { sourcesByMessage, footerIds, footerCopyIds } = srcCacheRef.current.value;
   // The row key to flash after a search/timeline jump; cleared once it fades.
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
   // Row keys already present, so only genuinely new rows play the slide-up
@@ -543,7 +629,12 @@ function ScrollController({
   return null;
 }
 
-function RowView({
+/**
+ * Memoized: during streaming only the LAST row's `row` prop changes identity
+ * (see computeRows) and the sources map/sets are fingerprint-cached, so every
+ * historical row bails out here instead of re-rendering per flush.
+ */
+const RowView = memo(function RowView({
   row,
   highlight,
   animate,
@@ -602,7 +693,7 @@ function RowView({
       {inner}
     </div>
   );
-}
+});
 
 
 /**
@@ -824,7 +915,9 @@ function AssistantRow({
   showActions?: boolean;
 }): React.JSX.Element {
   const hasText = Boolean(m.text.trim());
-  const cites = sources ?? [];
+  // Module-level fallback so sourceless messages keep a STABLE (empty) context
+  // value — a fresh [] every render would re-render all CitationChips under it.
+  const cites = sources ?? EMPTY_SOURCES;
   const plugins = useStreamdownPlugins();
   // CitationChip resolves its [n] against `cites` via context at render time. In
   // practice a turn's searches complete before the model writes the answer, so the

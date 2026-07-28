@@ -141,14 +141,60 @@ export function registerIpcHandlers(
   agents: AgentManager,
   telegram: TelegramManager
 ): void {
-  // Default agent-event sink: fan every service's envelope out to ALL windows
-  // (the launcher runs its own chat store; other windows just ignore sessions
-  // they don't hold a runtime for), stripping the internal `origin` tag before
-  // it crosses IPC. Wrapped in try/catch so a later (Telegram) subscriber that
-  // throws can't break this one.
+  // Which windows hold a runtime for which session. Renderers register via
+  // AgentWatchSession when they create a session runtime and unregister when it
+  // is pruned/deleted; a destroyed window drops out automatically. Lets the
+  // event sink below deliver a streaming session's every-token events only to
+  // the windows that will actually fold them, instead of structured-cloning
+  // each delta into the launcher/settings/viewer windows too.
+  const sessionWatchers = new Map<string, Set<Electron.WebContents>>()
+
+  ipcMain.handle(IPC.AgentWatchSession, (e, sessionId: string) => {
+    if (typeof sessionId !== 'string' || !sessionId) return
+    let set = sessionWatchers.get(sessionId)
+    if (!set) {
+      set = new Set()
+      sessionWatchers.set(sessionId, set)
+    }
+    if (!set.has(e.sender)) {
+      set.add(e.sender)
+      const sender = e.sender
+      sender.once('destroyed', () => {
+        set.delete(sender)
+        if (set.size === 0) sessionWatchers.delete(sessionId)
+      })
+    }
+  })
+
+  ipcMain.handle(IPC.AgentUnwatchSession, (e, sessionId: string) => {
+    const set = sessionWatchers.get(sessionId)
+    if (!set) return
+    set.delete(e.sender)
+    if (set.size === 0) sessionWatchers.delete(sessionId)
+  })
+
+  // Deliver one agent event: to the watching windows when any exist, else a
+  // full broadcast (a session nobody registered for — e.g. events racing a
+  // renderer that hasn't watched yet — must still reach every store, matching
+  // the old behavior).
+  const deliverAgentEvent = (payload: { sessionId: string; event: unknown }): void => {
+    const watchers = sessionWatchers.get(payload.sessionId)
+    if (watchers && watchers.size > 0) {
+      for (const wc of watchers) {
+        if (!wc.isDestroyed()) wc.send(IPC.AgentEvent, payload)
+      }
+      return
+    }
+    broadcast(IPC.AgentEvent, payload)
+  }
+
+  // Default agent-event sink: forward every service's envelope to the watching
+  // windows, stripping the internal `origin` tag before it crosses IPC.
+  // Wrapped in try/catch so a later (Telegram) subscriber that throws can't
+  // break this one.
   agents.events.on('event', (env: AgentEventInternalEnvelope) => {
     try {
-      broadcast(IPC.AgentEvent, {
+      deliverAgentEvent({
         sessionId: env.sessionId,
         event: env.event
       })
@@ -252,7 +298,7 @@ export function registerIpcHandlers(
       // Creating the service can throw (e.g. no LLM config delivered yet). Push
       // it back as a visible error event instead of a swallowed invoke rejection.
       const message = err instanceof Error ? err.message : String(err)
-      broadcast(IPC.AgentEvent, {
+      deliverAgentEvent({
         sessionId: args.sessionId,
         event: { type: 'error', message }
       })

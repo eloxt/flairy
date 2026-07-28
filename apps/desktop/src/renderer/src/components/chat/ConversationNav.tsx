@@ -68,12 +68,22 @@ function toSections(
     if (!current) continue;
     memberOf.set(row.key, current.id);
     if (m?.role !== "assistant") continue;
-    const text = stripFences(m.text);
+    // The card shows ~3 clamped lines, so only the head of the answer matters.
+    // Bounding both the regex input and the accumulated preview keeps this
+    // whole pass O(sections), not O(total conversation text) — it reruns on
+    // streamed updates.
+    if (current.preview.length >= PREVIEW_MAX_CHARS) continue;
+    const text = stripFences(m.text.slice(0, PREVIEW_SCAN_CHARS));
     if (!text) continue;
     current.preview = current.preview ? `${current.preview}\n${text}` : text;
   }
   return { sections, memberOf };
 }
+
+/** Enough source text to fill the clamped preview lines. */
+const PREVIEW_SCAN_CHARS = 600;
+/** Stop accumulating once the preview already overfills the clamp. */
+const PREVIEW_MAX_CHARS = 300;
 
 /** Resting tick length (uniform). */
 const BASE_W = 8;
@@ -241,31 +251,35 @@ export function ConversationNav({ rows }: { rows: NavRow[] }) {
                 />
               </button>
 
-              {/* Preview card: fades in from the right while the cursor/focus
-                  points at this tick, vertically centered on the tick line. */}
-              <div
-                className={cn(
-                  "pointer-events-none absolute left-full top-1/2 z-30 ml-3 w-72 max-w-[min(20rem,40vw)] -translate-y-1/2",
-                  "rounded-lg border bg-popover/95 p-3 text-popover-foreground shadow-lg backdrop-blur",
-                  "origin-left transition-[opacity,transform] duration-150 motion-reduce:transition-none",
-                  isPeak ? "scale-100 opacity-100" : "scale-95 opacity-0",
-                )}
-              >
-                <div className="line-clamp-2 text-sm font-medium leading-snug">
-                  {s.title}
-                </div>
-                {s.preview ? (
-                  <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
-                    {s.preview}
-                  </p>
-                ) : null}
-                {s.imageCount > 0 ? (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground/80">
-                    <ImageIcon className="size-3 shrink-0" />
-                    <span>{t("chat.navImages", { count: s.imageCount })}</span>
+              {/* Preview card for the pointed-at tick only. Mounted on demand
+                  rather than one always-mounted (opacity-0) card per section:
+                  each card is a real backdrop-blur DOM subtree, and a long
+                  conversation would otherwise keep dozens of them in the
+                  layout permanently. */}
+              {isPeak && (
+                <div
+                  className={cn(
+                    "pointer-events-none absolute left-full top-1/2 z-30 ml-3 w-72 max-w-[min(20rem,40vw)] -translate-y-1/2",
+                    "rounded-lg border bg-popover/95 p-3 text-popover-foreground shadow-lg backdrop-blur",
+                    "origin-left",
+                  )}
+                >
+                  <div className="line-clamp-2 text-sm font-medium leading-snug">
+                    {s.title}
                   </div>
-                ) : null}
-              </div>
+                  {s.preview ? (
+                    <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                      {s.preview}
+                    </p>
+                  ) : null}
+                  {s.imageCount > 0 ? (
+                    <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground/80">
+                      <ImageIcon className="size-3 shrink-0" />
+                      <span>{t("chat.navImages", { count: s.imageCount })}</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </li>
           );
         })}

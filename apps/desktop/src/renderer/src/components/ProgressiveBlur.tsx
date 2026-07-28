@@ -20,7 +20,12 @@ const GRADIENT_ANGLES = {
 
 export function ProgressiveBlur({
   direction = "bottom",
-  blurLayers = 8,
+  // Each layer is a full backdrop-filter root the compositor re-evaluates
+  // every frame the content behind it moves (it sits over the always-scrolling
+  // message stream). 5 bands are visually indistinguishable from 8 at half the
+  // GPU cost; the ramp starts at one increment so no layer wastes a backdrop
+  // root on blur(0).
+  blurLayers = 5,
   blurIntensity = 0.25,
   className,
 }: {
@@ -56,8 +61,8 @@ export function ProgressiveBlur({
             style={{
               maskImage: gradient,
               WebkitMaskImage: gradient,
-              backdropFilter: `blur(${index * blurIntensity}px)`,
-              WebkitBackdropFilter: `blur(${index * blurIntensity}px)`,
+              backdropFilter: `blur(${(index + 1) * blurIntensity}px)`,
+              WebkitBackdropFilter: `blur(${(index + 1) * blurIntensity}px)`,
             }}
           />
         );

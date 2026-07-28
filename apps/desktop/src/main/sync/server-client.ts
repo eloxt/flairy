@@ -260,6 +260,7 @@ export class ServerClient {
    */
   clearConfig(): void {
     this.config = null
+    this.lastEmittedConfigJson = null
     clearCachedConfig()
     // Sign-out drops the offline outbox too: local sessions/memories are wiped
     // right after, so nothing queued should reach the next account's socket.
@@ -530,9 +531,20 @@ export class ServerClient {
     }
   }
 
+  /** JSON of the last snapshot handed to listeners, for change detection. */
+  private lastEmittedConfigJson: string | null = null
+
   private emitConfig(): void {
     const cfg = this.effectiveConfig()
     if (!cfg) return
+    // Dedupe identical snapshots: every socket (re)connect re-delivers a full
+    // config:snapshot, and each emit makes EVERY live AgentService rebuild its
+    // model/system prompt/tool set (plus a redacted broadcast to all windows).
+    // A flaky network would otherwise redo all of that per reconnect for a
+    // byte-identical config.
+    const json = JSON.stringify(cfg)
+    if (json === this.lastEmittedConfigJson) return
+    this.lastEmittedConfigJson = json
     for (const cb of this.configListeners) cb(cfg)
   }
 
