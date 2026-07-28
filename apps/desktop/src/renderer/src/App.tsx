@@ -136,9 +136,14 @@ function AppLayout(): React.JSX.Element {
   );
 }
 
-/** The chat page: header + thread + composer, with the slide-out details panel. */
+/**
+ * The chat page: header + thread + composer, with the slide-out details panel.
+ * Deliberately subscribes to NOTHING that changes per streamed token — the
+ * `messages` array lives inside MessageList's own subscription. Subscribing to
+ * it here would rebuild ChatHeader/Composer/RightPanel (all unmemoized
+ * children) on every delta.
+ */
 function ChatView(): React.JSX.Element {
-  const messages = useChat((s) => s.messages);
   return (
     // A flex row: the chat column fills the space and the details drawer sits to
     // its right, reaching the very top like the left sidebar (header is inside
@@ -154,7 +159,7 @@ function ChatView(): React.JSX.Element {
             messages scroll underneath it, fading out through its blur gradient. */}
         <div className="relative flex-1 overflow-hidden">
           <ChatHeader />
-          <MessageList messages={messages} />
+          <MessageList />
           <Composer />
         </div>
       </div>

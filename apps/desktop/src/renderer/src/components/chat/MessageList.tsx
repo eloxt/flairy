@@ -278,11 +278,11 @@ function foldTurns(rows: Row[], running: boolean): Row[] {
   return out;
 }
 
-export function MessageList({
-  messages,
-}: {
-  messages: UiMessage[];
-}): React.JSX.Element {
+export function MessageList(): React.JSX.Element {
+  // Own subscription (not a prop): this is the only component tree that needs
+  // per-token re-renders, so the every-delta reference change stops here
+  // instead of at a shared parent (see ChatView).
+  const messages = useChat((s) => s.messages);
   const compressing = useChat((s) => s.compressing);
   const running = useChat((s) => s.running);
   const sessionId = useChat((s) => s.sessionId);

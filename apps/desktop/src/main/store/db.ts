@@ -25,6 +25,11 @@ let ftsAvailable = true
 export function initDb(): void {
   db = new Database(join(app.getPath('userData'), 'flairy.db'))
   db.pragma('journal_mode = WAL')
+  // WAL's standard durability setting: without it every commit fsyncs (FULL),
+  // and messages are re-persisted on turn boundaries plus many small setting/
+  // recents writes. NORMAL only risks the last few transactions on an OS crash
+  // — and the message blob is rewritten wholesale on the next persist anyway.
+  db.pragma('synchronous = NORMAL')
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id        TEXT PRIMARY KEY,
@@ -193,7 +198,14 @@ export function initDb(): void {
     ftsAvailable = false
     console.error('[db] FTS5/trigram unavailable; search degrades to title-only:', err)
   }
-  if (ftsAvailable) backfillFtsIfNeeded()
+  if (ftsAvailable) {
+    // One-time upgrade backfill, deferred past window creation and chunked so
+    // it can't hold up first paint (it used to run synchronously before the
+    // first window, one autocommit-fsync per message — seconds of blank screen
+    // on a large history). unref'd: a quick quit just retries next launch.
+    const timer = setTimeout(backfillFtsIfNeeded, 5_000)
+    timer.unref()
+  }
 }
 
 /** Persist the encrypted config snapshot blob (singleton row). */
@@ -1032,21 +1044,35 @@ function reindexTitle(sessionId: string, title: string): void {
 }
 
 /**
- * One-time backfill of the FTS index from existing history. Guarded by a setting
- * flag so it runs once. Each session is wrapped in its own try/catch (NOT one giant
- * transaction) so a single corrupt blob can't abort the whole backfill or block startup.
+ * One-time backfill of the FTS index from existing history. Guarded by a
+ * setting flag so it runs once. Each session commits as ONE transaction (a
+ * per-message autocommit here used to mean one fsync per message) but stays
+ * individually try/caught so a single corrupt blob can't abort the whole
+ * backfill. Sessions are processed in small batches with a setImmediate yield
+ * between them, so a big history doesn't monopolize the main thread.
  */
 function backfillFtsIfNeeded(): void {
   if (getSetting('fts_backfilled') === '1') return
-  for (const s of listSessions()) {
-    try {
-      reindexTitle(s.id, s.title)
-      reindexMessages(s.id, loadMessages(s.id))
-    } catch (err) {
-      console.error(`[db] FTS backfill failed for session ${s.id}:`, err)
+  const sessions = listSessions()
+  const BATCH = 5
+  let i = 0
+  const step = (): void => {
+    const end = Math.min(i + BATCH, sessions.length)
+    for (; i < end; i++) {
+      const s = sessions[i]
+      try {
+        db.transaction(() => {
+          reindexTitle(s.id, s.title)
+          reindexMessages(s.id, loadMessages(s.id))
+        })()
+      } catch (err) {
+        console.error(`[db] FTS backfill failed for session ${s.id}:`, err)
+      }
     }
+    if (i < sessions.length) setImmediate(step)
+    else setSetting('fts_backfilled', '1')
   }
-  setSetting('fts_backfilled', '1')
+  step()
 }
 
 /** Escape LIKE wildcards so a query is matched literally (paired with ESCAPE '\'). */

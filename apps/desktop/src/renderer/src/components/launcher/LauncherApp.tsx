@@ -109,7 +109,10 @@ export function LauncherApp(): React.JSX.Element {
   const send = useChat((s) => s.send)
   const abort = useChat((s) => s.abort)
   const running = useChat((s) => s.running)
-  const messages = useChat((s) => s.messages)
+  // Boolean selector, NOT the messages array: the array changes reference on
+  // every streamed token and would re-render this whole root (MessageList
+  // subscribes to the store itself).
+  const expanded = useChat((s) => s.messages.length > 0)
   const sessionId = useChat((s) => s.sessionId)
   const question = useChat((s) => s.questionQueue[0])
   const [text, setText] = useState('')
@@ -146,7 +149,6 @@ export function LauncherApp(): React.JSX.Element {
 
   // The window's height follows the content state: grow when the first
   // message lands, collapse back when a summon resets to a blank chat.
-  const expanded = messages.length > 0
   useEffect(() => {
     void window.api.resizeLauncher(expanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT)
   }, [expanded])
@@ -294,7 +296,7 @@ export function LauncherApp(): React.JSX.Element {
               // Expanded: the thread fills the whole panel; the input and the
               // action pill float over it, Raycast-style.
               <div className="relative min-h-0 flex-1">
-                <MessageList messages={messages} />
+                <MessageList />
                 {/* Floating translucent input block. backdrop-blur works here
                     (unlike against the desktop): it blurs the thread content
                     scrolling beneath — same-page compositing. */}

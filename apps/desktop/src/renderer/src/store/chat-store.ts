@@ -340,7 +340,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   /** Subscribe to the main-process event stream. Call once on mount. */
   init: () => {
-    const offEvent = window.api.onAgentEvent((env) => applyEvent(set, get, env))
+    const offEvent = window.api.onAgentEvent((env) => enqueueEvent(set, get, env))
     // Route prompts to the OWNING session's runtime, not just the foreground one
     // — a background session that hits the approval gate must still collect its
     // prompt (else its turn hangs forever). The card renders when that session is
@@ -399,6 +399,7 @@ export const useChat = create<ChatState>((set, get) => ({
       offCompress()
       offTitle()
       offSessions()
+      resetDeltaBuffer()
     }
   },
 
@@ -753,6 +754,88 @@ function updateRuntime(
       ...(s.sessionId === sessionId ? mirror(next) : {})
     }
   })
+}
+
+/**
+ * Streaming text/thinking deltas are COALESCED before they hit the store: each
+ * IPC message is its own macrotask, so without batching every streamed token is
+ * a full Zustand `set` → React commit → layout/paint (30–100/s while
+ * streaming). Deltas accumulate here per session and flush as ONE
+ * `message_update` every FLUSH_MS; concatenated deltas are semantically
+ * identical to individual ones. Any NON-delta event (message_end, tool events,
+ * agent_end, …) flushes the buffer first so event ordering is preserved
+ * exactly. The store's applyEvent below is unchanged — batching is purely a
+ * front door.
+ */
+const DELTA_FLUSH_MS = 33
+
+type PendingDelta = { messageId: string; delta: string; thinkingDelta: string }
+const pendingDeltas = new Map<string, PendingDelta>()
+let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+type SetFn = (fn: (s: ChatState) => Partial<ChatState>) => void
+type GetFn = () => ChatState
+
+function flushDeltas(set: SetFn, get: GetFn): void {
+  if (deltaFlushTimer) {
+    clearTimeout(deltaFlushTimer)
+    deltaFlushTimer = null
+  }
+  if (pendingDeltas.size === 0) return
+  for (const [sessionId, p] of pendingDeltas) {
+    applyEvent(set, get, {
+      sessionId,
+      event: {
+        type: 'message_update',
+        messageId: p.messageId,
+        delta: p.delta,
+        thinkingDelta: p.thinkingDelta || undefined
+      }
+    })
+  }
+  pendingDeltas.clear()
+}
+
+/** Drop any buffered deltas without applying (store teardown / re-init). */
+function resetDeltaBuffer(): void {
+  if (deltaFlushTimer) {
+    clearTimeout(deltaFlushTimer)
+    deltaFlushTimer = null
+  }
+  pendingDeltas.clear()
+}
+
+/** Front door for the IPC event stream: batch deltas, pass everything else through. */
+function enqueueEvent(set: SetFn, get: GetFn, env: AgentEventEnvelope): void {
+  const e = env.event
+  if (e.type === 'message_update') {
+    const td = e.thinkingDelta ?? ''
+    if (!e.delta && !td) return
+    const cur = pendingDeltas.get(env.sessionId)
+    if (cur && (!e.messageId || cur.messageId === e.messageId)) {
+      cur.delta += e.delta ?? ''
+      cur.thinkingDelta += td
+    } else {
+      // A different messageId mid-buffer (shouldn't happen without a
+      // message_end between, but don't risk merging across messages).
+      if (cur) flushDeltas(set, get)
+      pendingDeltas.set(env.sessionId, {
+        messageId: e.messageId,
+        delta: e.delta ?? '',
+        thinkingDelta: td
+      })
+    }
+    if (!deltaFlushTimer) {
+      deltaFlushTimer = setTimeout(() => {
+        deltaFlushTimer = null
+        flushDeltas(set, get)
+      }, DELTA_FLUSH_MS)
+    }
+    return
+  }
+  // Non-delta event: apply buffered deltas first so ordering is exact.
+  flushDeltas(set, get)
+  applyEvent(set, get, env)
 }
 
 /**

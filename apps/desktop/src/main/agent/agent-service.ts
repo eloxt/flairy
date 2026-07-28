@@ -531,12 +531,14 @@ export class AgentService {
         this.gatedByTelegram = false;
       }
       this.send(sessionId, normalizeEvent(event));
-      // Persist on turn boundaries so a crash doesn't lose history. At run end
-      // (agent_end) the live message array also adopts the dehydrated copy so
-      // inline base64 images stop occupying heap between runs.
-      if (event.type === "turn_end" || event.type === "agent_end") {
-        void this.persist(event.type === "agent_end");
-      }
+      // Persist policy: `turn_end` fires on EVERY model round-trip (a 20-tool
+      // run has 20 of them) and the full save — stringify + FTS rebuild + sync
+      // snapshot — runs synchronously inside pi's event dispatch, blocking the
+      // agent loop. So mid-run turn ends are only throttled crash-safety
+      // checkpoints (local save, no sync); the authoritative save + server
+      // sync + dehydrated-array adoption run once per run at `agent_end`.
+      if (event.type === "turn_end") void this.persist("turn");
+      if (event.type === "agent_end") void this.persist("final");
     });
   }
 
@@ -652,24 +654,40 @@ export class AgentService {
     return this.running;
   }
 
-  /** Snapshot messages to SQLite and mirror them to the server. */
-  private async persist(adoptDehydrated = false): Promise<void> {
+  /** Last crash-safety checkpoint; throttles mid-run `turn` persists. */
+  private lastSaveAt = 0;
+
+  /** Minimum spacing between mid-run crash-safety saves. */
+  private static readonly TURN_SAVE_MIN_INTERVAL_MS = 30_000;
+
+  /**
+   * Snapshot messages to SQLite (and, for a `final` persist, mirror them to
+   * the server). `turn` = a mid-run crash-safety checkpoint: throttled to one
+   * save per {@link AgentService.TURN_SAVE_MIN_INTERVAL_MS} and never synced —
+   * the save (stringify + FTS rebuild) runs synchronously inside pi's event
+   * dispatch, so doing it on every model round-trip stalls the agent loop and
+   * the main thread on long conversations. `final` (agent_end / retry
+   * exhaustion) always saves, adopts the dehydrated array, and syncs once.
+   */
+  private async persist(mode: "turn" | "final" = "final"): Promise<void> {
     // A terminal event can land after dispose() (session deleted); skip so we
     // don't re-insert a messages row for a session that's already gone.
     if (this.disposed) return;
+    if (
+      mode === "turn" &&
+      Date.now() - this.lastSaveAt < AgentService.TURN_SAVE_MIN_INTERVAL_MS
+    )
+      return;
     const messages = this.agent.state.messages;
     // saveMessages extracts inline base64 images to the on-disk store and
     // returns the slim ref-bearing array (identical when nothing changed).
     const stored = await saveMessages(this.sessionId, messages);
+    this.lastSaveAt = Date.now();
+    if (mode === "turn") return;
     // Adopt the slim array in the live agent only BETWEEN runs — never mid-run,
     // where pi may hold a reference to the current array. convertToLlm
     // rehydrates the refs, so the LLM view is unaffected.
-    if (
-      adoptDehydrated &&
-      stored !== messages &&
-      !this.running &&
-      !this.disposed
-    ) {
+    if (stored !== messages && !this.running && !this.disposed) {
       this.agent.state.messages = stored as AgentMessage[];
     }
     this.syncToServer(stored);
