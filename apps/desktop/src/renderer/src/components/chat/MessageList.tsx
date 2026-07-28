@@ -156,9 +156,11 @@ type Row =
   | { kind: "tool"; key: string; m: UiMessage }
   | { kind: "group"; key: string; tools: UiMessage[] }
   /**
-   * A finished turn's working process — every tool row and intermediate note
-   * between the user prompt and the final answer — folded behind one summary
-   * line by `foldTurns` once the run has ended.
+   * A finished turn's working process — the tool rows/groups between the user
+   * prompt and the final answer — folded behind one summary line by
+   * `foldTurns` once the run has ended. Only PURE tool work folds: an
+   * intermediate assistant note keeps the process expanded, so a fold never
+   * contains `msg` rows.
    */
   | { kind: "fold"; key: string; rows: Row[] };
 
@@ -212,13 +214,14 @@ function toRows(messages: UiMessage[]): Row[] {
 }
 
 /**
- * Second pass over the row list: for each finished turn, collapse everything
- * between the user prompt and the final answer into a single `fold` row. The
- * active turn (the last segment while a run is in flight) stays fully
- * expanded and collapses only when the run ends. The fold reuses its FIRST
- * process row's key so folding re-renders an existing MessageScrollerItem
- * instead of swapping DOM nodes — see the equal-count childList note in
- * `toRows`.
+ * Second pass over the row list: for each finished turn whose working process
+ * is pure tool work, collapse the tool rows between the user prompt and the
+ * final answer into a single `fold` row; a process containing any assistant
+ * text stays fully expanded. The active turn (the last segment while a run is
+ * in flight) never folds and collapses only when the run ends. The fold
+ * reuses its FIRST process row's key so folding re-renders an existing
+ * MessageScrollerItem instead of swapping DOM nodes — see the equal-count
+ * childList note in `toRows`.
  */
 function foldTurns(rows: Row[], running: boolean): Row[] {
   const out: Row[] = [];
@@ -255,18 +258,16 @@ function foldTurns(rows: Row[], running: boolean): Row[] {
     }
     const process = lastText > 0 ? seg.slice(0, lastText) : [];
     const foldable =
-      process.length > 0 &&
       // A lone tool row / tool group is already a one-line collapsed summary;
       // wrapping it in a fold would stack two identical disclosure headers.
-      // A lone intermediate TEXT row still folds — it has no collapse of its
-      // own.
-      !(process.length === 1 && process[0].kind !== "msg") &&
-      process.every((r) =>
-        r.kind === "tool"
-          ? !r.m.running
-          : r.kind === "group"
-            ? r.tools.every((m) => !m.running)
-            : true,
+      process.length > 1 &&
+      // Only PURE tool work folds. An intermediate assistant note is real
+      // content the user should keep seeing, so its presence keeps the whole
+      // process expanded.
+      process.every(
+        (r) =>
+          (r.kind === "tool" && !r.m.running) ||
+          (r.kind === "group" && r.tools.every((m) => !m.running)),
       );
     if (foldable) {
       out.push({ kind: "fold", key: process[0].key, rows: process });
@@ -511,11 +512,6 @@ export function MessageList(): React.JSX.Element {
                       ? sourcesByMessage.get(row.m.id)
                       : undefined
                   }
-                  // Folds carry intermediate answers whose [n] chips still need
-                  // their per-message source snapshots when expanded.
-                  sourcesByMessage={
-                    row.kind === "fold" ? sourcesByMessage : undefined
-                  }
                   showSources={row.kind === "msg" && footerIds.has(row.m.id)}
                   showActions={
                     row.kind === "msg" && footerCopyIds.has(row.m.id)
@@ -639,7 +635,6 @@ const RowView = memo(function RowView({
   highlight,
   animate,
   sources,
-  sourcesByMessage,
   showSources,
   showActions,
 }: {
@@ -647,13 +642,12 @@ const RowView = memo(function RowView({
   highlight?: boolean;
   animate?: boolean;
   sources?: SearchSource[];
-  sourcesByMessage?: Map<string, SearchSource[]>;
   showSources?: boolean;
   showActions?: boolean;
 }): React.JSX.Element {
   const inner =
     row.kind === "fold" ? (
-      <TurnFold rows={row.rows} sourcesByMessage={sourcesByMessage} />
+      <TurnFold rows={row.rows} />
     ) : row.kind === "group" ? (
       <ToolGroup tools={row.tools} />
     ) : row.kind === "tool" ? (
@@ -1176,20 +1170,13 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
 
 /**
  * A turn's working process, folded behind one summary line the moment an
- * answer lands after tool work (see `foldTurns`) — and re-absorbing any
+ * answer lands after pure tool work (see `foldTurns`) — and re-absorbing any
  * further rounds at each subsequent answer. Collapsed it reads like a
  * {@link ToolGroup} header — the same plain-language activity clause — so the
  * thread shows just prompt → one quiet line → answer. Expanded it replays the
- * process exactly as it looked live: tool rows/groups and any intermediate
- * assistant notes, each with their own layout.
+ * tool rows/groups exactly as they looked live.
  */
-function TurnFold({
-  rows,
-  sourcesByMessage,
-}: {
-  rows: Row[];
-  sourcesByMessage?: Map<string, SearchSource[]>;
-}): React.JSX.Element {
+function TurnFold({ rows }: { rows: Row[] }): React.JSX.Element {
   const { t } = useTranslation();
   const tools = rows.flatMap(rowMessages).filter((m) => m.role === "tool");
   const anyError = tools.some((m) => m.isError);
@@ -1205,9 +1192,7 @@ function TurnFold({
                 anyError ? "text-destructive" : "text-muted-foreground",
               )}
             >
-              {tools.length > 0
-                ? summarizeTools(tools, t)
-                : t("chat.processDone")}
+              {summarizeTools(tools, t)}
             </span>
             <IconChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />
           </MarkerContent>
@@ -1219,12 +1204,6 @@ function TurnFold({
             <ToolGroup key={r.key} tools={r.tools} />
           ) : r.kind === "tool" ? (
             <SingleTool key={r.key} m={r.m} />
-          ) : r.kind === "msg" ? (
-            <MessageRow
-              key={r.key}
-              m={r.m}
-              sources={sourcesByMessage?.get(r.m.id)}
-            />
           ) : null,
         )}
       </CollapsibleContent>

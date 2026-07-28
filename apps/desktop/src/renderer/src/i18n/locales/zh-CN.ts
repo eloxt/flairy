@@ -62,7 +62,6 @@ const zhCN: typeof En = {
     openImage: '打开图片',
     imagesIgnored: '未被读取 — 当前模型无法识别图片',
     working: '处理中…',
-    processDone: '已完成处理',
     running: '运行中',
     reasoning: '思考中...',
     reasoningLive: '思考中...',

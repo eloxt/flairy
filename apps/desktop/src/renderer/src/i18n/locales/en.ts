@@ -65,7 +65,6 @@ const en = {
     openImage: 'Open image',
     imagesIgnored: "Not seen — this model can't read images",
     working: 'Working…',
-    processDone: 'Finished working',
     running: 'Running',
     reasoning: 'Thinking...',
     reasoningLive: 'Thinking...',

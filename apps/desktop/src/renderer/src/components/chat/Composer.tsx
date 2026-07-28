@@ -112,7 +112,7 @@ function LivePlanCard({ todos }: { todos: TodoItem[] }): React.JSX.Element {
   const { t } = useTranslation();
   const done = todos.filter((x) => x.status === "completed").length;
   return (
-    <div className="rounded-t-2xl [corner-shape:squircle] border-b border-border bg-background/66 backdrop-blur px-4 pb-2.5 pt-3">
+    <div className="rounded-t-2xl [corner-shape:squircle] border-b border-border bg-background px-4 pb-2.5 pt-3">
       <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t("composer.plan")}</span>
         <div className="flex-1" />
@@ -359,7 +359,7 @@ export function Composer(): React.JSX.Element {
               </div>
             )}
 
-            <div className="group relative -m-px flex flex-col rounded-2xl [corner-shape:squircle] border border-foreground/15 bg-background/66 backdrop-blur shadow-xs transition-colors focus-within:border-foreground/25">
+            <div className="group relative -m-px flex flex-col rounded-2xl [corner-shape:squircle] border border-foreground/15 bg-background shadow-xs transition-colors focus-within:border-foreground/25">
             <textarea
               ref={taRef}
               value={text}
