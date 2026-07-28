@@ -742,8 +742,10 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
               {t("chat.imagesIgnored")}
             </span>
           )}
+          {/* Sent text is plain (not markdown), so keep the author's own line
+              breaks instead of letting HTML collapse them. */}
           {m.text && (
-            <div className="max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm leading-relaxed text-secondary-foreground">
+            <div className="max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words text-secondary-foreground">
               {m.text}
             </div>
           )}
