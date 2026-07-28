@@ -107,8 +107,12 @@ export class AcpWorkerManager {
       opts.onTail?.(live.tail)
     }
 
-    // The worker's own final report: the agent_message_chunk text of the turn.
+    // The worker's own final report. Agents narrate between tool calls, so
+    // accumulating every chunk would make the "summary" the full running
+    // commentary; instead reset at each tool-call boundary so what remains is
+    // the last contiguous message — the closing summary.
     let lastMessage = ''
+    let atMessageBoundary = false
     let spawnError: string | undefined
     child.on('error', (err) => {
       spawnError = `Failed to launch '${backend.command}': ${err.message}`
@@ -123,11 +127,16 @@ export class AcpWorkerManager {
       switch (u.sessionUpdate) {
         case 'agent_message_chunk':
           if (u.content.type === 'text') {
+            if (atMessageBoundary) {
+              lastMessage = ''
+              atMessageBoundary = false
+            }
             lastMessage += u.content.text
             appendTail(u.content.text)
           }
           break
         case 'tool_call':
+          atMessageBoundary = true
           appendTail(`\n[tool] ${u.title}\n`)
           break
         case 'tool_call_update':
