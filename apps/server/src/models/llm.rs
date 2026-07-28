@@ -222,6 +222,10 @@ pub struct LlmModelConfig {
     /// Price in USD per 1M tokens. `None` → treated as zero by the client.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
+    /// Whether desktop users may pick this model as their own main model.
+    /// Selectable models are delivered as `ConfigSnapshot.modelOptions`.
+    #[serde(default)]
+    pub selectable: bool,
 }
 
 /// Create/update payload for a model (no server-owned fields).
@@ -241,6 +245,8 @@ pub struct LlmModelInput {
     pub max_tokens: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
+    #[serde(default)]
+    pub selectable: bool,
 }
 
 /// The active LLM delivered to clients: the active model joined with its provider.

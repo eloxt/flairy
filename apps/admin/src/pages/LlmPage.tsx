@@ -37,8 +37,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -182,6 +184,8 @@ interface ModelForm {
   costOutput: string;
   costCacheRead: string;
   costCacheWrite: string;
+  /** Users may pick this model as their own main model on their devices. */
+  selectable: boolean;
 }
 
 /** Number → input string, with `undefined` becoming "". */
@@ -209,6 +213,7 @@ function modelToForm(m: LlmModelConfig): ModelForm {
     costOutput: costToForm(m.cost?.output),
     costCacheRead: costToForm(m.cost?.cacheRead),
     costCacheWrite: costToForm(m.cost?.cacheWrite),
+    selectable: m.selectable ?? false,
   };
 }
 
@@ -228,6 +233,7 @@ function emptyModelForm(defaultProviderId: string): ModelForm {
     costOutput: "",
     costCacheRead: "",
     costCacheWrite: "",
+    selectable: false,
   };
 }
 
@@ -272,6 +278,7 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(cost ? { cost } : {}),
+    selectable: form.selectable,
   };
 }
 
@@ -423,6 +430,7 @@ export function LlmPage(): React.JSX.Element {
                   <TableHead>Model</TableHead>
                   <TableHead>Input</TableHead>
                   <TableHead>Reasoning</TableHead>
+                  <TableHead>Selectable</TableHead>
                   <TableHead className="w-24 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -443,6 +451,13 @@ export function LlmPage(): React.JSX.Element {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {m.thinkingLevel ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      {m.selectable ? (
+                        <Badge variant="secondary">Users</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -1104,6 +1119,22 @@ function ModelEditor({
           Used only to estimate usage cost on the client. Left blank for models
           pi-ai already knows; set it for custom models. Defaults to zero.
         </p>
+      </div>
+
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <Label htmlFor="model-selectable">User selectable</Label>
+          <p className="text-xs text-muted-foreground">
+            Let users pick this model as their main model on their devices.
+            Ships the provider credential to every client (encrypted at rest,
+            hidden from the UI).
+          </p>
+        </div>
+        <Switch
+          id="model-selectable"
+          checked={form.selectable}
+          onCheckedChange={(checked) => patch({ selectable: checked })}
+        />
       </div>
 
       <EditorActions

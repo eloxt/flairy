@@ -32,6 +32,7 @@ pub async fn current_version(pool: &PgPool) -> AppResult<i64> {
 pub async fn load_client_snapshot(pool: &PgPool, user_id: &str) -> AppResult<ConfigSnapshot> {
     Ok(ConfigSnapshot {
         llm: super::llm::role_models_for_user(pool, user_id).await?,
+        model_options: super::llm::list_selectable_active(pool).await?,
         mcp_servers: super::mcp::list_for_user(pool, user_id).await?,
         skills: super::skill::list_summaries_for_user(pool, user_id).await?,
         system_prompts: super::system_prompt::list(pool).await?,

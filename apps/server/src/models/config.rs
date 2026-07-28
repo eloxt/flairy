@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::announcement::AnnouncementConfig;
 use crate::models::llm::{
-    LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, LlmUserRoleAssignment, RoleModels,
+    ActiveLlm, LlmModelConfig, LlmProviderConfig, LlmRoleAssignment, LlmUserRoleAssignment,
+    RoleModels,
 };
 use crate::models::mcp::{AdminMcpServer, McpServerConfig};
 use crate::models::service::{AdminServiceConfig, ServiceConfig};
@@ -27,6 +28,10 @@ use crate::models::system_prompt::SystemPromptConfig;
 pub struct ConfigSnapshot {
     /// The model bound to each role (`main` required to run; `tool` may be null).
     pub llm: RoleModels,
+    /// User-selectable main-model candidates (models flagged `selectable`,
+    /// joined with their providers). The user's pick is applied client-side.
+    #[serde(default)]
+    pub model_options: Vec<ActiveLlm>,
     pub mcp_servers: Vec<McpServerConfig>,
     /// Lightweight skill summaries; clients fetch full skills via REST.
     pub skills: Vec<SkillSummary>,
@@ -49,6 +54,7 @@ impl ConfigSnapshot {
                 tool: None,
                 visual: None,
             },
+            model_options: Vec::new(),
             mcp_servers: Vec::new(),
             skills: Vec::new(),
             system_prompts: Vec::new(),
@@ -67,6 +73,8 @@ pub struct ConfigUpdate {
     /// Always sent in full (the whole role map, no per-role delta).
     pub llm: RoleModels,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_options: Option<Vec<ActiveLlm>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<Vec<McpServerConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skills: Option<Vec<SkillSummary>>,
@@ -83,6 +91,7 @@ impl From<&ConfigSnapshot> for ConfigUpdate {
     fn from(s: &ConfigSnapshot) -> Self {
         ConfigUpdate {
             llm: s.llm.clone(),
+            model_options: Some(s.model_options.clone()),
             mcp_servers: Some(s.mcp_servers.clone()),
             skills: Some(s.skills.clone()),
             system_prompts: Some(s.system_prompts.clone()),

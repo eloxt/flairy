@@ -181,7 +181,10 @@ const zhCN: typeof En = {
     fullDescription: 'Flairy 会自动运行每个工具而不询问。只在你信任该任务时使用。',
     stop: '停止',
     send: '发送',
-    steer: '发送（引导正在进行的任务）'
+    steer: '发送（引导正在进行的任务）',
+    model: '模型',
+    modelDefault: '默认',
+    modelDefaultDescription: '由管理员推荐的模型。'
   },
   settings: {
     title: '设置',

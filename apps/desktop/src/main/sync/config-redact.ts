@@ -21,6 +21,9 @@ export function redactConfig(config: ConfigSnapshot | null): RedactedConfigSnaps
       // Default to null so a pre-visual-role cached snapshot redacts cleanly.
       visual: redactLlm(config.llm.visual ?? null)
     },
+    // Default to [] so a pre-modelOptions cached snapshot redacts cleanly.
+    // Candidates carry provider credentials just like `llm.*` — mask them too.
+    modelOptions: (config.modelOptions ?? []).map((o) => redactLlm(o) as ActiveLlm),
     mcpServers: config.mcpServers.map(redactMcpServer),
     skills: config.skills,
     systemPrompts: config.systemPrompts,

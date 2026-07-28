@@ -90,6 +90,8 @@ const api: FlairyApi = {
   setCloseToTray: (v) => ipcRenderer.invoke(IPC.SettingsSetCloseToTray, v),
   getChatWidth: () => ipcRenderer.invoke(IPC.SettingsGetChatWidth),
   setChatWidth: (w) => ipcRenderer.invoke(IPC.SettingsSetChatWidth, w),
+  getPreferredMainModel: () => ipcRenderer.invoke(IPC.SettingsGetPreferredModel),
+  setPreferredMainModel: (id) => ipcRenderer.invoke(IPC.SettingsSetPreferredModel, id),
   getAdvancedUnlocked: () => ipcRenderer.invoke(IPC.AdvancedGetUnlocked),
   setAdvancedUnlocked: (v) => ipcRenderer.invoke(IPC.AdvancedSetUnlocked, v),
   getConfigMode: () => ipcRenderer.invoke(IPC.ConfigGetMode),
@@ -151,6 +153,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, w: ChatWidth): void => cb(w)
     ipcRenderer.on(IPC.ChatWidthChanged, listener)
     return () => ipcRenderer.removeListener(IPC.ChatWidthChanged, listener)
+  },
+  onPreferredMainModelChanged: (cb) => {
+    const listener = (_e: unknown, id: string | null): void => cb(id)
+    ipcRenderer.on(IPC.PreferredModelChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.PreferredModelChanged, listener)
   },
   onAdvancedUnlockedChanged: (cb) => {
     const listener = (_e: unknown, unlocked: boolean): void => cb(unlocked)

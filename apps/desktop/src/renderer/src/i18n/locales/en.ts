@@ -196,7 +196,10 @@ const en = {
       'Flairy runs every tool automatically without asking. Only use this when you trust the task.',
     stop: 'Stop',
     send: 'Send',
-    steer: 'Send (steer the running task)'
+    steer: 'Send (steer the running task)',
+    model: 'Model',
+    modelDefault: 'Default',
+    modelDefaultDescription: 'The model recommended by your administrator.'
   },
   settings: {
     title: 'Settings',

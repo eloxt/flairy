@@ -118,6 +118,12 @@ export interface LlmModelConfig {
   maxTokens?: number
   /** Price in USD per 1M tokens. Omitted → treated as zero. */
   cost?: ModelCost
+  /**
+   * Whether desktop users may pick this model as their own main model.
+   * Selectable models are delivered (with their providers) as
+   * {@link ConfigSnapshot.modelOptions}; the pick is stored per device.
+   */
+  selectable?: boolean
 }
 
 /** Create/update payload for a model (no server-owned fields). */
@@ -130,6 +136,7 @@ export interface LlmModelInput {
   contextWindow?: number
   maxTokens?: number
   cost?: ModelCost
+  selectable?: boolean
 }
 
 /**
@@ -518,6 +525,13 @@ export interface SkillSummary {
  */
 export interface ConfigSnapshot {
   llm: RoleModels
+  /**
+   * User-selectable main-model candidates (models flagged `selectable`, joined
+   * with their providers — full credentials, like `llm.*`). The user's pick is
+   * applied client-side and stored per device. Optional purely for
+   * cached/pre-upgrade snapshot back-compat; new servers always send it.
+   */
+  modelOptions?: ActiveLlm[]
   mcpServers: McpServerConfig[]
   skills: SkillSummary[]
   /** System prompts (full body; small enough to ship inline). */
@@ -563,6 +577,7 @@ export interface AdminConfigSnapshot {
  */
 export interface ConfigUpdate {
   llm: RoleModels
+  modelOptions?: ActiveLlm[]
   mcpServers?: McpServerConfig[]
   skills?: SkillSummary[]
   systemPrompts?: SystemPromptConfig[]

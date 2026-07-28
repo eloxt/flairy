@@ -22,7 +22,12 @@ import {
 } from '@flairy/shared'
 import { getAuthToken } from '../store/secrets'
 import { saveCachedConfig, loadCachedConfig, clearCachedConfig } from '../store/config-cache'
-import { getConfigModePref, setConfigModePref } from '../store/db'
+import {
+  getConfigModePref,
+  getPreferredMainModelPref,
+  setConfigModePref,
+  setPreferredMainModelPref
+} from '../store/db'
 import { loadLocalConfig, clearLocalConfig, type LocalConfigBundle } from '../store/local-config'
 import { materializeSkills, materializeLocalSkills } from '../agent/skill-materializer'
 import type { ConfigMode, SocketConnectionStatus } from '@shared/ipc'
@@ -86,6 +91,11 @@ export class ServerClient {
   private localConfig: ConfigSnapshot | null = null
   /** Full local skills, materialized to disk when local mode is active. */
   private localSkills: SkillConfig[] = []
+  /**
+   * The user's own main-model pick (a model id from `modelOptions`), per
+   * device. Applied over the snapshot in effectiveConfig(); null = admin main.
+   */
+  private preferredMainModelId: string | null = null
 
   constructor() {
     // Seed from the encrypted on-disk cache so the client is usable before the
@@ -95,6 +105,7 @@ export class ServerClient {
     const local = loadLocalConfig()
     this.localConfig = local?.config ?? null
     this.localSkills = local?.skills ?? []
+    this.preferredMainModelId = getPreferredMainModelPref()
   }
 
   /** Open the socket using a previously obtained JWT. Idempotent-ish: reconnects. */
@@ -235,11 +246,42 @@ export class ServerClient {
     clearLocalConfig()
     this.configMode = 'server'
     setConfigModePref('server')
+    // A model pick must not leak to the next signed-in account.
+    this.preferredMainModelId = null
+    setPreferredMainModelPref(null)
   }
 
-  /** The config consumers should read, honoring the active mode. */
+  /**
+   * The config consumers should read, honoring the active mode, with the
+   * user's own main-model pick applied when it matches a delivered candidate.
+   * A dangling pick (model deleted / no longer selectable / local mode, which
+   * carries no candidates) silently falls back to the admin-assigned main.
+   */
   private effectiveConfig(): ConfigSnapshot | null {
-    return this.configMode === 'local' ? this.localConfig : this.config
+    const base = this.configMode === 'local' ? this.localConfig : this.config
+    if (!base || !this.preferredMainModelId) return base
+    const match = base.modelOptions?.find((o) => o.model.id === this.preferredMainModelId)
+    return match ? { ...base, llm: { ...base.llm, main: match } } : base
+  }
+
+  /** The user's main-model pick (a model id), or null when following the admin. */
+  getPreferredMainModel(): string | null {
+    return this.preferredMainModelId
+  }
+
+  /**
+   * Set (or clear, with null) the user's main-model pick. Persists per device
+   * and re-emits the effective config so every consumer — running agents'
+   * model/thinking level, the renderer's ConfigChanged broadcast — re-applies
+   * live. Setting a pick while no config exists just persists; it activates
+   * with the next snapshot.
+   */
+  setPreferredMainModel(id: string | null): void {
+    const next = id || null
+    if (next === this.preferredMainModelId) return
+    this.preferredMainModelId = next
+    setPreferredMainModelPref(next)
+    this.emitConfig()
   }
 
   /**
@@ -428,6 +470,7 @@ function mergeConfig(
     // `llm` is the full role map and is always sent on an update — adopt it
     // wholesale (each role may be null when unassigned).
     llm: update.llm ?? current.llm,
+    modelOptions: update.modelOptions ?? current.modelOptions,
     mcpServers: update.mcpServers ?? current.mcpServers,
     skills: update.skills ?? current.skills,
     systemPrompts: update.systemPrompts ?? current.systemPrompts,

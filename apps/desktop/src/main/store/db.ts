@@ -305,6 +305,19 @@ export function setAdvancedUnlockedPref(value: boolean): void {
   setSetting('advancedUnlocked', value ? '1' : '0')
 }
 
+/**
+ * The user's own main-model pick (an `llm_models` id from
+ * `ConfigSnapshot.modelOptions`), per device. Null/empty means no pick — the
+ * admin-assigned main model applies.
+ */
+export function getPreferredMainModelPref(): string | null {
+  return getSetting('preferredMainModelId') || null
+}
+
+export function setPreferredMainModelPref(id: string | null): void {
+  setSetting('preferredMainModelId', id ?? '')
+}
+
 /** Config source. Defaults to 'server'; 'local' means the detached/offline mode. */
 export function getConfigModePref(): ConfigMode {
   return getSetting('configMode') === 'local' ? 'local' : 'server'

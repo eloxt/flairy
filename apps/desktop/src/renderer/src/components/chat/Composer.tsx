@@ -6,6 +6,7 @@ import type { TodoItem } from "@shared/todo";
 import { cn } from "@/lib/utils";
 import { useChat, selectCwd } from "@/store/chat-store";
 import { useImageInputSupport } from "@/hooks/use-image-input-supported";
+import { useMainModel } from "@/hooks/use-main-model";
 import { ApprovalCard } from "./ApprovalCard";
 import { QuestionCard } from "./QuestionCard";
 import { TodoList } from "./TodoList";
@@ -249,6 +250,7 @@ export function Composer(): React.JSX.Element {
   // none they're dropped from the request — otherwise they'd silently vanish
   // or degrade with no explanation.
   const imageSupport = useImageInputSupport();
+  const { current: mainModel, options: modelOptions, preferredId, setPreferred } = useMainModel();
   const imageSupported = imageSupport !== "unsupported";
   const imagesIgnored = attachments.length > 0 && imageSupport === "unsupported";
   const imagesExtracted = attachments.length > 0 && imageSupport === "extract";
@@ -404,6 +406,59 @@ export function Composer(): React.JSX.Element {
                     : t('composer.imageUnsupported')}
                 </TooltipContent>
               </Tooltip>
+
+              {/* Main-model picker: only when the admin flagged candidate
+                  models (hidden in local mode / before the first snapshot). */}
+              {modelOptions.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    openOnHover
+                    aria-label={t('composer.model')}
+                    className="flex h-8 items-center gap-1.5 rounded-2xl [corner-shape:squircle] px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <span className="max-w-36 truncate">
+                      {mainModel?.model.name ?? t('composer.modelDefault')}
+                    </span>
+                    <IconChevronDown className="size-3 opacity-60" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-72">
+                    <DropdownMenuRadioGroup
+                      value={preferredId ?? "default"}
+                      onValueChange={(v) => setPreferred(v === "default" ? null : v)}
+                    >
+                      <DropdownMenuRadioItem
+                        closeOnClick
+                        value="default"
+                        className="items-start gap-2.5 py-2"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium text-foreground">
+                            {t('composer.modelDefault')}
+                          </span>
+                          <span className="text-xs leading-snug text-muted-foreground">
+                            {t('composer.modelDefaultDescription')}
+                          </span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuSeparator />
+                      {modelOptions.map((o) => (
+                        <DropdownMenuRadioItem
+                          key={o.model.id}
+                          closeOnClick
+                          value={o.model.id}
+                          className="items-start gap-2.5 py-2"
+                        >
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-foreground">
+                              {o.model.name}
+                            </span>
+                          </div>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
               <div className="flex-1" />
 

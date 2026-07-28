@@ -673,6 +673,16 @@ export function registerIpcHandlers(
     broadcast(IPC.ChatWidthChanged, width)
   })
 
+  // The user's own main-model pick. The setter re-emits the effective config in
+  // ServerClient (running agents re-apply, ConfigChanged fires); the dedicated
+  // broadcast keeps every window's picker checkmark in sync.
+  ipcMain.handle(IPC.SettingsGetPreferredModel, () => server.getPreferredMainModel())
+  ipcMain.handle(IPC.SettingsSetPreferredModel, (_e, value: string | null) => {
+    const id = typeof value === 'string' && value ? value : null
+    server.setPreferredMainModel(id)
+    broadcast(IPC.PreferredModelChanged, id)
+  })
+
   // A window that mounts after the update check ran reads the current state so
   // its header badge reflects an already-known update (the broadcast it missed).
   ipcMain.handle(IPC.UpdateGetState, () => updates.getState())

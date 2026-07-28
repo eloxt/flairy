@@ -185,16 +185,19 @@ fn map_model(row: &PgRow) -> LlmModelConfig {
             row.get("cost_cache_read"),
             row.get("cost_cache_write"),
         ),
+        selectable: row.get("selectable"),
     }
 }
 
 const MODEL_SELECT: &str = "SELECT id, provider_id, name, model, input_modalities, thinking_level, \
-     context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write \
+     context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write, \
+     selectable \
      FROM llm_models";
 
 /// The column list every model write returns, kept in sync with [`map_model`].
 const MODEL_RETURNING: &str = "id, provider_id, name, model, input_modalities, thinking_level, \
-     context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write";
+     context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write, \
+     selectable";
 
 /// All models across every provider, oldest first.
 pub async fn list_models(pool: &PgPool) -> AppResult<Vec<LlmModelConfig>> {
@@ -230,8 +233,8 @@ pub async fn create_model(
         "INSERT INTO llm_models
             (id, provider_id, name, model, thinking_level, context_window,
              max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write,
-             input_modalities)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             input_modalities, selectable)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING {MODEL_RETURNING}"
     ))
     .bind(id)
@@ -246,6 +249,7 @@ pub async fn create_model(
     .bind(input.cost.as_ref().map(|c| c.cache_read))
     .bind(input.cost.as_ref().map(|c| c.cache_write))
     .bind(modality_strs(&input.input))
+    .bind(input.selectable)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -292,7 +296,7 @@ pub async fn update_model(
          SET provider_id = $2, name = $3, model = $4, thinking_level = $5,
              context_window = $6, max_tokens = $7, cost_input = $8, cost_output = $9,
              cost_cache_read = $10, cost_cache_write = $11, input_modalities = $12,
-             updated_at = now()
+             selectable = $13, updated_at = now()
          WHERE id = $1
          RETURNING {MODEL_RETURNING}"
     ))
@@ -308,6 +312,7 @@ pub async fn update_model(
     .bind(input.cost.as_ref().map(|c| c.cache_read))
     .bind(input.cost.as_ref().map(|c| c.cache_write))
     .bind(modality_strs(&input.input))
+    .bind(input.selectable)
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -375,6 +380,7 @@ fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
                 row.get("m_cost_cache_read"),
                 row.get("m_cost_cache_write"),
             ),
+            selectable: row.get("m_selectable"),
         },
     })
 }
@@ -398,6 +404,7 @@ pub async fn role_models_for_user(pool: &PgPool, user_id: &str) -> AppResult<Rol
             m.cost_output      AS m_cost_output,
             m.cost_cache_read  AS m_cost_cache_read,
             m.cost_cache_write AS m_cost_cache_write,
+            m.selectable       AS m_selectable,
             p.id          AS p_id,
             p.name        AS p_name,
             p.api         AS p_api,
@@ -434,6 +441,39 @@ pub async fn role_models_for_user(pool: &PgPool, user_id: &str) -> AppResult<Rol
         }
     }
     Ok(roles)
+}
+
+/// All `selectable` models joined with their providers, oldest first — the
+/// user-selectable main-model candidates delivered as `ConfigSnapshot.modelOptions`.
+pub async fn list_selectable_active(pool: &PgPool) -> AppResult<Vec<ActiveLlm>> {
+    let rows = sqlx::query(
+        "SELECT
+            m.id             AS m_id,
+            m.provider_id    AS m_provider_id,
+            m.name           AS m_name,
+            m.model          AS m_model,
+            m.input_modalities AS m_input_modalities,
+            m.thinking_level AS m_thinking_level,
+            m.context_window   AS m_context_window,
+            m.max_tokens       AS m_max_tokens,
+            m.cost_input       AS m_cost_input,
+            m.cost_output      AS m_cost_output,
+            m.cost_cache_read  AS m_cost_cache_read,
+            m.cost_cache_write AS m_cost_cache_write,
+            m.selectable       AS m_selectable,
+            p.id          AS p_id,
+            p.name        AS p_name,
+            p.api         AS p_api,
+            p.credential  AS p_credential,
+            p.base_url    AS p_base_url
+         FROM llm_models m
+         JOIN llm_providers p ON p.id = m.provider_id
+         WHERE m.selectable
+         ORDER BY m.created_at ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(map_active).collect()
 }
 
 /// All role→model bindings, for the admin read model.

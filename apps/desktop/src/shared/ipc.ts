@@ -8,6 +8,7 @@
  */
 
 import type {
+  ActiveLlm,
   AnnouncementConfig,
   McpServerConfig,
   Memory,
@@ -106,6 +107,8 @@ export const IPC = {
   SettingsSetCloseToTray: 'settings:set-close-to-tray',
   SettingsGetChatWidth: 'settings:get-chat-width',
   SettingsSetChatWidth: 'settings:set-chat-width',
+  SettingsGetPreferredModel: 'settings:get-preferred-model',
+  SettingsSetPreferredModel: 'settings:set-preferred-model',
   // Advanced settings (hidden behind the version-tap gate) + local config mode.
   AdvancedGetUnlocked: 'advanced:get-unlocked',
   AdvancedSetUnlocked: 'advanced:set-unlocked',
@@ -127,6 +130,7 @@ export const IPC = {
   MemoriesChanged: 'memory:changed',
   LanguageChanged: 'settings:language-changed',
   ChatWidthChanged: 'settings:chat-width-changed',
+  PreferredModelChanged: 'settings:preferred-model-changed',
   AdvancedUnlockedChanged: 'advanced:unlocked-changed',
   ConfigModeChanged: 'config:mode-changed',
   AgentCompressStatus: 'agent:compress-status',
@@ -410,6 +414,8 @@ export interface AuthStatus {
 export interface RedactedConfigSnapshot {
   /** Per-role models (`main`/`tool`), each with `provider.credential` masked or null. */
   llm: RoleModels
+  /** User-selectable main-model candidates, credentials masked like `llm.*`. */
+  modelOptions: ActiveLlm[]
   /** MCP servers with secret transport values (headers/env) masked. */
   mcpServers: McpServerConfig[]
   /** Skill summaries carry no secrets and are passed through unchanged. */
@@ -809,6 +815,10 @@ export interface FlairyApi {
   getChatWidth(): Promise<ChatWidth>
   /** Persist a new chat width; main broadcasts the change to all windows. */
   setChatWidth(width: ChatWidth): Promise<void>
+  /** The user's main-model pick (a model id from `modelOptions`), or null when following the admin. */
+  getPreferredMainModel(): Promise<string | null>
+  /** Persist a main-model pick (null = follow the admin); applies live and broadcasts. */
+  setPreferredMainModel(id: string | null): Promise<void>
   /** Whether the hidden Advanced settings tab has been unlocked (tap version 10×). */
   getAdvancedUnlocked(): Promise<boolean>
   /** Persist the Advanced-settings unlock flag; main broadcasts to all windows. */
@@ -841,6 +851,8 @@ export interface FlairyApi {
   onLanguageChanged(cb: (lng: AppLanguage) => void): () => void
   /** Fires when the chat width preference changes (from any window). */
   onChatWidthChanged(cb: (width: ChatWidth) => void): () => void
+  /** Fires when the main-model pick changes (from any window). */
+  onPreferredMainModelChanged(cb: (id: string | null) => void): () => void
   /** Fires when the Advanced-settings unlock flag changes (from any window). */
   onAdvancedUnlockedChanged(cb: (unlocked: boolean) => void): () => void
   /** Fires when the config source (server ↔ local) changes (from any window). */
