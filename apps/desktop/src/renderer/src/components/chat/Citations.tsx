@@ -48,7 +48,7 @@ function openSource(url: string): void {
  * "3天前") in the UI language, or null when the date is missing/unparseable.
  * Coarse buckets are enough — this is a freshness cue, not a timestamp.
  */
-function relativeDate(iso: string | undefined, locale: string): string | null {
+export function relativeDate(iso: string | undefined, locale: string): string | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return null;
@@ -216,7 +216,7 @@ export function CitationChip(props: any): React.JSX.Element {
  * URL is derivable and when the derived `/favicon.ico` fails to load (sites
  * that only declare their icon via `<link rel>` 404 the conventional path).
  */
-function Favicon({
+export function Favicon({
   source,
   className,
 }: {

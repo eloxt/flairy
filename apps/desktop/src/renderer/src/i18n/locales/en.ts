@@ -58,8 +58,6 @@ const en = {
     imageCount_other: '📎 {{count}} images',
     toolRunning: 'Running {{tool}}…',
     toolDone: 'done',
-    toolArguments: 'Arguments',
-    toolResult: 'Result',
     planUpdated: 'Updated the task plan.',
     queued: 'Queued — will steer the running task',
     openImage: 'Open image',
@@ -89,6 +87,19 @@ const en = {
     filesTruncated: 'Showing the first {{count}} files.',
     filesBack: 'Back to files',
     filesLoading: 'Loading...',
+    runs: 'Runs',
+    runsEmpty: 'No worker runs in this workspace yet.',
+    runAbort: 'Abort run',
+    runOpenPr: 'Open pull request',
+    runStatus: {
+      preparing: 'Preparing',
+      running: 'Running',
+      pushing: 'Pushing',
+      pr_opened: 'PR opened',
+      failed: 'Failed',
+      cancelled: 'Cancelled',
+      timeout: 'Timed out'
+    },
     filesError: 'Could not load the file list.',
     fileBinary: 'This file cannot be previewed.',
     fileTooLarge: 'Too large to preview ({{size}}).',
@@ -141,6 +152,21 @@ const en = {
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
+  },
+  toolDetail: {
+    showAll: 'Show all',
+    lineRange: 'Lines {{start}}–{{end}} of {{total}}',
+    lineCount_one: '{{count}} line',
+    lineCount_other: '{{count}} lines',
+    matchCount_one: '{{count}} match',
+    matchCount_other: '{{count}} matches',
+    fileCount_one: '{{count}} file',
+    fileCount_other: '{{count}} files',
+    entryCount_one: '{{count}} item',
+    entryCount_other: '{{count}} items',
+    resultCount_one: '{{count}} result',
+    resultCount_other: '{{count}} results',
+    planProgress: '{{done}}/{{total}} done'
   },
   onboarding: {
     cwdTitle: 'Set your working folder',
@@ -275,6 +301,50 @@ const en = {
     telegramWorkspace: 'Telegram workspace',
     telegramWorkspaceDescription:
       'Telegram-driven tasks run in a dedicated workspace folder, separate from your other workspaces.',
+    // GitHub tab
+    tabGithub: 'GitHub',
+    githubConnection: 'Connection',
+    githubConnectionDescription:
+      'Connect a GitHub account so Flairy can create repositories, manage issues, and open pull requests for your projects.',
+    githubStatusConnected: 'Connected as @{{login}}',
+    githubStatusConnectedNoLogin: 'Connected',
+    githubStatusNotConnected: 'Not connected',
+    githubStatusError: 'Error: {{error}}',
+    githubConnectButton: 'Connect',
+    githubConnecting: 'Connecting…',
+    githubDisconnectButton: 'Disconnect',
+    githubCancelButton: 'Cancel',
+    githubCodeLabel: 'Enter this code on GitHub',
+    githubCodeHint: 'Flairy will connect automatically once you approve the request on github.com.',
+    githubOpenButton: 'Open github.com',
+    githubClientIdGroup: 'OAuth App',
+    githubClientIdPlaceholder: 'OAuth App client ID (e.g. Iv1.…)',
+    githubClientIdSave: 'Save',
+    githubClientIdSet: 'Client ID configured',
+    githubClientIdMissing: 'Client ID required before connecting',
+    githubClientIdCaption:
+      'Device Flow sign-in needs a GitHub OAuth App: create one at github.com → Settings → Developer settings → OAuth Apps, enable "Device Flow", and paste its public Client ID here. No client secret is involved.',
+    // ACP tab (coding-agent worker backends)
+    tabAcp: 'ACP',
+    acpAgents: 'Coding agents',
+    acpDesc: {
+      'claude-code': "Anthropic's Claude Code, driven through the official ACP adapter.",
+      codex: "OpenAI's Codex CLI, driven through the official ACP adapter.",
+      antigravity:
+        "Google's Antigravity CLI (agy, successor to Gemini CLI), driven through the community agy-acp adapter."
+    },
+    acpNotInstalled:
+      "'{{bin}}' was not found on this machine — install and sign in to this agent to enable it, or point the command below at its binary.",
+    acpProbing: 'Checking the agent for its available options… first run may need a download.',
+    acpProbeFailed: 'Could not read options from this agent',
+    acpProbeRetry: 'Retry',
+    acpDefaultOption: 'Default',
+    acpRefresh: 'Re-check available options',
+    acpModelLabel: 'Model',
+    acpModelPlaceholder: "{{model}} (empty = the agent's default)",
+    acpCommandLabel: 'Command',
+    acpCaption:
+      'Enabled agents can be dispatched project tasks (each runs in an isolated branch and opens a pull request). Options like model and effort come from the agent itself. Every agent uses its own login on this machine — install and sign in to it first. The command runs without a shell; leave it empty to use the default.',
     // About
     appTagline: 'Your AI assistant that just works.',
     version: 'Version',
