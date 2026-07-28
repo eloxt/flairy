@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
 import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode } from '@shared/ipc'
+import { dehydrateImages, IMAGE_REF_SCAN_RE } from './image-store'
 import { t } from '../locale'
 
 /**
@@ -523,8 +524,15 @@ export function loadMessages(sessionId: string): unknown[] {
   }
 }
 
-export async function saveMessages(sessionId: string, messages: unknown[]): Promise<void> {
+/**
+ * Persist a session's messages. Inline base64 images are extracted to the
+ * on-disk image store first, so the SQLite blob (and everything later loaded
+ * from it) carries only small refs. Returns the dehydrated array so the caller
+ * can adopt it in memory too (identical to `messages` when nothing changed).
+ */
+export async function saveMessages(sessionId: string, messages: unknown[]): Promise<unknown[]> {
   const now = Date.now()
+  const stored = dehydrateImages(messages)
   // Atomic: the message write and the FTS reindex commit together so a crash
   // between them can't drift the index from the source blob. The body is fully
   // synchronous better-sqlite3 work, so wrap the BODY (not this async function —
@@ -533,10 +541,28 @@ export async function saveMessages(sessionId: string, messages: unknown[]): Prom
     db.prepare(
       `INSERT INTO messages (sessionId, json, updatedAt) VALUES (?, ?, ?)
        ON CONFLICT(sessionId) DO UPDATE SET json = excluded.json, updatedAt = excluded.updatedAt`
-    ).run(sessionId, JSON.stringify(messages), now)
+    ).run(sessionId, JSON.stringify(stored), now)
     db.prepare('UPDATE sessions SET updatedAt = ? WHERE id = ?').run(now, sessionId)
-    reindexMessages(sessionId, messages)
+    reindexMessages(sessionId, stored)
   })()
+  return stored
+}
+
+/**
+ * Every image-store file name still referenced by ANY persisted message, for
+ * the orphan sweep (see image-store.sweepOrphanImages). Scans the raw JSON
+ * blobs with a regex — refs are stored literally, so no per-session parse (and
+ * no full-history allocation) is needed; rows stream one at a time.
+ */
+export function collectLiveImageNames(): Set<string> {
+  const names = new Set<string>()
+  const rows = db.prepare('SELECT json FROM messages').iterate() as IterableIterator<{
+    json: string
+  }>
+  for (const row of rows) {
+    for (const m of row.json.matchAll(IMAGE_REF_SCAN_RE)) names.add(m[1])
+  }
+  return names
 }
 
 /**
@@ -592,7 +618,9 @@ export function upsertRemoteSession(payload: SessionRemotePayload): boolean {
   const existing = getSession(session.id)
   if (existing?.kind === 'project') return false
   const cwd = existing?.cwd ?? '~'
-  const raw = messages.map((m) => m.raw)
+  // Extract inline base64 images (another device syncs full bytes) into the
+  // local image store so the SQLite blob stays small, mirroring saveMessages.
+  const raw = dehydrateImages(messages.map((m) => m.raw))
   const json = JSON.stringify(raw)
 
   // Atomic so the session/messages write and the FTS reindex commit together.

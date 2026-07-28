@@ -14,7 +14,6 @@ import {
   type ActiveLlm,
   type ConfigSnapshot,
   type Memory,
-  type SyncMessage,
 } from "@flairy/shared";
 import {
   encodeImageDescriptions,
@@ -49,6 +48,8 @@ import {
   loadCompression,
   saveCompression,
 } from "../store/db";
+import { putImage, rehydrateImages } from "../store/image-store";
+import { toSyncMessage, projectText } from "../sync/session-payload";
 import { getMainWindow, broadcast } from "../windows";
 import { getLanguage } from "../locale";
 import type { ServerClient } from "../sync/server-client";
@@ -357,13 +358,16 @@ export class AgentService {
         const convo = messages.filter((m) =>
           ["user", "assistant", "toolResult"].includes(m.role),
         );
+        // Image parts may carry on-disk store refs instead of inline base64
+        // (persisted/dehydrated history); the provider needs real bytes, so
+        // resolve them here — LLM-view only, the stored messages keep the refs.
         if (!this.compressedSummary || this.compressedUpTo <= 0)
-          return convo;
+          return rehydrateImages(convo) as any[];
         // Clamp to the current length: a remote session-restore could shrink the
         // history below the persisted upTo, in which case we compress nothing.
         const upTo = safeCompressionBoundary(convo, this.compressedUpTo);
-        if (upTo <= 0) return convo;
-        const kept = convo.slice(upTo);
+        if (upTo <= 0) return rehydrateImages(convo) as any[];
+        const kept = rehydrateImages(convo.slice(upTo)) as any[];
         return [
           {
             role: "user",
@@ -527,9 +531,11 @@ export class AgentService {
         this.gatedByTelegram = false;
       }
       this.send(sessionId, normalizeEvent(event));
-      // Persist on turn boundaries so a crash doesn't lose history.
+      // Persist on turn boundaries so a crash doesn't lose history. At run end
+      // (agent_end) the live message array also adopts the dehydrated copy so
+      // inline base64 images stop occupying heap between runs.
       if (event.type === "turn_end" || event.type === "agent_end") {
-        void this.persist();
+        void this.persist(event.type === "agent_end");
       }
     });
   }
@@ -647,13 +653,26 @@ export class AgentService {
   }
 
   /** Snapshot messages to SQLite and mirror them to the server. */
-  private async persist(): Promise<void> {
+  private async persist(adoptDehydrated = false): Promise<void> {
     // A terminal event can land after dispose() (session deleted); skip so we
     // don't re-insert a messages row for a session that's already gone.
     if (this.disposed) return;
     const messages = this.agent.state.messages;
-    await saveMessages(this.sessionId, messages);
-    this.syncToServer(messages);
+    // saveMessages extracts inline base64 images to the on-disk store and
+    // returns the slim ref-bearing array (identical when nothing changed).
+    const stored = await saveMessages(this.sessionId, messages);
+    // Adopt the slim array in the live agent only BETWEEN runs — never mid-run,
+    // where pi may hold a reference to the current array. convertToLlm
+    // rehydrates the refs, so the LLM view is unaffected.
+    if (
+      adoptDehydrated &&
+      stored !== messages &&
+      !this.running &&
+      !this.disposed
+    ) {
+      this.agent.state.messages = stored as AgentMessage[];
+    }
+    this.syncToServer(stored);
   }
 
   /**
@@ -673,7 +692,9 @@ export class AgentService {
   private syncToServer(messages: unknown[]): void {
     const meta = getSession(this.sessionId);
     if (!meta || meta.kind !== "chat") return;
-    const synced = messages.map(toSyncMessage);
+    // The wire contract carries full images: resolve store refs back to inline
+    // base64 so other devices receive real bytes (they re-extract on write).
+    const synced = rehydrateImages(messages).map(toSyncMessage);
     const updatedAt = Date.now();
 
     this.server.sendSessionUpsert({
@@ -754,18 +775,22 @@ export class AgentService {
       // (see maybeDescribeImages). Adds latency before the turn starts, but
       // that's inherent: the description must exist before the main model runs.
       const description = await this.maybeDescribeImages(attachments);
-      if (description && attachments?.length) {
+      // Write attached images to the on-disk store and put only refs into the
+      // message, so the transcript never holds their base64 (convertToLlm
+      // rehydrates for the request; the visual model above got the originals).
+      const stored = storeAttachments(attachments);
+      if (description && stored?.length) {
         await this.agent.prompt({
           role: "user",
           content: [
             { type: "text", text },
-            ...attachments,
+            ...stored,
             { type: "text", text: encodeImageDescriptions(description) },
           ],
           timestamp: Date.now(),
         } as any);
       } else {
-        await this.agent.prompt(text, attachments as any);
+        await this.agent.prompt(text, stored as any);
       }
       // The run has fully resolved. If it ended in a retryable model error,
       // re-issue it with exponential backoff (up to MAX_AUTO_RETRIES).
@@ -1017,11 +1042,13 @@ export class AgentService {
       // reordering against a steer sent moments later — acceptable for a
       // mid-turn redirect.
       void this.maybeDescribeImages(attachments).then((description) => {
+        // Same as prompt(): the transcript keeps store refs, not base64.
+        const stored = storeAttachments(attachments) ?? [];
         this.agent.steer({
           role: "user",
           content: [
             { type: "text", text },
-            ...attachments,
+            ...stored,
             ...(description
               ? [{ type: "text", text: encodeImageDescriptions(description) }]
               : []),
@@ -1120,6 +1147,27 @@ export class AgentService {
   /** Switch the tool-approval posture for the rest of this session. */
   setPermissionMode(mode: PermissionMode): void {
     this.permissionMode = mode;
+  }
+
+  /**
+   * Snapshot the session-scoped tool approvals (per origin kind) so
+   * AgentManager can preserve them across an idle eviction. Plain arrays —
+   * cheap to hold while the service itself is gone.
+   */
+  exportSessionApprovals(): [string, string[]][] {
+    return [...this.sessionAllowed.entries()]
+      .map(([kind, set]): [string, string[]] => [kind, [...set]])
+      .filter(([, names]) => names.length > 0);
+  }
+
+  /** Restore approvals exported by {@link exportSessionApprovals}. */
+  importSessionApprovals(saved: [string, string[]][]): void {
+    for (const [kind, names] of saved) {
+      this.sessionAllowed.set(
+        kind as TurnOrigin["kind"],
+        new Set(names),
+      );
+    }
   }
 
   /** Whether a compression auxiliary call is currently in flight. */
@@ -1655,46 +1703,17 @@ function buildModel(llm: ActiveLlm): PiModel {
   };
 }
 
-/** Map a pi-agent-core message to the wire SyncMessage shape. */
-function toSyncMessage(raw: unknown): SyncMessage {
-  const m = raw as {
-    id?: string;
-    role?: string;
-    content?: unknown;
-    timestamp?: number;
-  };
-  return {
-    id: m.id ?? crypto.randomUUID(),
-    role: normalizeRole(m.role),
-    text: projectText(m.content),
-    timestamp: m.timestamp ?? Date.now(),
-    raw,
-  };
-}
-
-/** Coerce a pi role into the SyncMessage role union (default: assistant). */
-function normalizeRole(role: string | undefined): SyncMessage["role"] {
-  if (role === "user" || role === "assistant" || role === "toolResult")
-    return role;
-  return "assistant";
-}
-
-/** Flatten pi message content into a plain-text projection for search/display. */
-function projectText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (part && typeof part === "object" && "text" in part) {
-          return String((part as { text: unknown }).text ?? "");
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("");
-  }
-  return "";
+/**
+ * Write attachment images to the on-disk store and return copies whose `data`
+ * carries the small ref instead of the raw base64 (see image-store).
+ */
+function storeAttachments(
+  attachments: Attachment[] | undefined,
+): Attachment[] | undefined {
+  return attachments?.map((a) => ({
+    ...a,
+    data: putImage(a.data, a.mimeType),
+  }));
 }
 
 /**

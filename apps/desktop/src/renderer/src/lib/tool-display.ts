@@ -100,12 +100,26 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
  * `toolCall` part's `arguments`), so a watched run and its reload render the
  * same. Purely presentational — never sent to the model.
  */
+/**
+ * Display cap for the pretty-printed arguments. A `write` of a large file would
+ * otherwise pin the whole file content in the store as a second copy (the diff
+ * view already shows it); past this, the card shows a truncation note instead.
+ */
+const MAX_TOOL_ARGS_CHARS = 20_000
+
 export function formatToolArgs(args: unknown): string | undefined {
   if (args == null) return undefined
-  if (typeof args === 'string') return args.trim() || undefined
+  if (typeof args === 'string') {
+    const s = args.trim()
+    if (!s) return undefined
+    return s.length > MAX_TOOL_ARGS_CHARS ? s.slice(0, MAX_TOOL_ARGS_CHARS) + '\n…' : s
+  }
   try {
     const json = JSON.stringify(args, null, 2)
-    return json && json !== '{}' && json !== 'null' ? json : undefined
+    if (!json || json === '{}' || json === 'null') return undefined
+    return json.length > MAX_TOOL_ARGS_CHARS
+      ? json.slice(0, MAX_TOOL_ARGS_CHARS) + '\n…'
+      : json
   } catch {
     return undefined
   }

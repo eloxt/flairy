@@ -132,18 +132,20 @@ export function Composer(): React.JSX.Element {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const {
-    send,
-    abort,
-    running,
-    permissionMode,
-    setPermissionMode,
-    setWorkingDirectory,
-    recentDirs,
-    loadRecentDirs,
-    chooseWorkingDirectory,
-    removeRecentDir,
-  } = useChat();
+  // Individual selectors: a bare `useChat()` subscribes to the whole store and
+  // re-renders the composer (textarea included) on every streamed token. The
+  // function refs are stable; `running`/`permissionMode`/`recentDirs` only
+  // change on real state transitions.
+  const send = useChat((s) => s.send);
+  const abort = useChat((s) => s.abort);
+  const running = useChat((s) => s.running);
+  const permissionMode = useChat((s) => s.permissionMode);
+  const setPermissionMode = useChat((s) => s.setPermissionMode);
+  const setWorkingDirectory = useChat((s) => s.setWorkingDirectory);
+  const recentDirs = useChat((s) => s.recentDirs);
+  const loadRecentDirs = useChat((s) => s.loadRecentDirs);
+  const chooseWorkingDirectory = useChat((s) => s.chooseWorkingDirectory);
+  const removeRecentDir = useChat((s) => s.removeRecentDir);
 
   // The directory in effect (open session's, or the pending pick on home).
   const cwd = useChat(selectCwd) ?? undefined;

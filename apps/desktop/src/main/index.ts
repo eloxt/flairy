@@ -1,11 +1,17 @@
 import { app } from "electron";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
 import { initDb } from "./store/db";
+import {
+  registerImageProtocol,
+  registerImageProtocolPrivileges,
+} from "./store/image-store";
+import { scheduleImageSweep } from "./store/image-gc";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { registerLocaleHandlers } from "./ipc/locale-handlers";
 import { registerTelegramHandlers } from "./ipc/telegram-handlers";
 import { registerFsHandlers } from "./ipc/fs-handlers";
 import { ServerClient } from "./sync/server-client";
+import { buildSessionUpsertPayload } from "./sync/session-payload";
 import { McpManager } from "./agent/mcp";
 import { AgentManager } from "./agent/agent-manager";
 import { TelegramManager } from "./telegram/telegram-manager";
@@ -32,6 +38,10 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("second-instance", () => showMainWindow());
 
+  // Must run before `ready` (Electron requirement): grants the flairy-img://
+  // image scheme fetch/stream semantics; the handler itself registers below.
+  registerImageProtocolPrivileges();
+
   app.whenReady().then(() => {
     electronApp.setAppUserModelId("com.eloxt.flairy");
 
@@ -40,6 +50,8 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     initDb();
+    // Serve stored chat images to the renderers (flairy-img://<hash>.<ext>).
+    registerImageProtocol();
     // buildAppMenu() now resolves labels via the localized t(), which reads the
     // saved language from SQLite — so it must run after initDb(), not before.
     buildAppMenu();
@@ -47,6 +59,10 @@ if (!app.requestSingleInstanceLock()) {
     // before first paint, so the SettingsGetLanguage channel has to exist first.
     registerLocaleHandlers();
     const server = new ServerClient();
+    // Offline-dirty sessions are re-snapshotted from SQLite when the socket
+    // comes back (see ServerClient's outbox) — inject the builder here to keep
+    // db access out of the sync layer's constructor.
+    server.setSessionPayloadProvider(buildSessionUpsertPayload);
     // Process-level singleton: reconcile MCP connections against every pushed
     // config snapshot/delta. onConfig fires immediately if a cached config exists.
     const mcp = new McpManager();
@@ -72,6 +88,10 @@ if (!app.requestSingleInstanceLock()) {
     // Register the quick-launcher summon chord (reads the saved preference, so
     // it must run after initDb()).
     syncLauncherShortcut();
+    // Reclaim image files orphaned since the last run (deleted sessions,
+    // remotely rewritten history). Deferred well past startup so it never
+    // competes with first paint / session pull.
+    scheduleImageSweep(60_000);
 
     app.on("activate", () => showMainWindow());
 

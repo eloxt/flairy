@@ -169,6 +169,50 @@ export interface SessionRuntime {
   fromTelegram: boolean
 }
 
+/**
+ * How many BACKGROUND idle runtimes to keep alive when switching sessions.
+ * Runtimes hold the session's full UiMessage[] (tool payloads included), so an
+ * unbounded map grows with every session opened since launch. The foreground
+ * session, anything still running, and anything with a pending approval /
+ * question are always kept; beyond that only the most recently used few
+ * survive — a dropped session simply cold-opens from the main process again.
+ */
+const MAX_IDLE_RUNTIMES = 2
+
+/** Last time each runtime was foregrounded/used; drives the LRU pruning. */
+const runtimeUsedAt = new Map<string, number>()
+
+/**
+ * Drop idle background runtimes beyond the LRU budget. `keepId` (the session
+ * being switched to) is always kept. Returns the same object when nothing needs
+ * dropping so Zustand consumers keep their references.
+ */
+function pruneRuntimes(
+  runtimes: Record<string, SessionRuntime>,
+  keepId: string | null
+): Record<string, SessionRuntime> {
+  const ids = Object.keys(runtimes)
+  const keep = new Set<string>()
+  if (keepId) keep.add(keepId)
+  for (const id of ids) {
+    const rt = runtimes[id]
+    // Live work (or a pending interaction) must keep streaming into its runtime.
+    if (rt.running || rt.retrying || rt.approvalQueue.length > 0 || rt.questionQueue.length > 0)
+      keep.add(id)
+  }
+  const idle = ids
+    .filter((id) => !keep.has(id))
+    .sort((a, b) => (runtimeUsedAt.get(b) ?? 0) - (runtimeUsedAt.get(a) ?? 0))
+  for (const id of idle.slice(0, MAX_IDLE_RUNTIMES)) keep.add(id)
+  if (keep.size === ids.length) return runtimes
+  const next: Record<string, SessionRuntime> = {}
+  for (const id of ids) {
+    if (keep.has(id)) next[id] = runtimes[id]
+    else runtimeUsedAt.delete(id)
+  }
+  return next
+}
+
 /** A blank runtime for a brand-new session (or the home screen before send). */
 function emptyRuntime(): SessionRuntime {
   return {
@@ -335,6 +379,7 @@ export const useChat = create<ChatState>((set, get) => ({
           // The open session was deleted elsewhere — drop back to the home
           // screen rather than render a now-orphaned conversation, and discard
           // its runtime.
+          runtimeUsedAt.delete(current)
           set((s) => {
             const { [current]: _gone, ...runtimes } = s.runtimes
             return {
@@ -366,12 +411,19 @@ export const useChat = create<ChatState>((set, get) => ({
 
   openSession: async (meta, msgIndex) => {
     const scrollIndex = typeof msgIndex === 'number' && msgIndex >= 0 ? msgIndex : null
+    runtimeUsedAt.set(meta.id, Date.now())
     // Already live in this renderer (foreground earlier, or running in the
     // background): just bring it to front from its runtime — DON'T reload, that
     // would overwrite an in-flight stream with a stale persisted snapshot.
     const existing = get().runtimes[meta.id]
     if (existing?.hydrated) {
-      set({ sessionId: meta.id, pendingCwd: null, pendingScrollIndex: scrollIndex, ...mirror(existing) })
+      set((s) => ({
+        sessionId: meta.id,
+        runtimes: pruneRuntimes(s.runtimes, meta.id),
+        pendingCwd: null,
+        pendingScrollIndex: scrollIndex,
+        ...mirror(existing)
+      }))
       return
     }
     // Cold open: seed from the main process's LIVE state (in-memory messages +
@@ -388,7 +440,7 @@ export const useChat = create<ChatState>((set, get) => ({
     }
     set((s) => ({
       sessionId: meta.id,
-      runtimes: { ...s.runtimes, [meta.id]: rt },
+      runtimes: { ...pruneRuntimes(s.runtimes, meta.id), [meta.id]: rt },
       runningSessions: running
         ? [...s.runningSessions.filter((id) => id !== meta.id), meta.id]
         : s.runningSessions.filter((id) => id !== meta.id),
@@ -406,10 +458,12 @@ export const useChat = create<ChatState>((set, get) => ({
    * clicking "New chat" repeatedly never litters the history with empty chats.
    */
   newChat: async (cwd) => {
-    set(() => ({
+    set((s) => ({
       sessionId: null,
-      // Clear the foreground mirror to the home/empty state; background runtimes
-      // stay intact so any running session keeps streaming into its own runtime.
+      // Clear the foreground mirror to the home/empty state; running background
+      // runtimes stay intact (streaming continues), idle ones beyond the LRU
+      // budget are dropped — they cold-open from the main process when revisited.
+      runtimes: pruneRuntimes(s.runtimes, null),
       ...mirror(null),
       pendingScrollIndex: null,
       pendingCwd: cwd ?? null
@@ -431,6 +485,7 @@ export const useChat = create<ChatState>((set, get) => ({
       // The approval posture is global (main applies it to every new service), so
       // there's nothing session-specific to carry over here.
       sessionId = meta.id
+      runtimeUsedAt.set(meta.id, Date.now())
       const rt = emptyRuntime()
       set((s) => ({
         sessions: [meta, ...s.sessions],
@@ -614,6 +669,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   deleteSession: async (sessionId) => {
     await window.api.deleteSession({ sessionId })
+    runtimeUsedAt.delete(sessionId)
     set((s) => {
       const current = s.sessionId === sessionId
       const { [sessionId]: _gone, ...runtimes } = s.runtimes

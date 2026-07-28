@@ -89,7 +89,14 @@ const rowHoverAction =
  */
 export function AppSidebar(): React.JSX.Element {
   const { t } = useTranslation();
-  const { sessions, sessionId, newChat, deleteSession, loadRecentDirs } = useChat();
+  // Individual selectors — a bare `useChat()` would re-render the whole
+  // sidebar on every streamed token (the store's foreground mirror changes
+  // per token). `sessions`/`sessionId` only change on real session events.
+  const sessions = useChat((s) => s.sessions);
+  const sessionId = useChat((s) => s.sessionId);
+  const newChat = useChat((s) => s.newChat);
+  const deleteSession = useChat((s) => s.deleteSession);
+  const loadRecentDirs = useChat((s) => s.loadRecentDirs);
   const navigate = useNavigate();
   const onSearch = useLocation().pathname === "/search";
   // Only macOS has traffic lights to clear; Windows/Linux need no top inset.
@@ -438,7 +445,12 @@ function SessionRow({
   onToggleSelected: (id: string) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const { openSession, deleteSession, renameSession } = useChat();
+  // Stable function refs via selectors — a bare `useChat()` here would
+  // subscribe the row to the whole store and defeat the `running` selector
+  // below (every streamed token would re-render every visible row).
+  const openSession = useChat((st) => st.openSession);
+  const deleteSession = useChat((st) => st.deleteSession);
+  const renameSession = useChat((st) => st.renameSession);
   // Subscribe to just this row's running flag (a primitive) so the indicator
   // toggles without re-rendering the whole sidebar on every streamed token.
   const running = useChat((st) => st.runningSessions.includes(s.id));

@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChat, selectProjectWorkspace } from '@/store/chat-store'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { ModelPanel } from './sidebar/ModelPanel'
-import { FilesPanel } from './sidebar/FilesPanel'
+
+// @pierre/trees + @pierre/diffs load only when a project session's Files tab
+// actually mounts — chat sessions and closed panels never pay for them.
+const FilesPanel = lazy(() =>
+  import('./sidebar/FilesPanel').then((m) => ({ default: m.FilesPanel }))
+)
 
 /**
  * The resizable right-hand details panel. Tabs over the active (foreground)
@@ -48,7 +53,9 @@ export function RightSidebar(): React.JSX.Element {
       {workspacePath && (
         <TabsPanel value="files" className="min-w-0">
           {/* Keyed so switching between two project sessions resets tree + preview. */}
-          <FilesPanel key={workspacePath} workspacePath={workspacePath} />
+          <Suspense fallback={null}>
+            <FilesPanel key={workspacePath} workspacePath={workspacePath} />
+          </Suspense>
         </TabsPanel>
       )}
     </Tabs>

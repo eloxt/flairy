@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   useUi,
   RIGHT_PANEL_MIN_WIDTH,
@@ -24,6 +24,20 @@ export function RightPanel(): React.JSX.Element {
   // must be off or it would lag a frame behind.
   const [dragging, setDragging] = useState(false)
   const dragState = useRef<{ startX: number; startW: number } | null>(null)
+  // Mount the panel's CONTENT only while it's open (plus the close animation):
+  // a closed panel otherwise keeps RightSidebar subscribed to `messages`, and
+  // its ModelPanel re-scans the whole thread on every streamed token — pure
+  // waste while nothing is visible. Unmount is delayed past the 200ms slide so
+  // the content doesn't blink out mid-animation.
+  const [contentMounted, setContentMounted] = useState(open)
+  useEffect(() => {
+    if (open) {
+      setContentMounted(true)
+      return
+    }
+    const timer = setTimeout(() => setContentMounted(false), 250)
+    return () => clearTimeout(timer)
+  }, [open])
 
   const onPointerDown = (e: React.PointerEvent): void => {
     if (!open) return
@@ -81,7 +95,7 @@ export function RightPanel(): React.JSX.Element {
           )}
           style={{ width, transform: open ? 'translateX(0)' : 'translateX(100%)' }}
         >
-          <RightSidebar />
+          {contentMounted && <RightSidebar />}
         </div>
       </div>
     </div>

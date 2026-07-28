@@ -71,6 +71,8 @@ import {
   setAdvancedUnlockedPref,
   clearTelegramBinding
 } from '../store/db'
+import { clearAllImages } from '../store/image-store'
+import { scheduleImageSweep } from '../store/image-gc'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
 import type { UpdateManager } from '../update'
@@ -175,6 +177,7 @@ export function registerIpcHandlers(
     agents.delete(sessionId, true) // also delete the mapped Telegram topic
     agents.rejectInteractions(sessionId)
     deleteSession(sessionId)
+    scheduleImageSweep() // its images may now be orphaned
     broadcast(IPC.SessionsChanged)
   })
 
@@ -190,7 +193,12 @@ export function registerIpcHandlers(
         console.error('[sync] failed to persist session', s.session?.id, err)
       }
     }
-    if (sessions.length > 0) broadcast(IPC.SessionsChanged)
+    if (sessions.length > 0) {
+      broadcast(IPC.SessionsChanged)
+      // A bulk pull can rewrite message histories, orphaning previously
+      // referenced image files.
+      scheduleImageSweep()
+    }
   })
 
   // Memories changed on another device land in the local store; tell every
@@ -426,7 +434,9 @@ export function registerIpcHandlers(
     if (getSession(args.sessionId)?.kind === 'chat') {
       server.sendSessionDelete({ sessionId: args.sessionId })
     }
-    return deleteSession(args.sessionId)
+    const removed = deleteSession(args.sessionId)
+    scheduleImageSweep() // its images may now be orphaned
+    return removed
   })
 
   // Pop the OS-native right-click menu for a session row and resolve with the
@@ -569,6 +579,10 @@ export function registerIpcHandlers(
     // keeps the history; a relogin repopulates it via session:pull.
     agents.disposeAll()
     clearAllSessions()
+    // The session wipe orphans every stored image at once — and a signed-out
+    // machine must not keep the previous account's pictures on disk. Full
+    // clear (no age guard); a relogin's session:pull re-extracts what's needed.
+    clearAllImages()
     // Wipe locally-cached memories too so one account's memories can't leak to
     // the next account signed in on this machine; a relogin repopulates them via
     // memory:pull (the server keeps them).

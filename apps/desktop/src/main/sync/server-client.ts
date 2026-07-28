@@ -83,6 +83,22 @@ export class ServerClient {
   /** JWT used for the active socket; reused for REST skill materialization. */
   private token: string | undefined
   /**
+   * Offline outbox. socket.io's own sendBuffer would queue EVERY emit made while
+   * disconnected — including one full session snapshot per finished turn, which
+   * grows without bound during a long outage. Instead we coalesce: only the IDs
+   * of dirty sessions (their final snapshot is rebuilt from SQLite on reconnect
+   * via `sessionPayloadProvider`), latest-wins title patches and memory upserts,
+   * and pending deletes. Flushed on `connect` BEFORE the session/memory pull so
+   * the pull returns post-flush state.
+   */
+  private pendingSessionUpserts = new Set<string>()
+  private pendingSessionDeletes = new Set<string>()
+  private pendingTitlePatches = new Map<string, SessionPatchPayload>()
+  private pendingMemoryUpserts = new Map<string, Memory>()
+  /** Rebuilds a dirty session's full upsert payload from SQLite (injected). */
+  private sessionPayloadProvider: ((sessionId: string) => SessionUpsertPayload | null) | null =
+    null
+  /**
    * Config source. In `local` mode the socket stays closed and getConfig()
    * returns the user-authored `localConfig` instead of the server snapshot.
    */
@@ -164,6 +180,10 @@ export class ServerClient {
       if (this.socket !== socket) return
       console.log('[sync] socket connected; pulling sessions + memories')
       this.setSocketStatus('connected')
+      // Push local changes made while offline BEFORE pulling, so the pull
+      // returns (and re-persists) the post-flush state instead of clobbering
+      // newer local history with the server's stale copy.
+      this.flushPending()
       this.pullSessions()
       this.pullMemories()
     })
@@ -241,6 +261,12 @@ export class ServerClient {
   clearConfig(): void {
     this.config = null
     clearCachedConfig()
+    // Sign-out drops the offline outbox too: local sessions/memories are wiped
+    // right after, so nothing queued should reach the next account's socket.
+    this.pendingSessionUpserts.clear()
+    this.pendingSessionDeletes.clear()
+    this.pendingTitlePatches.clear()
+    this.pendingMemoryUpserts.clear()
     this.localConfig = null
     this.localSkills = []
     clearLocalConfig()
@@ -410,24 +436,98 @@ export class ServerClient {
     return () => this.memoriesPulledListeners.delete(cb)
   }
 
-  /** Mirror a memory upsert/tombstone batch to the server. No-op if offline. */
+  /** Whether the socket is live right now (emits go straight out). */
+  private get online(): boolean {
+    return this.socket?.connected ?? false
+  }
+
+  /** Inject the SQLite-backed payload builder used to flush dirty sessions. */
+  setSessionPayloadProvider(fn: (sessionId: string) => SessionUpsertPayload | null): void {
+    this.sessionPayloadProvider = fn
+  }
+
+  /**
+   * Mirror a memory upsert/tombstone batch to the server. Offline, the batch is
+   * folded into the outbox (latest updatedAt wins per id) and sent on reconnect.
+   */
   sendMemoryUpsert(payload: MemoryUpsertPayload): void {
-    this.socket?.emit(SocketEvent.MemoryUpsert, payload)
+    if (this.online) {
+      this.socket?.emit(SocketEvent.MemoryUpsert, payload)
+      return
+    }
+    for (const m of payload.memories) {
+      const prev = this.pendingMemoryUpserts.get(m.id)
+      if (!prev || prev.updatedAt <= m.updatedAt) this.pendingMemoryUpserts.set(m.id, m)
+    }
   }
 
-  /** Push a full session (create/replace) to the server. No-op if offline. */
+  /**
+   * Push a full session (create/replace) to the server. Offline, only the
+   * session ID is remembered; its FINAL state is rebuilt from SQLite and sent
+   * once on reconnect — one snapshot per dirty session instead of one per turn.
+   */
   sendSessionUpsert(payload: SessionUpsertPayload): void {
-    this.socket?.emit(SocketEvent.SessionUpsert, payload)
+    if (this.online) {
+      this.socket?.emit(SocketEvent.SessionUpsert, payload)
+      return
+    }
+    this.pendingSessionUpserts.add(payload.session.id)
   }
 
-  /** Append messages to an existing server-side session. No-op if offline. */
+  /**
+   * Patch an existing server-side session (title-only updates). Offline, kept
+   * latest-wins per session and replayed on reconnect so a rename made offline
+   * isn't resurrected to the old title by the reconnect pull.
+   */
   sendSessionPatch(payload: SessionPatchPayload): void {
-    this.socket?.emit(SocketEvent.SessionPatch, payload)
+    if (this.online) {
+      this.socket?.emit(SocketEvent.SessionPatch, payload)
+      return
+    }
+    this.pendingTitlePatches.set(payload.sessionId, payload)
   }
 
-  /** Delete a session server-side (and on the user's other devices). No-op if offline. */
+  /**
+   * Delete a session server-side (and on the user's other devices). Offline,
+   * queued and replayed on reconnect — otherwise the reconnect pull would
+   * resurrect a session deleted while offline.
+   */
   sendSessionDelete(payload: SessionDeletePayload): void {
-    this.socket?.emit(SocketEvent.SessionDelete, payload)
+    if (this.online) {
+      this.socket?.emit(SocketEvent.SessionDelete, payload)
+      return
+    }
+    this.pendingSessionDeletes.add(payload.sessionId)
+    // A deleted session needs no snapshot or title patch anymore.
+    this.pendingSessionUpserts.delete(payload.sessionId)
+    this.pendingTitlePatches.delete(payload.sessionId)
+  }
+
+  /** Replay the offline outbox (deletes → snapshots → patches → memories). */
+  private flushPending(): void {
+    const socket = this.socket
+    if (!socket) return
+    for (const sessionId of this.pendingSessionDeletes) {
+      socket.emit(SocketEvent.SessionDelete, { sessionId })
+    }
+    this.pendingSessionDeletes.clear()
+    for (const sessionId of this.pendingSessionUpserts) {
+      // Rebuild the CURRENT snapshot from SQLite; a session deleted/converted
+      // to a project in the meantime resolves to null and is skipped.
+      const payload = this.sessionPayloadProvider?.(sessionId)
+      if (payload) socket.emit(SocketEvent.SessionUpsert, payload)
+    }
+    this.pendingSessionUpserts.clear()
+    for (const payload of this.pendingTitlePatches.values()) {
+      socket.emit(SocketEvent.SessionPatch, payload)
+    }
+    this.pendingTitlePatches.clear()
+    if (this.pendingMemoryUpserts.size > 0) {
+      socket.emit(SocketEvent.MemoryUpsert, {
+        memories: [...this.pendingMemoryUpserts.values()]
+      })
+      this.pendingMemoryUpserts.clear()
+    }
   }
 
   private emitConfig(): void {

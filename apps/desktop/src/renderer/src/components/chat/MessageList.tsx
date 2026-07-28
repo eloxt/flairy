@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Streamdown } from "streamdown";
@@ -28,6 +36,7 @@ import {
   AttachmentTrigger,
 } from "@/components/ui/attachment";
 import { toolBucket, toolDisplayKey } from "@/lib/tool-display";
+import { imageSrc } from "@/lib/image-src";
 import { useChat } from "@/store/chat-store";
 import type { UiMessage } from "@/store/chat-store";
 import type { SearchSource } from "@shared/web-search";
@@ -40,16 +49,18 @@ import {
 } from "./Citations";
 import { cardRenderers } from "./cards/renderers";
 import { ConversationNav, type NavRow } from "./ConversationNav";
-import { DiffView } from "./DiffView";
 import { MessageActions } from "./MessageActions";
 import { Onboarding } from "./Onboarding";
 import { Announcements } from "./Announcements";
 import "streamdown/styles.css";
 import { code } from "@streamdown/code";
-import { mermaid } from "@streamdown/mermaid";
-import { math } from "@streamdown/math";
-import "katex/dist/katex.min.css";
 import { cjk } from "@streamdown/cjk";
+
+// @pierre/diffs (the tool-row diff view) is a heavy dependency only needed once
+// an edit/write row is expanded — load it on demand instead of on first paint.
+const DiffView = lazy(() =>
+  import("./DiffView").then((m) => ({ default: m.DiffView })),
+);
 
 // Stable references for <Streamdown>. Passing fresh object/array literals on each
 // render defeats Streamdown's internal memoization — its Block memo compares
@@ -57,12 +68,50 @@ import { cjk } from "@streamdown/cjk";
 // so every markdown block would re-render and re-run its parser effect on every
 // streamed token. During streaming that churn compounds into a "maximum update
 // depth exceeded" (React #185) crash. Hoisting these keeps the identities stable.
-// These MUST stay module-level constants — do NOT compute remarkPlugins per render
+// These MUST stay module-level values — do NOT compute remarkPlugins per render
 // (even via useMemo): an unstable reference resets Streamdown's stateful animation
 // plugin every commit and re-triggers the parser's setState, reproducing #185.
 // `renderers` maps ui:* code fences to structured cards (@shared/cards
 // protocol, progressive streaming render).
-const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk, renderers: cardRenderers };
+//
+// mermaid (+ its cytoscape/dagre payload) and math (katex) together are ~1.5MB
+// of parsed JS the average chat never touches, so they are NOT imported
+// eagerly: assistant markdown starts on the base plugin set and swaps ONCE to
+// the full set when the async chunks land (both sets are module-level, so the
+// identity-stability rule above still holds — one swap, not one per render).
+type StreamdownPlugins = React.ComponentProps<typeof Streamdown>["plugins"];
+const BASE_STREAMDOWN_PLUGINS: StreamdownPlugins = {
+  code,
+  cjk,
+  renderers: cardRenderers,
+};
+let fullStreamdownPlugins: StreamdownPlugins | null = null;
+let streamdownExtrasPromise: Promise<void> | null = null;
+
+function loadStreamdownExtras(): Promise<void> {
+  streamdownExtrasPromise ??= Promise.all([
+    import("@streamdown/mermaid"),
+    import("@streamdown/math"),
+    import("katex/dist/katex.min.css"),
+  ])
+    .then(([{ mermaid }, { math }]) => {
+      fullStreamdownPlugins = { ...BASE_STREAMDOWN_PLUGINS, mermaid, math };
+    })
+    .catch((err) => {
+      // Mermaid/math blocks then render as plain code fences — acceptable.
+      console.error("[markdown] failed to load mermaid/math plugins:", err);
+    });
+  return streamdownExtrasPromise;
+}
+
+/** The current plugin set; kicks off the extras load and re-renders once ready. */
+function useStreamdownPlugins(): StreamdownPlugins {
+  const [, bump] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (!fullStreamdownPlugins) void loadStreamdownExtras().then(bump);
+  }, []);
+  return fullStreamdownPlugins ?? BASE_STREAMDOWN_PLUGINS;
+}
 // Passing remarkPlugins REPLACES Streamdown's default set (which bundles
 // remark-gfm). Re-add gfm here or GFM tables/strikethrough/task-lists/autolinks
 // stop parsing and render as plain text. gfm goes first to match the default order.
@@ -722,10 +771,7 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
               {m.images.map((img, i) => (
                 <Attachment key={i} orientation="vertical" className="w-28">
                   <AttachmentMedia variant="image" className="w-full">
-                    <img
-                      src={`data:${img.mimeType};base64,${img.data}`}
-                      alt=""
-                    />
+                    <img src={imageSrc(img)} alt="" />
                   </AttachmentMedia>
                   <AttachmentTrigger
                     onClick={() => void window.api.openImageViewer(img)}
@@ -779,6 +825,7 @@ function AssistantRow({
 }): React.JSX.Element {
   const hasText = Boolean(m.text.trim());
   const cites = sources ?? [];
+  const plugins = useStreamdownPlugins();
   // CitationChip resolves its [n] against `cites` via context at render time. In
   // practice a turn's searches complete before the model writes the answer, so the
   // sources are present by the time this bubble streams and the chips resolve. (We
@@ -798,7 +845,7 @@ function AssistantRow({
                 animated
                 isAnimating={Boolean(m.streaming)}
                 linkSafety={{ enabled: false }}
-                plugins={STREAMDOWN_PLUGINS}
+                plugins={plugins}
                 remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
                 components={STREAMDOWN_COMPONENTS}
                 className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono pt-1"
@@ -875,7 +922,8 @@ function asCodeBlock(text: string): string {
 function CodeCard({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="max-h-60 overflow-auto">
-      <Streamdown plugins={STREAMDOWN_PLUGINS} className="text-xs">
+      {/* Base plugin set only: tool payloads are code/JSON, never mermaid/math. */}
+      <Streamdown plugins={BASE_STREAMDOWN_PLUGINS} className="text-xs">
         {asCodeBlock(text)}
       </Streamdown>
     </div>
@@ -938,7 +986,9 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
       </Marker>
       <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
         {m.diffPatch ? (
-          <DiffView patch={m.diffPatch} />
+          <Suspense fallback={null}>
+            <DiffView patch={m.diffPatch} />
+          </Suspense>
         ) : (
           <div className="mt-2 space-y-3 pb-1">
             {m.toolArgs && (

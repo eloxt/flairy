@@ -19,9 +19,32 @@ import { desktopChannel, type InteractionChannel } from './interaction'
  * so a session abort/dispose/delete settles every pending approval/question — and
  * later the Telegram channel — instead of leaving a blocked promise to hang.
  */
+/**
+ * How long a session's AgentService may sit idle (no turn, no events) before it
+ * is evicted from memory. Every service holds the session's FULL message array,
+ * a tool set, and config/MCP subscriptions — without eviction the map grows
+ * monotonically with every session touched since launch. Messages are persisted
+ * at turn boundaries, so eviction loses nothing: the next prompt recreates the
+ * service from SQLite (and re-imports the session's tool approvals, kept aside
+ * in `savedApprovals`).
+ */
+const IDLE_EVICT_MS = 10 * 60_000
+/** Sweep cadence for the idle check. */
+const EVICT_SWEEP_MS = 60_000
+
 export class AgentManager {
   /** Live agent services keyed by sessionId. */
   private services = new Map<string, AgentService>()
+
+  /** Last activity (creation, prompt, or emitted event) per live service. */
+  private lastActive = new Map<string, number>()
+
+  /**
+   * Session-scoped tool approvals of EVICTED services, re-applied when the
+   * session's service is recreated — so idle eviction is invisible to the user
+   * ("Allow for this session" survives it). Dropped on real deletion/logout.
+   */
+  private savedApprovals = new Map<string, [string, string[]][]>()
 
   /**
    * The GLOBAL desktop tool-approval posture. One value for every session (not
@@ -49,10 +72,39 @@ export class AgentManager {
    */
   private telegramChannel: InteractionChannel | undefined
 
+  /** Idle-eviction sweep; unref'd so it never keeps the process alive. */
+  private evictTimer: ReturnType<typeof setInterval>
+
   constructor(
     private readonly server: ServerClient,
     private readonly mcp: McpManager
-  ) {}
+  ) {
+    this.evictTimer = setInterval(() => this.evictIdle(), EVICT_SWEEP_MS)
+    this.evictTimer.unref()
+  }
+
+  /**
+   * Dispose services that have been idle past IDLE_EVICT_MS. Only truly
+   * quiescent sessions qualify: a running turn (which is also the only state
+   * with pending approvals/questions) or an in-flight compression keeps the
+   * service alive. Approvals granted "for this session" are stashed and
+   * re-imported on recreation, so eviction is invisible to the user.
+   */
+  private evictIdle(): void {
+    const now = Date.now()
+    for (const [id, svc] of this.services) {
+      if (svc.isRunning() || svc.isCompressing()) {
+        this.lastActive.set(id, now)
+        continue
+      }
+      if (now - (this.lastActive.get(id) ?? now) < IDLE_EVICT_MS) continue
+      const approvals = svc.exportSessionApprovals()
+      if (approvals.length > 0) this.savedApprovals.set(id, approvals)
+      svc.dispose()
+      this.services.delete(id)
+      this.lastActive.delete(id)
+    }
+  }
 
   /**
    * The live service for a session, created on first use. `origin` is accepted for
@@ -62,6 +114,7 @@ export class AgentManager {
    */
   getOrCreate(sessionId: string, _origin?: TurnOrigin): AgentService {
     let svc = this.services.get(sessionId)
+    this.lastActive.set(sessionId, Date.now())
     if (!svc) {
       const meta = getSession(sessionId)
       if (!meta) throw new Error(`Unknown session: ${sessionId}`)
@@ -77,8 +130,12 @@ export class AgentManager {
         onRejectInteractions: (id) => this.rejectInteractions(id),
         // Stream the service's (origin-tagged) event envelopes onto the shared bus
         // so every registered sink (the window forwarder, and later the Telegram
-        // subscriber) sees them.
-        emitEvent: (env) => this.events.emit('event', env),
+        // subscriber) sees them. Every event also counts as activity for the
+        // idle-eviction sweep.
+        emitEvent: (env) => {
+          this.lastActive.set(env.sessionId, Date.now())
+          this.events.emit('event', env)
+        },
         // Resolve the interaction channel (approval + ask) by the turn's origin at
         // call time, so the same session prompts the front-end that authored the
         // turn.
@@ -89,6 +146,13 @@ export class AgentManager {
       })
       // Apply the global desktop approval posture to the fresh service.
       svc.setPermissionMode(this.desktopPermissionMode)
+      // Restore session-scoped approvals stashed when an idle service was
+      // evicted, so eviction never re-prompts for an already-granted tool.
+      const saved = this.savedApprovals.get(sessionId)
+      if (saved) {
+        svc.importSessionApprovals(saved)
+        this.savedApprovals.delete(sessionId)
+      }
       this.services.set(sessionId, svc)
     }
     return svc
@@ -109,6 +173,8 @@ export class AgentManager {
   delete(sessionId: string, deleteTopic = false): void {
     this.services.get(sessionId)?.dispose()
     this.services.delete(sessionId)
+    this.lastActive.delete(sessionId)
+    this.savedApprovals.delete(sessionId)
     // Only a TRUE deletion (not a `/new` reset, which reuses this to swap runtimes)
     // mirrors to Telegram by deleting the mapped topic — BEFORE dropping the mapping
     // so the channel can still resolve it. Best-effort / no-op off-Telegram.
@@ -124,6 +190,8 @@ export class AgentManager {
   disposeAll(): void {
     for (const svc of this.services.values()) svc.dispose()
     this.services.clear()
+    this.lastActive.clear()
+    this.savedApprovals.clear()
   }
 
   /** Iterate the live services (e.g. for a global posture fan-out). */

@@ -83,7 +83,12 @@ function Splash(): React.JSX.Element {
  * so streaming keeps flowing into the store while the user is on another route.
  */
 function AppLayout(): React.JSX.Element {
-  const { init, loadSessions, newChat } = useChat();
+  // Individual selectors (all stable function refs): a bare `useChat()`
+  // subscribes to the WHOLE store and re-renders this layout — sidebar and
+  // page included — on every streamed token.
+  const init = useChat((s) => s.init);
+  const loadSessions = useChat((s) => s.loadSessions);
+  const newChat = useChat((s) => s.newChat);
 
   useEffect(() => {
     const dispose = init();

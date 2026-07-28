@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ViewerImage } from '@shared/ipc'
+import { imageSrc } from '@/lib/image-src'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 20
@@ -125,7 +126,10 @@ export function ImageViewer(): React.JSX.Element {
   }
 
   const src = image
-    ? (image.url ?? (image.data ? `data:${image.mimeType};base64,${image.data}` : ''))
+    ? (image.url ??
+      (image.data
+        ? imageSrc({ data: image.data, mimeType: image.mimeType ?? 'image/png' })
+        : ''))
     : ''
 
   return (
