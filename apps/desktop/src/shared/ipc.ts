@@ -89,6 +89,7 @@ export const IPC = {
   GithubSetClientId: 'github:set-client-id',
   WorkerRunList: 'worker-run:list',
   WorkerRunAbort: 'worker-run:abort',
+  WorkerRunOpenTranscript: 'worker-run:open-transcript',
   AcpBackendList: 'acp:backend-list',
   AcpBackendUpdate: 'acp:backend-update',
   AcpBackendProbe: 'acp:backend-probe',
@@ -744,6 +745,8 @@ export interface WorkerRun {
   summary?: string
   /** Rolling tail of live worker activity (present only while running). */
   tail?: string
+  /** Whether a full on-disk transcript exists for this run (openable from the Runs panel). */
+  hasTranscript?: boolean
   startedAt?: number
   endedAt?: number
   createdAt: number
@@ -918,6 +921,8 @@ export interface FlairyApi {
   listWorkerRuns(sessionId: string): Promise<WorkerRun[]>
   /** Abort a running worker dispatch. */
   abortWorkerRun(runId: string): Promise<void>
+  /** Open a run's full on-disk transcript in the system's default app. */
+  openWorkerRunTranscript(runId: string): Promise<void>
   /** Subscribe to worker-run updates pushed from main. Returns an unsubscribe fn. */
   onWorkerRunChanged(cb: (run: WorkerRun) => void): () => void
   /** All known ACP worker backends with their settings (for the ACP settings page). */

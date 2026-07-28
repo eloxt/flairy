@@ -13,6 +13,7 @@ import { registerGithubHandlers } from "./ipc/github-handlers";
 import { registerWorkerRunHandlers } from "./ipc/worker-run-handlers";
 import { registerAcpHandlers } from "./ipc/acp-handlers";
 import { initDispatch, workers } from "./acp/dispatch";
+import { sweepOldTranscripts } from "./acp/transcript";
 import { GithubPoller } from "./github/poller";
 import { failOrphanWorkerRuns } from "./store/db";
 import { registerFsHandlers } from "./ipc/fs-handlers";
@@ -111,6 +112,9 @@ if (!app.requestSingleInstanceLock()) {
     // remotely rewritten history). Deferred well past startup so it never
     // competes with first paint / session pull.
     scheduleImageSweep(60_000);
+    // Same idea for worker transcripts: reclaim logs past the retention window,
+    // deferred well past startup.
+    setTimeout(() => sweepOldTranscripts(), 90_000).unref();
 
     app.on("activate", () => showMainWindow());
 

@@ -12,6 +12,7 @@ import {
   type SessionNotification
 } from '@agentclientprotocol/sdk'
 import { augmentedPath, type WorkerBackend } from './backends'
+import { createTranscript } from './transcript'
 
 /**
  * Supervises external coding agents driven over ACP (Agent Client Protocol,
@@ -107,6 +108,13 @@ export class AcpWorkerManager {
     const live: LiveRun = { child, cancelled: false, tail: '' }
     this.runs.set(opts.runId, live)
 
+    // Full session log on disk (diagnostics); the tail is just its live window.
+    const transcript = createTranscript(opts.runId)
+    transcript.event(
+      `run ${opts.runId} · backend=${backend.id} (${backend.command} ${backend.args.join(' ')}) · cwd=${opts.cwd}${opts.readOnly ? ' · read-only' : ''}`
+    )
+    transcript.event(`prompt: ${opts.prompt}`)
+
     const appendTail = (line: string): void => {
       if (!line) return
       live.tail = (live.tail + line).slice(-TAIL_MAX_CHARS)
@@ -125,8 +133,19 @@ export class AcpWorkerManager {
     })
     child.stderr?.on('data', (buf: Buffer) => {
       // Adapters log diagnostics to stderr; keep a taste of it in the tail.
-      appendTail(buf.toString())
+      const text = buf.toString()
+      appendTail(text)
+      transcript.event(`stderr: ${text.trim()}`)
     })
+
+    const jsonSlice = (v: unknown, max = 2_000): string => {
+      try {
+        const s = JSON.stringify(v)
+        return s && s !== '{}' ? (s.length > max ? `${s.slice(0, max)}…` : s) : ''
+      } catch {
+        return ''
+      }
+    }
 
     const handleUpdate = (params: SessionNotification): void => {
       const u = params.update
@@ -139,17 +158,31 @@ export class AcpWorkerManager {
             }
             lastMessage += u.content.text
             appendTail(u.content.text)
+            transcript.raw(u.content.text)
           }
           break
-        case 'tool_call':
+        case 'agent_thought_chunk':
+          if (u.content.type === 'text') transcript.raw(u.content.text)
+          break
+        case 'tool_call': {
           atMessageBoundary = true
           appendTail(`\n[tool] ${u.title}\n`)
+          const input = jsonSlice(u.rawInput)
+          transcript.event(`tool: ${u.title} (${u.kind ?? '?'})${input ? ` input=${input}` : ''}`)
           break
+        }
         case 'tool_call_update':
-          if (u.status === 'failed') appendTail(`\n[tool failed] ${u.title ?? u.toolCallId}\n`)
+          if (u.status === 'failed') {
+            appendTail(`\n[tool failed] ${u.title ?? u.toolCallId}\n`)
+            const output = jsonSlice(u.rawOutput)
+            transcript.event(
+              `tool FAILED: ${u.title ?? u.toolCallId}${output ? ` output=${output}` : ''}`
+            )
+          }
           break
         case 'plan':
           appendTail(`\n[plan] ${u.entries.map((e) => e.content).join(' · ')}\n`)
+          transcript.event(`plan: ${u.entries.map((e) => e.content).join(' · ')}`)
           break
         default:
           break
@@ -171,6 +204,9 @@ export class AcpWorkerManager {
             const decision = decidePermission(ctx.params, opts.cwd, opts.readOnly)
             appendTail(
               `\n[permission ${decision.optionId && decision.allow ? 'granted' : 'denied'}] ${ctx.params.toolCall.title ?? ctx.params.toolCall.kind ?? 'tool'}\n`
+            )
+            transcript.event(
+              `permission ${decision.optionId && decision.allow ? 'GRANTED' : 'DENIED'}: ${ctx.params.toolCall.title ?? '?'} kind=${ctx.params.toolCall.kind ?? '?'} locations=${(ctx.params.toolCall.locations ?? []).map((l) => l.path).join(',') || '(none)'}`
             )
             if (decision.optionId) {
               return { outcome: { outcome: 'selected', optionId: decision.optionId } }
@@ -197,9 +233,9 @@ export class AcpWorkerManager {
                   ...(typeof value === 'boolean' ? { type: 'boolean' as const, value } : { value })
                 })
               } catch (err) {
-                appendTail(
-                  `\n[config] could not set ${configId}=${String(value)}: ${err instanceof Error ? err.message : String(err)}\n`
-                )
+                const msg = `could not set ${configId}=${String(value)}: ${err instanceof Error ? err.message : String(err)}`
+                appendTail(`\n[config] ${msg}\n`)
+                transcript.event(`config ${msg}`)
               }
             }
             // The stop arrives through the update loop; prompt() resolving is
@@ -248,19 +284,20 @@ export class AcpWorkerManager {
         })
       )
 
-      const result = await Promise.race([work, timedOut, died])
+      let result = await Promise.race([work, timedOut, died])
       if (timer) clearTimeout(timer)
       if (live.cancelled && result.outcome !== 'cancelled') {
-        return { outcome: 'cancelled', summary: result.summary }
+        result = { outcome: 'cancelled', summary: result.summary }
       }
+      transcript.event(`outcome: ${result.outcome}${result.error ? ` — ${result.error}` : ''}`)
       return result
     } catch (err) {
-      return {
-        outcome: live.cancelled ? 'cancelled' : 'failed',
-        summary: lastMessage.trim(),
-        error: spawnError ?? (err instanceof Error ? err.message : String(err))
-      }
+      const error = spawnError ?? (err instanceof Error ? err.message : String(err))
+      const outcome = live.cancelled ? ('cancelled' as const) : ('failed' as const)
+      transcript.event(`outcome: ${outcome} — ${error}`)
+      return { outcome, summary: lastMessage.trim(), error }
     } finally {
+      transcript.close()
       this.runs.delete(opts.runId)
       this.terminate(live)
     }

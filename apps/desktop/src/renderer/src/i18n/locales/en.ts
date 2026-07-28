@@ -91,6 +91,7 @@ const en = {
     runsEmpty: 'No worker runs in this workspace yet.',
     runAbort: 'Abort run',
     runOpenPr: 'Open pull request',
+    runOpenLog: 'Open run log',
     runReviewLabel: 'PR #{{pr}} review',
     runStatus: {
       preparing: 'Preparing',

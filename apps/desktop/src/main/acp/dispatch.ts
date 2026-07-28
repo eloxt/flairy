@@ -14,6 +14,7 @@ import {
 } from '../store/db'
 import { broadcast } from '../windows'
 import { getBackend, getBackendConfigValues } from './backends'
+import { hasTranscript } from './transcript'
 import { AcpWorkerManager } from './worker-manager'
 
 /**
@@ -36,11 +37,13 @@ export function initDispatch(agentManager: AgentManager): void {
   agents = agentManager
 }
 
-/** Run row + live tail merged, for the Runs panel. */
+/** Run row + live tail + transcript availability merged, for the Runs panel. */
 export function listRunsWithTail(sessionId: string): WorkerRun[] {
-  return listWorkerRuns(sessionId).map((run) =>
-    workers.isLive(run.id) ? { ...run, tail: workers.tailFor(run.id) } : run
-  )
+  return listWorkerRuns(sessionId).map((run) => ({
+    ...run,
+    tail: workers.isLive(run.id) ? workers.tailFor(run.id) : undefined,
+    hasTranscript: hasTranscript(run.id)
+  }))
 }
 
 export function abortRun(runId: string): void {
@@ -53,7 +56,13 @@ function emitRun(run: WorkerRun): void {
 
 function patchRun(runId: string, patch: Parameters<typeof updateWorkerRun>[1]): WorkerRun | undefined {
   const run = updateWorkerRun(runId, patch)
-  if (run) emitRun(workers.isLive(runId) ? { ...run, tail: workers.tailFor(runId) } : run)
+  if (run) {
+    emitRun({
+      ...run,
+      tail: workers.isLive(runId) ? workers.tailFor(runId) : undefined,
+      hasTranscript: hasTranscript(runId)
+    })
+  }
   return run
 }
 

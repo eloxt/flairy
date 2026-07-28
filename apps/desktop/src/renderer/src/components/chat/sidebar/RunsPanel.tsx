@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconExternalLink, IconPlayerStop } from '@tabler/icons-react'
+import { IconExternalLink, IconFileText, IconPlayerStop } from '@tabler/icons-react'
 import type { WorkerRun, WorkerRunStatus } from '@shared/ipc'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -77,6 +77,17 @@ function RunCard({ run }: { run: WorkerRun }): React.JSX.Element {
             onClick={() => void window.api.abortWorkerRun(run.id)}
           >
             <IconPlayerStop className="size-3.5" />
+          </Button>
+        )}
+        {run.hasTranscript && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            title={t('panel.runOpenLog')}
+            onClick={() => void window.api.openWorkerRunTranscript(run.id)}
+          >
+            <IconFileText className="size-3.5" />
           </Button>
         )}
         {run.prUrl && (
