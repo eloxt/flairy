@@ -9,6 +9,9 @@ import { ModelPanel } from './sidebar/ModelPanel'
 const FilesPanel = lazy(() =>
   import('./sidebar/FilesPanel').then((m) => ({ default: m.FilesPanel }))
 )
+const RunsPanel = lazy(() =>
+  import('./sidebar/RunsPanel').then((m) => ({ default: m.RunsPanel }))
+)
 
 /**
  * The resizable right-hand details panel. Tabs over the active (foreground)
@@ -23,13 +26,14 @@ export function RightSidebar(): React.JSX.Element {
   const { t } = useTranslation()
   const messages = useChat((s) => s.messages)
   const workspacePath = useChat(selectProjectWorkspace)
+  const sessionId = useChat((s) => s.sessionId)
 
   const [tab, setTab] = useState('model')
 
-  // The Files tab unmounts for chat (non-project) sessions; don't strand the
-  // panel on an empty selection when switching to one.
+  // The Files/Runs tabs unmount for chat (non-project) sessions; don't strand
+  // the panel on an empty selection when switching to one.
   useEffect(() => {
-    if (!workspacePath) setTab((cur) => (cur === 'files' ? 'model' : cur))
+    if (!workspacePath) setTab((cur) => (cur === 'files' || cur === 'runs' ? 'model' : cur))
   }, [workspacePath])
 
   return (
@@ -46,6 +50,11 @@ export function RightSidebar(): React.JSX.Element {
             {t('panel.files')}
           </TabsTab>
         )}
+        {workspacePath && sessionId && (
+          <TabsTab value="runs" className="app-no-drag">
+            {t('panel.runs')}
+          </TabsTab>
+        )}
       </TabsList>
       <TabsPanel value="model">
         <ModelPanel messages={messages} />
@@ -55,6 +64,13 @@ export function RightSidebar(): React.JSX.Element {
           {/* Keyed so switching between two project sessions resets tree + preview. */}
           <Suspense fallback={null}>
             <FilesPanel key={workspacePath} workspacePath={workspacePath} />
+          </Suspense>
+        </TabsPanel>
+      )}
+      {workspacePath && sessionId && (
+        <TabsPanel value="runs" className="min-w-0">
+          <Suspense fallback={null}>
+            <RunsPanel key={sessionId} sessionId={sessionId} />
           </Suspense>
         </TabsPanel>
       )}

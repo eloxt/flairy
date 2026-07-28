@@ -9,6 +9,11 @@ import { scheduleImageSweep } from "./store/image-gc";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { registerLocaleHandlers } from "./ipc/locale-handlers";
 import { registerTelegramHandlers } from "./ipc/telegram-handlers";
+import { registerGithubHandlers } from "./ipc/github-handlers";
+import { registerWorkerRunHandlers } from "./ipc/worker-run-handlers";
+import { registerAcpHandlers } from "./ipc/acp-handlers";
+import { initDispatch, workers } from "./acp/dispatch";
+import { failOrphanWorkerRuns } from "./store/db";
 import { registerFsHandlers } from "./ipc/fs-handlers";
 import { ServerClient } from "./sync/server-client";
 import { buildSessionUpsertPayload } from "./sync/session-payload";
@@ -71,6 +76,11 @@ if (!app.requestSingleInstanceLock()) {
     // layer so every front-end (desktop now, Telegram later) drives sessions
     // through one seam.
     const agents = new AgentManager(server, mcp);
+    // ACP worker dispatch (dispatch_task tool) reports back through the agent
+    // manager; runs left 'running' by a previous process are orphans — repair
+    // them before any window can list runs.
+    initDispatch(agents);
+    failOrphanWorkerRuns();
     // Telegram remote-chat front-end onto the same session runtime. Registers its
     // interaction channel + outbound bus subscriber on construction; auto-starts
     // below only if a stored token + enabled binding already exist.
@@ -81,6 +91,9 @@ if (!app.requestSingleInstanceLock()) {
     createMainWindow();
     registerIpcHandlers(server, updates, agents, telegram);
     registerTelegramHandlers(telegram);
+    registerGithubHandlers();
+    registerWorkerRunHandlers();
+    registerAcpHandlers();
     registerFsHandlers();
     telegram.maybeAutoStart();
     updates.start();
@@ -103,6 +116,7 @@ if (!app.requestSingleInstanceLock()) {
       markQuitting();
       updates.stop();
       void telegram.stop();
+      workers.disposeAll();
       agents.disposeAll();
       mcp.dispose();
       server.disconnect();

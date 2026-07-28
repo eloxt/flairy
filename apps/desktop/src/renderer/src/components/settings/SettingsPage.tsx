@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconChevronDown, IconChevronRight, IconInfoCircle, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconTool } from '@tabler/icons-react'
+import { IconBrandGithub, IconChevronDown, IconChevronRight, IconInfoCircle, IconRefresh, IconRobot, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconTool } from '@tabler/icons-react'
 import { BrandMark } from '@/components/BrandMark'
 import type {
+  AcpBackendView,
   AppLanguage,
   ChatWidth,
+  GithubStatus,
   LauncherShortcutStatus,
   Memory,
   RedactedConfigSnapshot,
@@ -24,7 +26,7 @@ import {
 
 import { AdvancedSection } from './advanced/AdvancedSection'
 
-type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'about' | 'advanced'
+type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'github' | 'acp' | 'about' | 'advanced'
 
 /**
  * End-user settings, macOS System Settings style: a frosted sidebar on the left
@@ -56,6 +58,8 @@ export function SettingsPage(): React.JSX.Element {
       { id: 'general', label: t('settings.navGeneral'), icon: IconAdjustmentsHorizontal },
       { id: 'memory', label: t('settings.tabMemory'), icon: IconSparkles },
       { id: 'telegram', label: t('settings.tabTelegram'), icon: IconSend },
+      { id: 'github', label: t('settings.tabGithub'), icon: IconBrandGithub },
+      { id: 'acp', label: t('settings.tabAcp'), icon: IconRobot },
       { id: 'about', label: t('settings.tabAbout'), icon: IconInfoCircle },
       ...(advancedUnlocked
         ? [{ id: 'advanced' as const, label: t('settings.tabAdvanced'), icon: IconTool }]
@@ -67,6 +71,8 @@ export function SettingsPage(): React.JSX.Element {
     account: t('settings.account'),
     memory: t('settings.tabMemory'),
     telegram: t('settings.tabTelegram'),
+    github: t('settings.tabGithub'),
+    acp: t('settings.tabAcp'),
     about: t('settings.tabAbout'),
     advanced: t('settings.tabAdvanced')
   }
@@ -134,6 +140,8 @@ export function SettingsPage(): React.JSX.Element {
           {tab === 'account' && <AccountSection />}
           {tab === 'memory' && <MemorySection />}
           {tab === 'telegram' && <TelegramSection />}
+          {tab === 'github' && <GithubSection />}
+          {tab === 'acp' && <AcpSection />}
           {tab === 'about' && <AboutSection />}
           {tab === 'advanced' && <AdvancedSection />}
         </div>
@@ -607,6 +615,442 @@ function TelegramSection(): React.JSX.Element {
 
       <Caption>{t('settings.telegramWorkspaceDescription')}</Caption>
     </>
+  )
+}
+
+/* ── GitHub: OAuth Device Flow connection ─────────────────────────────────── */
+
+/**
+ * Device Flow sign-in: main returns a user code, the user approves it on
+ * github.com, and the grant lands via onGithubStatusChanged. The OAuth token
+ * never crosses IPC — the renderer only ever sees GithubStatus. The OAuth App
+ * client ID is a public value the user pastes once.
+ */
+function GithubSection(): React.JSX.Element {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<GithubStatus | null>(null)
+  const [clientIdInput, setClientIdInput] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    void window.api.getGithubStatus().then(setStatus)
+    return window.api.onGithubStatusChanged(setStatus)
+  }, [])
+
+  const onSaveClientId = (): void => {
+    const id = clientIdInput.trim()
+    if (!id || busy) return
+    setBusy(true)
+    void window.api
+      .setGithubClientId(id)
+      .then((s) => {
+        setStatus(s)
+        setClientIdInput('')
+      })
+      .finally(() => setBusy(false))
+  }
+
+  const onConnect = (): void => {
+    if (busy) return
+    setBusy(true)
+    // The device code (and later the grant) arrive via onGithubStatusChanged.
+    void window.api
+      .startGithubAuth()
+      .catch(() => undefined)
+      .finally(() => setBusy(false))
+  }
+
+  const onCancel = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api.cancelGithubAuth().then(setStatus).finally(() => setBusy(false))
+  }
+
+  const onDisconnect = (): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api.disconnectGithub().then(setStatus).finally(() => setBusy(false))
+  }
+
+  if (status === null) {
+    return (
+      <>
+        <GroupLabel>{t('settings.githubConnection')}</GroupLabel>
+        <Group>
+          <EmptyRow>{t('settings.loadingConfig')}</EmptyRow>
+        </Group>
+      </>
+    )
+  }
+
+  const { connected, pending } = status
+
+  return (
+    <>
+      <GroupLabel>{t('settings.githubConnection')}</GroupLabel>
+      <Group>
+        <Row
+          label={
+            <span className="flex items-center gap-2">
+              <StatusDot ok={connected} />
+              {connected
+                ? status.login
+                  ? t('settings.githubStatusConnected', { login: status.login })
+                  : t('settings.githubStatusConnectedNoLogin')
+                : t('settings.githubStatusNotConnected')}
+            </span>
+          }
+          description={
+            status.lastError && !connected ? (
+              <span className="text-destructive">
+                {t('settings.githubStatusError', { error: status.lastError })}
+              </span>
+            ) : !connected && !pending ? (
+              t('settings.githubConnectionDescription')
+            ) : undefined
+          }
+        >
+          {connected ? (
+            <Button variant="outline" size="sm" onClick={onDisconnect} disabled={busy}>
+              {t('settings.githubDisconnectButton')}
+            </Button>
+          ) : pending ? (
+            <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
+              {t('settings.githubCancelButton')}
+            </Button>
+          ) : (
+            <Button size="sm" onClick={onConnect} disabled={busy || !status.clientIdSet}>
+              {busy ? t('settings.githubConnecting') : t('settings.githubConnectButton')}
+            </Button>
+          )}
+        </Row>
+
+        {pending && (
+          <>
+            {/* Device code shown prominently so it's easy to type/copy */}
+            <div className="px-3.5 pt-4 pb-3.5 text-center">
+              <p className="text-[11px] text-muted-foreground">{t('settings.githubCodeLabel')}</p>
+              <p className="mt-1 font-mono text-[26px] font-bold tracking-[0.28em] select-all">
+                {pending.userCode}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('settings.githubCodeHint')}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void window.api.openExternal(pending.verificationUri)}
+              >
+                {t('settings.githubOpenButton')}
+              </Button>
+            </div>
+          </>
+        )}
+      </Group>
+
+      {!connected && (
+        <>
+          <GroupLabel>{t('settings.githubClientIdGroup')}</GroupLabel>
+          <Group>
+            <Row
+              label={
+                status.clientIdSet
+                  ? t('settings.githubClientIdSet')
+                  : t('settings.githubClientIdMissing')
+              }
+            >
+              <StatusDot ok={status.clientIdSet} />
+            </Row>
+            <div className="flex items-center gap-2 px-3.5 py-2.5">
+              <Input
+                value={clientIdInput}
+                onChange={(e) => setClientIdInput(e.target.value)}
+                placeholder={t('settings.githubClientIdPlaceholder')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onSaveClientId()
+                }}
+                disabled={busy}
+                className="h-7 flex-1 text-[13px]"
+              />
+              <Button size="sm" onClick={onSaveClientId} disabled={busy || !clientIdInput.trim()}>
+                {t('settings.githubClientIdSave')}
+              </Button>
+            </div>
+          </Group>
+          <Caption>{t('settings.githubClientIdCaption')}</Caption>
+        </>
+      )}
+    </>
+  )
+}
+
+/* ── ACP: coding-agent worker backends (enable + probed options + command) ── */
+
+/**
+ * Which external coding agents Flairy may dispatch project work to (over the
+ * Agent Client Protocol) and how each is configured. The configurable options
+ * (model, effort, …) are not hardcoded: each agent reports them over ACP
+ * (`configOptions` on session/new), so we probe the agent once and render
+ * whatever it offers. The permission-mode option is deliberately NOT exposed —
+ * Flairy's own worktree policy owns permissions, and e.g. "bypass permissions"
+ * would defeat that fence.
+ */
+function AcpSection(): React.JSX.Element {
+  const { t } = useTranslation()
+  const [backends, setBackends] = useState<AcpBackendView[] | null>(null)
+
+  useEffect(() => {
+    void window.api.listAcpBackends().then(setBackends)
+  }, [])
+
+  if (backends === null) {
+    return (
+      <>
+        <GroupLabel>{t('settings.acpAgents')}</GroupLabel>
+        <Group>
+          <EmptyRow>{t('settings.loadingConfig')}</EmptyRow>
+        </Group>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <GroupLabel>{t('settings.acpAgents')}</GroupLabel>
+      <div className="space-y-3">
+        {backends.map((b) => (
+          <AcpBackendCard key={b.id} backend={b} onChanged={setBackends} />
+        ))}
+      </div>
+      <Caption>{t('settings.acpCaption')}</Caption>
+    </>
+  )
+}
+
+function AcpBackendCard({
+  backend,
+  onChanged
+}: {
+  backend: AcpBackendView
+  onChanged: (next: AcpBackendView[]) => void
+}): React.JSX.Element {
+  const { t } = useTranslation()
+  const [model, setModel] = useState(backend.model ?? '')
+  const [command, setCommand] = useState(backend.command ?? '')
+  const [busy, setBusy] = useState(false)
+  const [probing, setProbing] = useState(false)
+
+  // Re-sync local drafts when main sends back a refreshed list.
+  useEffect(() => {
+    setModel(backend.model ?? '')
+    setCommand(backend.command ?? '')
+  }, [backend.model, backend.command])
+
+  const probe = (): void => {
+    if (probing) return
+    setProbing(true)
+    void window.api
+      .probeAcpBackend(backend.id)
+      .then(onChanged)
+      .finally(() => setProbing(false))
+  }
+
+  // First enable: discover the agent's options automatically.
+  useEffect(() => {
+    if (backend.enabled && backend.probedAt === undefined) probe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend.enabled, backend.probedAt])
+
+  const update = (patch: {
+    enabled?: boolean
+    model?: string | null
+    command?: string | null
+    values?: Record<string, string | boolean | null>
+  }): void => {
+    if (busy) return
+    setBusy(true)
+    void window.api
+      .updateAcpBackend({ id: backend.id, ...patch })
+      .then(onChanged)
+      .finally(() => setBusy(false))
+  }
+
+  // Flairy's worktree policy owns the permission mode; never surface it.
+  const options = (backend.options ?? []).filter((o) => o.category !== 'mode')
+  const probeFailed = !probing && backend.probeError !== undefined && backend.options === undefined
+  // Missing agent CLI → grayed out; the switch stays usable only to turn an
+  // already-enabled backend OFF. The command row below remains the escape
+  // hatch: pointing it at a custom binary counts as installed.
+  const missing = !backend.installed
+
+  return (
+    <Group className={missing ? 'opacity-60' : undefined}>
+      <Row
+        label={backend.label}
+        description={
+          missing ? (
+            <span className="text-destructive/80">
+              {t('settings.acpNotInstalled', { bin: backend.detectBin })}
+            </span>
+          ) : (
+            t(`settings.acpDesc.${backend.id}`)
+          )
+        }
+      >
+        <Switch
+          checked={backend.enabled}
+          onCheckedChange={(enabled) => update({ enabled })}
+          disabled={busy || (missing && !backend.enabled)}
+          aria-label={backend.label}
+        />
+      </Row>
+
+      {missing && !backend.enabled && (
+        <div className="flex items-center gap-2 px-3.5 py-2.5">
+          <span className="w-16 shrink-0 text-xs text-muted-foreground">
+            {t('settings.acpCommandLabel')}
+          </span>
+          <Input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder={backend.defaultCommand}
+            onBlur={() => {
+              if (command.trim() !== (backend.command ?? ''))
+                update({ command: command.trim() || null })
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+            disabled={busy}
+            className="h-7 flex-1 font-mono text-[12px]"
+          />
+        </div>
+      )}
+
+      {backend.enabled && probing && <EmptyRow>{t('settings.acpProbing')}</EmptyRow>}
+
+      {backend.enabled && !probing && (
+        <>
+          {options.map((o) => (
+            <Row key={o.id} label={o.name} description={o.description}>
+              {o.type === 'boolean' ? (
+                <Switch
+                  checked={Boolean(backend.values[o.id] ?? o.defaultValue)}
+                  onCheckedChange={(v) => update({ values: { [o.id]: v } })}
+                  disabled={busy}
+                  aria-label={o.name}
+                />
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="inline-flex w-52 shrink-0 items-center justify-between gap-1.5 rounded-[6.5px] bg-background px-2.5 py-1 text-xs shadow-[inset_0_0_0_0.5px_var(--input),0_1px_1.5px_rgb(0_0_0/0.07)] transition-colors hover:bg-muted">
+                    <span className="truncate">
+                      {backend.values[o.id] !== undefined
+                        ? (o.choices?.find((c) => c.value === backend.values[o.id])?.name ??
+                          String(backend.values[o.id]))
+                        : t('settings.acpDefaultOption')}
+                    </span>
+                    <IconChevronDown className="size-3 shrink-0 text-muted-foreground" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-52">
+                    <DropdownMenuItem onClick={() => update({ values: { [o.id]: null } })}>
+                      {t('settings.acpDefaultOption')}
+                    </DropdownMenuItem>
+                    {(o.choices ?? []).map((c) => (
+                      <DropdownMenuItem
+                        key={c.value}
+                        onClick={() => update({ values: { [o.id]: c.value } })}
+                      >
+                        <span className="flex flex-col">
+                          <span>{c.name}</span>
+                          {c.description && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {c.description}
+                            </span>
+                          )}
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </Row>
+          ))}
+
+          {probeFailed && (
+            <>
+              <Row
+                label={
+                  <span className="text-destructive">
+                    {t('settings.acpProbeFailed')}
+                  </span>
+                }
+                description={backend.probeError}
+              >
+                <Button variant="outline" size="sm" onClick={probe} disabled={probing}>
+                  {t('settings.acpProbeRetry')}
+                </Button>
+              </Row>
+              {/* No option list to pick from → free-text model fallback. */}
+              <div className="flex items-center gap-2 px-3.5 py-2.5">
+                <span className="w-16 shrink-0 text-xs text-muted-foreground">
+                  {t('settings.acpModelLabel')}
+                </span>
+                <Input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={t('settings.acpModelPlaceholder', {
+                    model: backend.modelPlaceholder
+                  })}
+                  onBlur={() => {
+                    if (model.trim() !== (backend.model ?? ''))
+                      update({ model: model.trim() || null })
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  }}
+                  disabled={busy}
+                  className="h-7 flex-1 text-[13px]"
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-2 px-3.5 py-2.5">
+            <span className="w-16 shrink-0 text-xs text-muted-foreground">
+              {t('settings.acpCommandLabel')}
+            </span>
+            <Input
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              placeholder={backend.defaultCommand}
+              onBlur={() => {
+                if (command.trim() !== (backend.command ?? ''))
+                  update({ command: command.trim() || null })
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+              disabled={busy}
+              className="h-7 flex-1 font-mono text-[12px]"
+            />
+            {backend.probedAt !== undefined && !probeFailed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                title={t('settings.acpRefresh')}
+                onClick={probe}
+                disabled={probing}
+              >
+                <IconRefresh className="size-3.5" />
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+    </Group>
   )
 }
 

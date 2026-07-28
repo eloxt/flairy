@@ -34,6 +34,8 @@ import { createMemoryTool } from "./tools/memory";
 import { createTodoTool } from "./tools/todo";
 import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import { createWebFetchTool } from "./tools/web-fetch";
+import { createGithubTools } from "../github/tools";
+import { createDispatchTaskTool } from "./tools/dispatch-task";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
 import { questions } from "./questions";
@@ -579,6 +581,12 @@ export class AgentService {
         createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
         createTodoTool(),
       );
+      // GitHub tools are a generic project-session capability (the orchestrator
+      // skill builds on them). Always registered so the model can surface a
+      // clear "connect GitHub in Settings" error instead of the tools silently
+      // not existing; only github_read is read-only-allowlisted.
+      tools.push(...createGithubTools(cwd));
+      tools.push(createDispatchTaskTool(this.sessionId, cwd));
     }
     // Offer web_search only when an Exa service is configured + enabled, so the
     // model never sees a tool it can't actually use. Resolved fresh at execute

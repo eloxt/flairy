@@ -25,7 +25,17 @@ export { createReadTool, createWriteTool, createEditTool, createBashTool, create
  * would just nag the user for something inherently safe — matching the
  * always-on, zero-config product model.
  */
-export const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'web_search', 'web_fetch'])
+export const READ_ONLY_TOOLS = new Set([
+  'read',
+  'grep',
+  'find',
+  'ls',
+  'web_search',
+  'web_fetch',
+  // Genuinely non-mutating GitHub API reads (repo/issues/PRs); every mutating
+  // GitHub tool (create_repo/push/issue_write/pr_write) stays gated.
+  'github_read'
+])
 
 export function isReadOnlyTool(name: string): boolean {
   return READ_ONLY_TOOLS.has(name)

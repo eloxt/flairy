@@ -82,6 +82,16 @@ export const IPC = {
   TelegramUnpair: 'telegram:unpair',
   TelegramPause: 'telegram:pause',
   TelegramResume: 'telegram:resume',
+  GithubGetStatus: 'github:get-status',
+  GithubAuthStart: 'github:auth-start',
+  GithubAuthCancel: 'github:auth-cancel',
+  GithubDisconnect: 'github:disconnect',
+  GithubSetClientId: 'github:set-client-id',
+  WorkerRunList: 'worker-run:list',
+  WorkerRunAbort: 'worker-run:abort',
+  AcpBackendList: 'acp:backend-list',
+  AcpBackendUpdate: 'acp:backend-update',
+  AcpBackendProbe: 'acp:backend-probe',
   AuthLogin: 'auth:login',
   AuthRegister: 'auth:register',
   AuthLogout: 'auth:logout',
@@ -120,6 +130,8 @@ export const IPC = {
   LocalConfigSave: 'local-config:save',
   // event streams (send)
   TelegramStatusChanged: 'telegram:status-changed',
+  GithubStatusChanged: 'github:status-changed',
+  WorkerRunChanged: 'worker-run:changed',
   UpdateStateChanged: 'update:state-changed',
   AgentEvent: 'agent:event',
   ApprovalRequest: 'agent:approval-request',
@@ -608,6 +620,128 @@ export interface TelegramConnectArgs {
   token: string
 }
 
+/**
+ * A pending GitHub Device Flow verification: the renderer shows the code and
+ * points the user at github.com/login/device. Main polls in the background and
+ * pushes a GithubStatusChanged once the grant lands.
+ */
+export interface GithubDeviceCode {
+  userCode: string
+  verificationUri: string
+  /** Seconds until this code expires. */
+  expiresIn: number
+}
+
+/**
+ * Live status of the GitHub connection, pushed via GithubStatusChanged. No
+ * token anywhere renderer-facing — only whether one exists and whose it is.
+ */
+export interface GithubStatus {
+  connected: boolean
+  /** GitHub login of the connected account. */
+  login?: string
+  /** Whether an OAuth App client ID is configured (Device Flow needs one). */
+  clientIdSet: boolean
+  /** Present while a device authorization is awaiting the user on github.com. */
+  pending?: GithubDeviceCode
+  /** Last auth failure surfaced to the settings card. */
+  lastError?: string
+}
+
+/**
+ * One configuration option an ACP agent advertises for its sessions
+ * (`configOptions` on session/new — model, effort, mode, …), reduced to a
+ * renderer-safe shape. Selects carry flattened choices; booleans are switches.
+ */
+export interface AcpConfigOption {
+  id: string
+  name: string
+  description?: string
+  /** Semantic hint from the agent: 'mode' | 'model' | 'thought_level' | … */
+  category?: string
+  type: 'select' | 'boolean'
+  /** The agent's own default (current) value. */
+  defaultValue: string | boolean
+  /** Choices for select options. */
+  choices?: { value: string; name: string; description?: string }[]
+}
+
+/**
+ * Renderer view of one ACP worker backend (an external coding agent Flairy can
+ * dispatch work to). Settings page material: which agents are enabled, the
+ * config options probed from the agent itself (model/effort/…), the user's
+ * chosen values, and an optional launch-command override.
+ */
+export interface AcpBackendView {
+  id: string
+  label: string
+  enabled: boolean
+  /** Whether the underlying agent CLI was found on this machine (or a command override is set). */
+  installed: boolean
+  /** The binary name the detection looked for (for the "install X first" hint). */
+  detectBin: string
+  /** Free-text model fallback, used only when the probe found no model option. */
+  model?: string
+  /** Example model id shown as the input placeholder. */
+  modelPlaceholder: string
+  /** User override of the launch command line (empty = default). */
+  command?: string
+  defaultCommand: string
+  /** Config options reported by the agent (probed; undefined = never probed). */
+  options?: AcpConfigOption[]
+  /** User-chosen option values, keyed by option id (absent = agent default). */
+  values: Record<string, string | boolean>
+  /** When the options were last probed (epoch ms). */
+  probedAt?: number
+  /** Why the last probe failed, if it did. */
+  probeError?: string
+}
+
+/** Patch for one backend; undefined = leave unchanged, null/'' = clear. */
+export interface AcpBackendUpdateArgs {
+  id: string
+  enabled?: boolean
+  model?: string | null
+  command?: string | null
+  /** Option values to merge; a null value clears that option back to default. */
+  values?: Record<string, string | boolean | null>
+}
+
+/** Lifecycle of an ACP worker dispatch (dispatch_task). */
+export type WorkerRunStatus =
+  | 'preparing'
+  | 'running'
+  | 'pushing'
+  | 'pr_opened'
+  | 'failed'
+  | 'cancelled'
+  | 'timeout'
+
+/**
+ * One worker dispatch: an external coding agent (driven over ACP) implementing
+ * a GitHub issue in an isolated git worktree. Persisted in SQLite for the Runs
+ * panel + startup reconciliation; `tail` is the live in-memory activity feed.
+ */
+export interface WorkerRun {
+  id: string
+  sessionId: string
+  issueNumber?: number
+  backend: string
+  branch?: string
+  worktreePath?: string
+  status: WorkerRunStatus
+  prNumber?: number
+  prUrl?: string
+  /** Final worker summary, or the error text for failed runs. */
+  summary?: string
+  /** Rolling tail of live worker activity (present only while running). */
+  tail?: string
+  startedAt?: number
+  endedAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
 /** Main server socket connection state, renderer-safe and credential-free. */
 export type SocketConnectionStatus = 'disconnected' | 'connecting' | 'connected'
 
@@ -752,6 +886,38 @@ export interface FlairyApi {
   resumeTelegram(): Promise<TelegramStatus>
   /** Subscribe to Telegram status changes pushed from main. Returns an unsubscribe fn. */
   onTelegramStatusChanged(cb: (s: TelegramStatus) => void): () => void
+  /** Current GitHub connection status (never the token). */
+  getGithubStatus(): Promise<GithubStatus>
+  /**
+   * Begin the Device Flow: resolves with the user code + verification URL to
+   * display. Main keeps polling GitHub; the eventual grant (or failure) arrives
+   * via onGithubStatusChanged.
+   */
+  startGithubAuth(): Promise<GithubDeviceCode>
+  /** Abandon a pending device authorization. */
+  cancelGithubAuth(): Promise<GithubStatus>
+  /** Wipe the stored token and return the new status. */
+  disconnectGithub(): Promise<GithubStatus>
+  /** Save the OAuth App client ID (public value) used for Device Flow. */
+  setGithubClientId(clientId: string): Promise<GithubStatus>
+  /** Subscribe to GitHub status changes pushed from main. Returns an unsubscribe fn. */
+  onGithubStatusChanged(cb: (s: GithubStatus) => void): () => void
+  /** Worker runs for a session (live tail merged in), newest first. */
+  listWorkerRuns(sessionId: string): Promise<WorkerRun[]>
+  /** Abort a running worker dispatch. */
+  abortWorkerRun(runId: string): Promise<void>
+  /** Subscribe to worker-run updates pushed from main. Returns an unsubscribe fn. */
+  onWorkerRunChanged(cb: (run: WorkerRun) => void): () => void
+  /** All known ACP worker backends with their settings (for the ACP settings page). */
+  listAcpBackends(): Promise<AcpBackendView[]>
+  /** Patch one backend's enabled/model/command/values; returns the refreshed list. */
+  updateAcpBackend(args: AcpBackendUpdateArgs): Promise<AcpBackendView[]>
+  /**
+   * Launch the agent briefly to discover its config options (model, effort, …).
+   * Slow on first run (npx self-install). Returns the refreshed list — with
+   * `options` populated on success or `probeError` set on failure.
+   */
+  probeAcpBackend(id: string): Promise<AcpBackendView[]>
   login(args: LoginArgs): Promise<AuthStatus>
   register(args: RegisterArgs): Promise<AuthStatus>
   logout(): Promise<void>

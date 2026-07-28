@@ -100,6 +100,33 @@ export function clearAuth(): void {
  */
 const TELEGRAM_TOKEN_KEY = '__telegram_token__'
 
+/**
+ * The GitHub OAuth access token (Device Flow), stored under a reserved key like
+ * the other integration secrets. MAIN-ONLY: the renderer only ever learns
+ * whether a token exists (and the account login), never the token itself.
+ */
+const GITHUB_TOKEN_KEY = '__github_token__'
+
+export function setGithubToken(token: string): void {
+  const all = loadAll()
+  all[GITHUB_TOKEN_KEY] = token
+  saveAll(all)
+}
+
+export function getGithubToken(): string | null {
+  return loadAll()[GITHUB_TOKEN_KEY] ?? null
+}
+
+export function hasGithubToken(): boolean {
+  return Boolean(loadAll()[GITHUB_TOKEN_KEY])
+}
+
+export function clearGithubToken(): void {
+  const all = loadAll()
+  delete all[GITHUB_TOKEN_KEY]
+  saveAll(all)
+}
+
 export function setTelegramToken(token: string): void {
   const all = loadAll()
   all[TELEGRAM_TOKEN_KEY] = token

@@ -3,7 +3,7 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
-import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode } from '@shared/ipc'
+import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode, WorkerRun, WorkerRunStatus } from '@shared/ipc'
 import { dehydrateImages, IMAGE_REF_SCAN_RE } from './image-store'
 import { t } from '../locale'
 
@@ -124,6 +124,25 @@ export function initDb(): void {
     -- args_preview is a redacted/truncated snippet (mask token-shaped substrings);
     -- args_hash is the tamper-evidence. Full args are only shown ephemerally
     -- in the approval card and are never persisted in cleartext.
+    -- One row per ACP worker dispatch (dispatch_task): status machine for the
+    -- Runs panel, abort, and startup reconciliation. The live streaming tail is
+    -- in-memory only (AcpWorkerManager); this stores the final summary.
+    CREATE TABLE IF NOT EXISTS worker_runs (
+      id            TEXT PRIMARY KEY,
+      session_id    TEXT NOT NULL,
+      issue_number  INTEGER,
+      backend       TEXT NOT NULL,
+      branch        TEXT,
+      worktree_path TEXT,
+      status        TEXT NOT NULL,
+      pr_number     INTEGER,
+      pr_url        TEXT,
+      summary       TEXT,
+      started_at    INTEGER,
+      ended_at      INTEGER,
+      created_at    INTEGER NOT NULL,
+      updated_at    INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS telegram_audit (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id   TEXT,
@@ -498,6 +517,7 @@ export function deleteSession(id: string): boolean {
     db.prepare('DELETE FROM messages WHERE sessionId = ?').run(sid)
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts WHERE sessionId = ?').run(sid)
     db.prepare('DELETE FROM context_compression WHERE sessionId = ?').run(sid)
+    db.prepare('DELETE FROM worker_runs WHERE session_id = ?').run(sid)
     const res = db.prepare('DELETE FROM sessions WHERE id = ?').run(sid)
     return res.changes > 0
   })(id)
@@ -522,7 +542,126 @@ export function clearAllSessions(): void {
     db.prepare('DELETE FROM sessions').run()
     db.prepare('DELETE FROM context_compression').run()
     db.prepare('DELETE FROM telegram_threads').run()
+    db.prepare('DELETE FROM worker_runs').run()
   })()
+}
+
+/* ── Worker runs (ACP dispatch_task) ──────────────────────────────────────── */
+
+interface WorkerRunRow {
+  id: string
+  session_id: string
+  issue_number: number | null
+  backend: string
+  branch: string | null
+  worktree_path: string | null
+  status: string
+  pr_number: number | null
+  pr_url: string | null
+  summary: string | null
+  started_at: number | null
+  ended_at: number | null
+  created_at: number
+  updated_at: number
+}
+
+function mapWorkerRunRow(r: WorkerRunRow): WorkerRun {
+  return {
+    id: r.id,
+    sessionId: r.session_id,
+    issueNumber: r.issue_number ?? undefined,
+    backend: r.backend,
+    branch: r.branch ?? undefined,
+    worktreePath: r.worktree_path ?? undefined,
+    status: r.status as WorkerRunStatus,
+    prNumber: r.pr_number ?? undefined,
+    prUrl: r.pr_url ?? undefined,
+    summary: r.summary ?? undefined,
+    startedAt: r.started_at ?? undefined,
+    endedAt: r.ended_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }
+}
+
+export function insertWorkerRun(run: WorkerRun): void {
+  db.prepare(
+    `INSERT INTO worker_runs (id, session_id, issue_number, backend, branch, worktree_path,
+       status, pr_number, pr_url, summary, started_at, ended_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    run.id,
+    run.sessionId,
+    run.issueNumber ?? null,
+    run.backend,
+    run.branch ?? null,
+    run.worktreePath ?? null,
+    run.status,
+    run.prNumber ?? null,
+    run.prUrl ?? null,
+    run.summary ?? null,
+    run.startedAt ?? null,
+    run.endedAt ?? null,
+    run.createdAt,
+    run.updatedAt
+  )
+}
+
+export function updateWorkerRun(
+  id: string,
+  patch: Partial<Pick<WorkerRun, 'status' | 'branch' | 'worktreePath' | 'prNumber' | 'prUrl' | 'summary' | 'startedAt' | 'endedAt'>>
+): WorkerRun | undefined {
+  const existing = getWorkerRun(id)
+  if (!existing) return undefined
+  const next: WorkerRun = { ...existing, ...patch, updatedAt: Date.now() }
+  db.prepare(
+    `UPDATE worker_runs SET status = ?, branch = ?, worktree_path = ?, pr_number = ?,
+       pr_url = ?, summary = ?, started_at = ?, ended_at = ?, updated_at = ? WHERE id = ?`
+  ).run(
+    next.status,
+    next.branch ?? null,
+    next.worktreePath ?? null,
+    next.prNumber ?? null,
+    next.prUrl ?? null,
+    next.summary ?? null,
+    next.startedAt ?? null,
+    next.endedAt ?? null,
+    next.updatedAt,
+    id
+  )
+  return next
+}
+
+export function getWorkerRun(id: string): WorkerRun | undefined {
+  const row = db.prepare('SELECT * FROM worker_runs WHERE id = ?').get(id) as
+    | WorkerRunRow
+    | undefined
+  return row ? mapWorkerRunRow(row) : undefined
+}
+
+export function listWorkerRuns(sessionId: string): WorkerRun[] {
+  const rows = db
+    .prepare('SELECT * FROM worker_runs WHERE session_id = ? ORDER BY created_at DESC')
+    .all(sessionId) as WorkerRunRow[]
+  return rows.map(mapWorkerRunRow)
+}
+
+/**
+ * Startup reconciliation: any run still marked live from a previous process is
+ * an orphan (its child process died with the app). Returns the repaired runs.
+ */
+export function failOrphanWorkerRuns(): WorkerRun[] {
+  const rows = db
+    .prepare("SELECT * FROM worker_runs WHERE status IN ('preparing', 'running', 'pushing')")
+    .all() as WorkerRunRow[]
+  const now = Date.now()
+  const stmt = db.prepare(
+    "UPDATE worker_runs SET status = 'failed', summary = COALESCE(summary, ?), ended_at = ?, updated_at = ? WHERE id = ?"
+  )
+  return rows.map((r) => {
+    stmt.run('Interrupted: the app quit while this run was in progress.', now, now, r.id)
+    return { ...mapWorkerRunRow(r), status: 'failed' as const, endedAt: now, updatedAt: now }
+  })
 }
 
 export function loadMessages(sessionId: string): unknown[] {

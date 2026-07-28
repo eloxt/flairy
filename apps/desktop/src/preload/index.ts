@@ -14,8 +14,10 @@ import {
   type SessionMeta,
   type SessionTitleUpdatedPayload,
   type SocketConnectionStatus,
+  type GithubStatus,
   type TelegramStatus,
-  type UpdateState
+  type UpdateState,
+  type WorkerRun
 } from '@shared/ipc'
 
 /**
@@ -180,6 +182,26 @@ const api: FlairyApi = {
     const listener = (_e: unknown, s: TelegramStatus): void => cb(s)
     ipcRenderer.on(IPC.TelegramStatusChanged, listener)
     return () => ipcRenderer.removeListener(IPC.TelegramStatusChanged, listener)
+  },
+  getGithubStatus: () => ipcRenderer.invoke(IPC.GithubGetStatus),
+  startGithubAuth: () => ipcRenderer.invoke(IPC.GithubAuthStart),
+  cancelGithubAuth: () => ipcRenderer.invoke(IPC.GithubAuthCancel),
+  disconnectGithub: () => ipcRenderer.invoke(IPC.GithubDisconnect),
+  setGithubClientId: (clientId) => ipcRenderer.invoke(IPC.GithubSetClientId, clientId),
+  onGithubStatusChanged: (cb) => {
+    const listener = (_e: unknown, s: GithubStatus): void => cb(s)
+    ipcRenderer.on(IPC.GithubStatusChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.GithubStatusChanged, listener)
+  },
+  listWorkerRuns: (sessionId) => ipcRenderer.invoke(IPC.WorkerRunList, sessionId),
+  abortWorkerRun: (runId) => ipcRenderer.invoke(IPC.WorkerRunAbort, runId),
+  listAcpBackends: () => ipcRenderer.invoke(IPC.AcpBackendList),
+  updateAcpBackend: (args) => ipcRenderer.invoke(IPC.AcpBackendUpdate, args),
+  probeAcpBackend: (id) => ipcRenderer.invoke(IPC.AcpBackendProbe, id),
+  onWorkerRunChanged: (cb) => {
+    const listener = (_e: unknown, run: WorkerRun): void => cb(run)
+    ipcRenderer.on(IPC.WorkerRunChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.WorkerRunChanged, listener)
   },
   onCompressStatus: (cb) => {
     const listener = (_e: unknown, payload: CompressStatusPayload): void => cb(payload)
