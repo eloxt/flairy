@@ -86,6 +86,7 @@ export function dispatchTask(args: DispatchArgs): WorkerRun {
   const run: WorkerRun = {
     id: randomUUID(),
     sessionId: args.sessionId,
+    kind: 'implement',
     issueNumber: args.issueNumber,
     backend: backend.id,
     status: 'preparing',
@@ -97,9 +98,178 @@ export function dispatchTask(args: DispatchArgs): WorkerRun {
   void runPipeline(run.id, args, backend.id).catch((err) => {
     // Belt-and-braces: runPipeline reports its own failures; this catches bugs.
     console.error('[dispatch] pipeline crashed', err)
-    finishRun(run.id, args, 'failed', err instanceof Error ? err.message : String(err))
+    finishRun(run.id, args.sessionId, `issue #${args.issueNumber}`, 'failed', err instanceof Error ? err.message : String(err))
   })
   return run
+}
+
+export interface ReviewArgs {
+  sessionId: string
+  /** The project session's workspace (the main clone). */
+  cwd: string
+  prNumber: number
+  backendId?: string
+}
+
+/**
+ * Dispatch a REVIEW of a pull request: check the PR's head branch out into an
+ * isolated worktree, run a worker with the read-only permission policy (it may
+ * read/search/execute — running the tests is the review — but not modify), and
+ * post its findings as a PR comment. Fire-and-forget like dispatchTask.
+ */
+export function dispatchReview(args: ReviewArgs): WorkerRun {
+  if (!agents) throw new Error('Dispatch pipeline not initialized')
+  const backend = getBackend(args.backendId)
+  const duplicate = listWorkerRuns(args.sessionId).find(
+    (r) =>
+      r.kind === 'review' &&
+      r.prNumber === args.prNumber &&
+      (r.status === 'preparing' || r.status === 'running')
+  )
+  if (duplicate) {
+    throw new Error(
+      `PR #${args.prNumber} already has a review in progress (${duplicate.id}). Abort it or wait for it to finish.`
+    )
+  }
+  const now = Date.now()
+  const run: WorkerRun = {
+    id: randomUUID(),
+    sessionId: args.sessionId,
+    kind: 'review',
+    prNumber: args.prNumber,
+    backend: backend.id,
+    status: 'preparing',
+    createdAt: now,
+    updatedAt: now
+  }
+  insertWorkerRun(run)
+  emitRun(run)
+  void runReviewPipeline(run.id, args, backend.id).catch((err) => {
+    console.error('[dispatch] review pipeline crashed', err)
+    finishRun(run.id, args.sessionId, `PR #${args.prNumber} review`, 'failed', err instanceof Error ? err.message : String(err))
+  })
+  return run
+}
+
+async function runReviewPipeline(runId: string, args: ReviewArgs, backendId: string): Promise<void> {
+  const { sessionId, cwd, prNumber } = args
+  const label = `PR #${prNumber} review`
+  try {
+    const { owner, repo } = await resolveRepoFromCwd(cwd)
+    const gh = getOctokit()
+    const { data: pr } = await gh.rest.pulls.get({ owner, repo, pull_number: prNumber })
+    const headRef = pr.head.ref
+    const base = pr.base.ref
+
+    await git(['fetch', 'origin'], { cwd, authed: true, timeoutMs: 300_000 })
+    const worktreesRoot = join(cwd, '.flairy', 'worktrees')
+    mkdirSync(worktreesRoot, { recursive: true })
+    const worktreePath = join(worktreesRoot, `review-pr-${prNumber}`)
+    const reviewBranch = `flairy/review-pr-${prNumber}`
+    await git(['worktree', 'remove', '--force', worktreePath], { cwd }).catch(() => undefined)
+    await git(['branch', '-D', reviewBranch], { cwd }).catch(() => undefined)
+    await git(['worktree', 'add', worktreePath, '-b', reviewBranch, `origin/${headRef}`], { cwd })
+
+    const diffStat = await git(['diff', '--stat', `origin/${base}...HEAD`], { cwd: worktreePath })
+    writeFileSync(join(worktreePath, 'REVIEW.md'), reviewBrief(pr, prNumber, base, diffStat))
+
+    patchRun(runId, { status: 'running', branch: headRef, worktreePath, startedAt: Date.now() })
+
+    let lastTailEmit = 0
+    const result = await workers.startRun({
+      runId,
+      backend: getBackend(backendId),
+      configValues: getBackendConfigValues(backendId),
+      cwd: worktreePath,
+      readOnly: true,
+      prompt:
+        'Read REVIEW.md in the repository root and review the pull request it describes. ' +
+        'Do NOT modify any files and do NOT commit. Your final message must be the review itself.',
+      onTail: () => {
+        const now = Date.now()
+        if (now - lastTailEmit < 300) return
+        lastTailEmit = now
+        const run = getWorkerRun(runId)
+        if (run) emitRun({ ...run, tail: workers.tailFor(runId) })
+      }
+    })
+
+    if (result.outcome === 'cancelled') {
+      finishRun(runId, sessionId, label, 'cancelled', undefined, result.summary || 'Run aborted.')
+      return
+    }
+    if (result.outcome !== 'completed') {
+      finishRun(
+        runId,
+        sessionId,
+        label,
+        result.outcome === 'timeout' ? 'timeout' : 'failed',
+        result.error,
+        result.summary
+      )
+      return
+    }
+    if (!result.summary.trim()) {
+      finishRun(runId, sessionId, label, 'failed', 'The reviewer finished without producing a review.')
+      return
+    }
+
+    // Post the findings on the PR — as a comment, never an approval: merging
+    // verdicts belong to the user.
+    const body = `## 🤖 Review (${backendId})\n\n${truncate(result.summary, 60_000)}`
+    await gh.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: prNumber,
+      body,
+      event: 'COMMENT'
+    })
+    patchRun(runId, { status: 'reviewed', summary: result.summary, endedAt: Date.now() })
+    report(
+      sessionId,
+      `[worker report] Review of PR #${prNumber} posted (${pr.html_url}).\n\nReview:\n${truncate(result.summary, 3000)}`
+    )
+  } catch (err) {
+    finishRun(runId, sessionId, label, 'failed', err instanceof Error ? err.message : String(err))
+  }
+}
+
+function reviewBrief(
+  pr: { title: string; body?: string | null; html_url: string },
+  prNumber: number,
+  base: string,
+  diffStat: string
+): string {
+  return [
+    `# Review: ${pr.title}`,
+    '',
+    `Pull request: #${prNumber} (${pr.html_url}) · this worktree has the PR's head branch checked out.`,
+    '',
+    '## PR description',
+    '',
+    pr.body?.trim() || '(no description)',
+    '',
+    '## Changed files',
+    '',
+    '```',
+    diffStat || '(empty diff)',
+    '```',
+    '',
+    `Inspect the full change with: \`git diff origin/${base}...HEAD\``,
+    '',
+    '## Your job',
+    '',
+    '- Review the diff for correctness, edge cases, and adherence to the repository conventions (CONTRIBUTING.md if present).',
+    '- Run the build/tests if available and report whether they pass.',
+    '- Do NOT modify any files, do NOT commit, do NOT run remote git operations.',
+    '',
+    '## Output format (your final message IS the review)',
+    '',
+    '- Verdict line first: either `LGTM` or `Changes requested`.',
+    '- Then findings as a list — each with file/line reference, severity (blocker/suggestion), and a concrete fix.',
+    '- Then a one-line test/build result.',
+    '- Be specific and brief; no praise padding.'
+  ].join('\n')
 }
 
 async function runPipeline(runId: string, args: DispatchArgs, backendId: string): Promise<void> {
@@ -149,14 +319,16 @@ async function runPipeline(runId: string, args: DispatchArgs, backendId: string)
       }
     })
 
+    const label = `issue #${issueNumber}`
     if (result.outcome === 'cancelled') {
-      finishRun(runId, args, 'cancelled', undefined, result.summary || 'Run aborted.')
+      finishRun(runId, sessionId, label, 'cancelled', undefined, result.summary || 'Run aborted.')
       return
     }
     if (result.outcome !== 'completed') {
       finishRun(
         runId,
-        args,
+        sessionId,
+        label,
         result.outcome === 'timeout' ? 'timeout' : 'failed',
         result.error,
         result.summary
@@ -167,7 +339,7 @@ async function runPipeline(runId: string, args: DispatchArgs, backendId: string)
     // 5. Verify the worker actually committed something.
     const commits = await git(['log', '--oneline', `origin/${base}..HEAD`], { cwd: worktreePath })
     if (!commits) {
-      finishRun(runId, args, 'failed', 'The worker finished without making any commits.', result.summary)
+      finishRun(runId, sessionId, label, 'failed', 'The worker finished without making any commits.', result.summary)
       return
     }
 
@@ -194,28 +366,29 @@ async function runPipeline(runId: string, args: DispatchArgs, backendId: string)
         `Commits:\n${truncate(commits, 1000)}\n\nWorker summary:\n${truncate(result.summary, 2000)}`
     )
   } catch (err) {
-    finishRun(runId, args, 'failed', err instanceof Error ? err.message : String(err))
+    finishRun(runId, sessionId, `issue #${issueNumber}`, 'failed', err instanceof Error ? err.message : String(err))
   }
 }
 
 function finishRun(
   runId: string,
-  args: DispatchArgs,
+  sessionId: string,
+  label: string,
   status: 'failed' | 'cancelled' | 'timeout',
   error?: string,
   summary?: string
 ): void {
   const detail = [error, summary].filter(Boolean).join('\n\n')
   patchRun(runId, { status, summary: detail || undefined, endedAt: Date.now() })
-  const label =
+  const verb =
     status === 'cancelled'
       ? 'was aborted'
       : status === 'timeout'
         ? 'timed out'
         : 'failed'
   report(
-    args.sessionId,
-    `[worker report] Run for issue #${args.issueNumber} ${label}.` +
+    sessionId,
+    `[worker report] Run for ${label} ${verb}.` +
       (error ? `\nError: ${truncate(error, 1500)}` : '') +
       (summary ? `\nWorker output (tail):\n${truncate(summary, 1500)}` : '')
   )

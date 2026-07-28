@@ -36,6 +36,7 @@ import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import { createWebFetchTool } from "./tools/web-fetch";
 import { createGithubTools } from "../github/tools";
 import { createDispatchTaskTool } from "./tools/dispatch-task";
+import { createDispatchReviewTool } from "./tools/dispatch-review";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { McpManager } from "./mcp";
 import { questions } from "./questions";
@@ -587,6 +588,7 @@ export class AgentService {
       // not existing; only github_read is read-only-allowlisted.
       tools.push(...createGithubTools(cwd));
       tools.push(createDispatchTaskTool(this.sessionId, cwd));
+      tools.push(createDispatchReviewTool(this.sessionId, cwd));
     }
     // Offer web_search only when an Exa service is configured + enabled, so the
     // model never sees a tool it can't actually use. Resolved fresh at execute

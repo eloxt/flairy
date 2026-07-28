@@ -88,11 +88,14 @@ const zhCN: typeof En = {
     runsEmpty: '这个工作区还没有派发过任务。',
     runAbort: '中止任务',
     runOpenPr: '打开 Pull Request',
+    runReviewLabel: 'PR #{{pr}} 评审',
     runStatus: {
       preparing: '准备中',
       running: '进行中',
       pushing: '推送中',
       pr_opened: '已开 PR',
+      merged: '已合并',
+      reviewed: '已评审',
       failed: '失败',
       cancelled: '已中止',
       timeout: '超时'

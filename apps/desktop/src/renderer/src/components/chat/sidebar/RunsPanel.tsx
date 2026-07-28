@@ -61,7 +61,11 @@ function RunCard({ run }: { run: WorkerRun }): React.JSX.Element {
       <div className="flex items-center gap-2">
         <StatusChip status={run.status} />
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
-          {run.issueNumber != null ? `#${run.issueNumber}` : run.id.slice(0, 8)}
+          {run.kind === 'review' && run.prNumber != null
+            ? t('panel.runReviewLabel', { pr: run.prNumber })
+            : run.issueNumber != null
+              ? `#${run.issueNumber}`
+              : run.id.slice(0, 8)}
           <span className="ml-1.5 font-normal text-muted-foreground">{run.backend}</span>
         </span>
         {live && (
@@ -108,6 +112,8 @@ function StatusChip({ status }: { status: WorkerRunStatus }): React.JSX.Element 
     running: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
     pushing: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
     pr_opened: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    merged: 'bg-violet-500/15 text-violet-600 dark:text-violet-400',
+    reviewed: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
     failed: 'bg-destructive/15 text-destructive',
     cancelled: 'bg-foreground/10 text-muted-foreground',
     timeout: 'bg-destructive/15 text-destructive'

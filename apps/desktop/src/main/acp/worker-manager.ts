@@ -42,6 +42,12 @@ export interface StartWorkerOptions {
   cwd: string
   prompt: string
   /**
+   * Reviewer runs must not change the code under review: file-mutating kinds
+   * (edit/delete/move) are denied on top of the normal worktree fence.
+   * Execution stays allowed — running the tests IS the review.
+   */
+  readOnly?: boolean
+  /**
    * User-chosen ACP config-option values (model, effort, …) applied via
    * session/set_config_option right after the session opens. Best-effort: an
    * option the agent no longer offers is noted in the tail, not fatal.
@@ -162,7 +168,7 @@ export class AcpWorkerManager {
         .onRequest(
           methods.client.session.requestPermission,
           (ctx): RequestPermissionResponse => {
-            const decision = decidePermission(ctx.params, opts.cwd)
+            const decision = decidePermission(ctx.params, opts.cwd, opts.readOnly)
             appendTail(
               `\n[permission ${decision.optionId && decision.allow ? 'granted' : 'denied'}] ${ctx.params.toolCall.title ?? ctx.params.toolCall.kind ?? 'tool'}\n`
             )
@@ -305,13 +311,16 @@ function isInside(root: string, target: string): boolean {
  */
 function decidePermission(
   params: RequestPermissionRequest,
-  worktree: string
+  worktree: string,
+  readOnly?: boolean
 ): { allow: boolean; optionId?: string } {
   const kind = params.toolCall.kind ?? 'other'
   const locations = params.toolCall.locations ?? []
   const locationsOk = locations.every((l) => isInside(worktree, l.path))
-  const SAFE_KINDS = new Set(['read', 'search', 'think', 'edit', 'delete', 'move', 'execute'])
-  const allow = SAFE_KINDS.has(kind) && locationsOk
+  const safeKinds = readOnly
+    ? new Set(['read', 'search', 'think', 'execute'])
+    : new Set(['read', 'search', 'think', 'edit', 'delete', 'move', 'execute'])
+  const allow = safeKinds.has(kind) && locationsOk
 
   const pick = (kinds: PermissionOption['kind'][]): string | undefined => {
     for (const k of kinds) {

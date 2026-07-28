@@ -707,15 +707,22 @@ export interface AcpBackendUpdateArgs {
   values?: Record<string, string | boolean | null>
 }
 
-/** Lifecycle of an ACP worker dispatch (dispatch_task). */
+/** Lifecycle of an ACP worker dispatch (dispatch_task / dispatch_review). */
 export type WorkerRunStatus =
   | 'preparing'
   | 'running'
   | 'pushing'
   | 'pr_opened'
+  /** The run's PR was merged by the user (set by the GitHub poller). */
+  | 'merged'
+  /** Review posted on the PR (terminal state for review runs). */
+  | 'reviewed'
   | 'failed'
   | 'cancelled'
   | 'timeout'
+
+/** What a worker run does: implement an issue, or review a pull request. */
+export type WorkerRunKind = 'implement' | 'review'
 
 /**
  * One worker dispatch: an external coding agent (driven over ACP) implementing
@@ -725,6 +732,7 @@ export type WorkerRunStatus =
 export interface WorkerRun {
   id: string
   sessionId: string
+  kind: WorkerRunKind
   issueNumber?: number
   backend: string
   branch?: string

@@ -130,6 +130,7 @@ export function initDb(): void {
     CREATE TABLE IF NOT EXISTS worker_runs (
       id            TEXT PRIMARY KEY,
       session_id    TEXT NOT NULL,
+      kind          TEXT NOT NULL DEFAULT 'implement',
       issue_number  INTEGER,
       backend       TEXT NOT NULL,
       branch        TEXT,
@@ -158,6 +159,13 @@ export function initDb(): void {
   // Skills are no longer cached in SQLite — they're materialized straight to
   // userData/skills with an on-disk manifest. Drop the legacy table if present.
   db.exec('DROP TABLE IF EXISTS skill_cache;')
+
+  // Idempotent migration: worker_runs.kind (implement | review) arrived after
+  // the table shipped; older DBs need the column added in place.
+  const workerRunCols = db.prepare('PRAGMA table_info(worker_runs)').all() as { name: string }[]
+  if (!workerRunCols.some((c) => c.name === 'kind')) {
+    db.exec("ALTER TABLE worker_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'implement';")
+  }
 
   // Idempotent migration: project/chat is local-only. A null workspacePath means
   // a synced chat; a path means a local project grouped by that workspace.
@@ -551,6 +559,7 @@ export function clearAllSessions(): void {
 interface WorkerRunRow {
   id: string
   session_id: string
+  kind: string
   issue_number: number | null
   backend: string
   branch: string | null
@@ -569,6 +578,7 @@ function mapWorkerRunRow(r: WorkerRunRow): WorkerRun {
   return {
     id: r.id,
     sessionId: r.session_id,
+    kind: (r.kind as WorkerRun['kind']) || 'implement',
     issueNumber: r.issue_number ?? undefined,
     backend: r.backend,
     branch: r.branch ?? undefined,
@@ -586,12 +596,13 @@ function mapWorkerRunRow(r: WorkerRunRow): WorkerRun {
 
 export function insertWorkerRun(run: WorkerRun): void {
   db.prepare(
-    `INSERT INTO worker_runs (id, session_id, issue_number, backend, branch, worktree_path,
+    `INSERT INTO worker_runs (id, session_id, kind, issue_number, backend, branch, worktree_path,
        status, pr_number, pr_url, summary, started_at, ended_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     run.id,
     run.sessionId,
+    run.kind,
     run.issueNumber ?? null,
     run.backend,
     run.branch ?? null,
@@ -643,6 +654,14 @@ export function listWorkerRuns(sessionId: string): WorkerRun[] {
   const rows = db
     .prepare('SELECT * FROM worker_runs WHERE session_id = ? ORDER BY created_at DESC')
     .all(sessionId) as WorkerRunRow[]
+  return rows.map(mapWorkerRunRow)
+}
+
+/** Runs awaiting merge — the GitHub poller's watch list (all sessions). */
+export function listPrOpenedWorkerRuns(): WorkerRun[] {
+  const rows = db
+    .prepare("SELECT * FROM worker_runs WHERE status = 'pr_opened'")
+    .all() as WorkerRunRow[]
   return rows.map(mapWorkerRunRow)
 }
 
