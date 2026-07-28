@@ -110,10 +110,13 @@ export class AcpWorkerManager {
 
     // Full session log on disk (diagnostics); the tail is just its live window.
     const transcript = createTranscript(opts.runId)
-    transcript.event(
-      `run ${opts.runId} · backend=${backend.id} (${backend.command} ${backend.args.join(' ')}) · cwd=${opts.cwd}${opts.readOnly ? ' · read-only' : ''}`
-    )
-    transcript.event(`prompt: ${opts.prompt}`)
+    transcript.meta({
+      backend: backend.id,
+      command: `${backend.command} ${backend.args.join(' ')}`,
+      cwd: opts.cwd,
+      readOnly: opts.readOnly ?? false,
+      prompt: opts.prompt
+    })
 
     const appendTail = (line: string): void => {
       if (!line) return
@@ -135,7 +138,7 @@ export class AcpWorkerManager {
       // Adapters log diagnostics to stderr; keep a taste of it in the tail.
       const text = buf.toString()
       appendTail(text)
-      transcript.event(`stderr: ${text.trim()}`)
+      transcript.text('stderr', text)
     })
 
     const jsonSlice = (v: unknown, max = 2_000): string => {
@@ -158,31 +161,26 @@ export class AcpWorkerManager {
             }
             lastMessage += u.content.text
             appendTail(u.content.text)
-            transcript.raw(u.content.text)
+            transcript.text('message', u.content.text)
           }
           break
         case 'agent_thought_chunk':
-          if (u.content.type === 'text') transcript.raw(u.content.text)
+          if (u.content.type === 'text') transcript.text('thought', u.content.text)
           break
-        case 'tool_call': {
+        case 'tool_call':
           atMessageBoundary = true
           appendTail(`\n[tool] ${u.title}\n`)
-          const input = jsonSlice(u.rawInput)
-          transcript.event(`tool: ${u.title} (${u.kind ?? '?'})${input ? ` input=${input}` : ''}`)
+          transcript.tool(u.title, u.kind ?? undefined, jsonSlice(u.rawInput) || undefined)
           break
-        }
         case 'tool_call_update':
           if (u.status === 'failed') {
             appendTail(`\n[tool failed] ${u.title ?? u.toolCallId}\n`)
-            const output = jsonSlice(u.rawOutput)
-            transcript.event(
-              `tool FAILED: ${u.title ?? u.toolCallId}${output ? ` output=${output}` : ''}`
-            )
+            transcript.toolFailed(u.title ?? u.toolCallId, jsonSlice(u.rawOutput) || undefined)
           }
           break
         case 'plan':
           appendTail(`\n[plan] ${u.entries.map((e) => e.content).join(' · ')}\n`)
-          transcript.event(`plan: ${u.entries.map((e) => e.content).join(' · ')}`)
+          transcript.plan(u.entries.map((e) => e.content))
           break
         default:
           break
@@ -205,9 +203,12 @@ export class AcpWorkerManager {
             appendTail(
               `\n[permission ${decision.optionId && decision.allow ? 'granted' : 'denied'}] ${ctx.params.toolCall.title ?? ctx.params.toolCall.kind ?? 'tool'}\n`
             )
-            transcript.event(
-              `permission ${decision.optionId && decision.allow ? 'GRANTED' : 'DENIED'}: ${ctx.params.toolCall.title ?? '?'} kind=${ctx.params.toolCall.kind ?? '?'} locations=${(ctx.params.toolCall.locations ?? []).map((l) => l.path).join(',') || '(none)'}`
-            )
+            transcript.permission({
+              title: ctx.params.toolCall.title ?? '?',
+              kind: ctx.params.toolCall.kind ?? undefined,
+              locations: (ctx.params.toolCall.locations ?? []).map((l) => l.path),
+              allowed: Boolean(decision.optionId && decision.allow)
+            })
             if (decision.optionId) {
               return { outcome: { outcome: 'selected', optionId: decision.optionId } }
             }
@@ -235,7 +236,7 @@ export class AcpWorkerManager {
               } catch (err) {
                 const msg = `could not set ${configId}=${String(value)}: ${err instanceof Error ? err.message : String(err)}`
                 appendTail(`\n[config] ${msg}\n`)
-                transcript.event(`config ${msg}`)
+                transcript.configError(msg)
               }
             }
             // The stop arrives through the update loop; prompt() resolving is
@@ -289,12 +290,12 @@ export class AcpWorkerManager {
       if (live.cancelled && result.outcome !== 'cancelled') {
         result = { outcome: 'cancelled', summary: result.summary }
       }
-      transcript.event(`outcome: ${result.outcome}${result.error ? ` — ${result.error}` : ''}`)
+      transcript.outcome(result.outcome, result.error)
       return result
     } catch (err) {
       const error = spawnError ?? (err instanceof Error ? err.message : String(err))
       const outcome = live.cancelled ? ('cancelled' as const) : ('failed' as const)
-      transcript.event(`outcome: ${outcome} — ${error}`)
+      transcript.outcome(outcome, error)
       return { outcome, summary: lastMessage.trim(), error }
     } finally {
       transcript.close()

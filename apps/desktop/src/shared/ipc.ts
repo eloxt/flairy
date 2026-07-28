@@ -90,6 +90,7 @@ export const IPC = {
   WorkerRunList: 'worker-run:list',
   WorkerRunAbort: 'worker-run:abort',
   WorkerRunOpenTranscript: 'worker-run:open-transcript',
+  WorkerRunTranscript: 'worker-run:transcript',
   AcpBackendList: 'acp:backend-list',
   AcpBackendUpdate: 'acp:backend-update',
   AcpBackendProbe: 'acp:backend-probe',
@@ -726,6 +727,37 @@ export type WorkerRunStatus =
 export type WorkerRunKind = 'implement' | 'review'
 
 /**
+ * One event in a worker run's on-disk transcript (JSONL). Rendered by the
+ * in-app transcript viewer; `t` is epoch ms.
+ */
+export type TranscriptEvent =
+  | {
+      t: number
+      type: 'meta'
+      backend: string
+      command: string
+      cwd: string
+      readOnly: boolean
+      prompt: string
+    }
+  | { t: number; type: 'message'; text: string }
+  | { t: number; type: 'thought'; text: string }
+  | { t: number; type: 'stderr'; text: string }
+  | { t: number; type: 'tool'; title: string; kind?: string; input?: string }
+  | { t: number; type: 'tool_failed'; title: string; output?: string }
+  | { t: number; type: 'plan'; entries: string[] }
+  | {
+      t: number
+      type: 'permission'
+      title: string
+      kind?: string
+      locations: string[]
+      allowed: boolean
+    }
+  | { t: number; type: 'config_error'; text: string }
+  | { t: number; type: 'outcome'; outcome: string; error?: string }
+
+/**
  * One worker dispatch: an external coding agent (driven over ACP) implementing
  * a GitHub issue in an isolated git worktree. Persisted in SQLite for the Runs
  * panel + startup reconciliation; `tail` is the live in-memory activity feed.
@@ -923,6 +955,10 @@ export interface FlairyApi {
   abortWorkerRun(runId: string): Promise<void>
   /** Open a run's full on-disk transcript in the system's default app. */
   openWorkerRunTranscript(runId: string): Promise<void>
+  /** Parsed transcript events for the in-app viewer (oldest dropped past the cap). */
+  readWorkerRunTranscript(
+    runId: string
+  ): Promise<{ events: TranscriptEvent[]; truncated: boolean }>
   /** Subscribe to worker-run updates pushed from main. Returns an unsubscribe fn. */
   onWorkerRunChanged(cb: (run: WorkerRun) => void): () => void
   /** All known ACP worker backends with their settings (for the ACP settings page). */

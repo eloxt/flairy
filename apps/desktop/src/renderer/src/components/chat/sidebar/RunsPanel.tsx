@@ -4,6 +4,7 @@ import { IconExternalLink, IconFileText, IconPlayerStop } from '@tabler/icons-re
 import type { WorkerRun, WorkerRunStatus } from '@shared/ipc'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { RunTranscriptSheet } from './RunTranscriptSheet'
 
 /**
  * Worker runs for the active project session: one card per dispatch_task run —
@@ -54,6 +55,7 @@ const LIVE: WorkerRunStatus[] = ['preparing', 'running', 'pushing']
 
 function RunCard({ run }: { run: WorkerRun }): React.JSX.Element {
   const { t } = useTranslation()
+  const [transcriptOpen, setTranscriptOpen] = useState(false)
   const live = LIVE.includes(run.status)
 
   return (
@@ -85,7 +87,7 @@ function RunCard({ run }: { run: WorkerRun }): React.JSX.Element {
             size="icon"
             className="size-6"
             title={t('panel.runOpenLog')}
-            onClick={() => void window.api.openWorkerRunTranscript(run.id)}
+            onClick={() => setTranscriptOpen(true)}
           >
             <IconFileText className="size-3.5" />
           </Button>
@@ -111,6 +113,9 @@ function RunCard({ run }: { run: WorkerRun }): React.JSX.Element {
         <p className="mt-1.5 line-clamp-4 text-[11px] leading-relaxed text-muted-foreground">
           {run.summary}
         </p>
+      )}
+      {run.hasTranscript && (
+        <RunTranscriptSheet run={run} open={transcriptOpen} onOpenChange={setTranscriptOpen} />
       )}
     </div>
   )

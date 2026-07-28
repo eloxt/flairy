@@ -196,6 +196,7 @@ const api: FlairyApi = {
   listWorkerRuns: (sessionId) => ipcRenderer.invoke(IPC.WorkerRunList, sessionId),
   abortWorkerRun: (runId) => ipcRenderer.invoke(IPC.WorkerRunAbort, runId),
   openWorkerRunTranscript: (runId) => ipcRenderer.invoke(IPC.WorkerRunOpenTranscript, runId),
+  readWorkerRunTranscript: (runId) => ipcRenderer.invoke(IPC.WorkerRunTranscript, runId),
   listAcpBackends: () => ipcRenderer.invoke(IPC.AcpBackendList),
   updateAcpBackend: (args) => ipcRenderer.invoke(IPC.AcpBackendUpdate, args),
   probeAcpBackend: (id) => ipcRenderer.invoke(IPC.AcpBackendProbe, id),
