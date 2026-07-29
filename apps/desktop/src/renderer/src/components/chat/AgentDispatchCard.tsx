@@ -57,17 +57,19 @@ export function AgentDispatchCard({ m }: { m: UiMessage }): React.JSX.Element {
   // card — there is no run to navigate to.
   if (m.isError) {
     return (
-      <div className="my-1 flex max-w-md items-start gap-2.5 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2.5">
-        <IconAlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-        <div className="min-w-0 text-[13px] leading-relaxed">
-          <div className="font-medium text-destructive">
-            {t(isReview ? "chat.dispatchReviewFailed" : "chat.dispatchTaskFailed")}
-          </div>
-          {m.text.trim() && (
-            <div className="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground">
-              {m.text.trim()}
+      <div className="mx-auto w-full max-w-(--chat-width) px-6 py-1">
+        <div className="flex max-w-md items-start gap-2.5 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+          <IconAlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <div className="min-w-0 text-[13px] leading-relaxed">
+            <div className="font-medium text-destructive">
+              {t(isReview ? "chat.dispatchReviewFailed" : "chat.dispatchTaskFailed")}
             </div>
-          )}
+            {m.text.trim() && (
+              <div className="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground">
+                {m.text.trim()}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -77,44 +79,46 @@ export function AgentDispatchCard({ m }: { m: UiMessage }): React.JSX.Element {
   const live = !status || ["preparing", "running", "pushing"].includes(status);
 
   return (
-    <button
-      type="button"
-      onClick={() => requestRightPanelTab("runs")}
-      className="group/dispatch my-1 flex w-full max-w-md items-center gap-3 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent"
-    >
-      <span
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-[8px]",
-          live
-            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-            : status === "pr_opened" || status === "reviewed" || status === "merged"
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              : "bg-destructive/10 text-destructive",
-        )}
+    <div className="mx-auto w-full max-w-(--chat-width) px-6 py-1">
+      <button
+        type="button"
+        onClick={() => requestRightPanelTab("runs")}
+        className="group/dispatch flex w-full max-w-md items-center gap-3 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent"
       >
-        <IconRobot className="size-4.5" strokeWidth={2} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-foreground">
-          {target}
-          {backend && <span className="font-normal text-muted-foreground"> → {backend}</span>}
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-[8px]",
+            live
+              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+              : status === "pr_opened" || status === "reviewed" || status === "merged"
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "bg-destructive/10 text-destructive",
+          )}
+        >
+          <IconRobot className="size-4.5" strokeWidth={2} />
         </span>
-        <span className="block truncate text-[11px] text-muted-foreground">
-          {t(isReview ? "chat.dispatchReview" : "chat.dispatchTask")}
-        </span>
-      </span>
-      {status ? (
-        <StatusChip status={status} />
-      ) : (
-        m.running && (
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            {t("chat.dispatching")}
-            <span className="ml-0.5 inline-block animate-pulse">·</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-foreground">
+            {target}
+            {backend && <span className="font-normal text-muted-foreground"> → {backend}</span>}
           </span>
-        )
-      )}
-      <IconChevronRight className="size-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover/dispatch:translate-x-0.5" />
-    </button>
+          <span className="block truncate text-[11px] text-muted-foreground">
+            {t(isReview ? "chat.dispatchReview" : "chat.dispatchTask")}
+          </span>
+        </span>
+        {status ? (
+          <StatusChip status={status} />
+        ) : (
+          m.running && (
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {t("chat.dispatching")}
+              <span className="ml-0.5 inline-block animate-pulse">·</span>
+            </span>
+          )
+        )}
+        <IconChevronRight className="size-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover/dispatch:translate-x-0.5" />
+      </button>
+    </div>
   );
 }
 
