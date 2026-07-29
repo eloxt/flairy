@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { IPC, type WorkerRun } from '@shared/ipc'
+import { WORKER_REPORT_PREFIX } from '@shared/injected-events'
 import type { AgentManager } from '../agent/agent-manager'
 import { getOctokit } from '../github/client'
 import { git } from '../github/git'
@@ -236,7 +237,7 @@ async function runReviewPipeline(runId: string, args: ReviewArgs, backendId: str
     patchRun(runId, { status: 'reviewed', summary: result.summary, endedAt: Date.now() })
     report(
       sessionId,
-      `[worker report] Review of PR #${prNumber} posted (${pr.html_url}).\n\nReview:\n${truncate(result.summary, 3000)}`
+      `${WORKER_REPORT_PREFIX} Review of PR #${prNumber} posted (${pr.html_url}).\n\nReview:\n${truncate(result.summary, 3000)}`
     )
   } catch (err) {
     finishRun(runId, sessionId, label, 'failed', err instanceof Error ? err.message : String(err))
@@ -371,7 +372,7 @@ async function runPipeline(runId: string, args: DispatchArgs, backendId: string)
 
     report(
       sessionId,
-      `[worker report] Run for issue #${issueNumber} finished: opened PR #${pr.number} (${pr.html_url}).\n` +
+      `${WORKER_REPORT_PREFIX} Run for issue #${issueNumber} finished: opened PR #${pr.number} (${pr.html_url}).\n` +
         `Commits:\n${truncate(commits, 1000)}\n\nWorker summary:\n${truncate(result.summary, 2000)}`
     )
   } catch (err) {
@@ -397,7 +398,7 @@ function finishRun(
         : 'failed'
   report(
     sessionId,
-    `[worker report] Run for ${label} ${verb}.` +
+    `${WORKER_REPORT_PREFIX} Run for ${label} ${verb}.` +
       (error ? `\nError: ${truncate(error, 1500)}` : '') +
       (summary ? `\nWorker output (tail):\n${truncate(summary, 1500)}` : '')
   )

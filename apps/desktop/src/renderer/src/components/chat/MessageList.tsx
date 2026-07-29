@@ -48,6 +48,7 @@ import {
 import { cardRenderers } from "./cards/renderers";
 import { ToolDetail } from "./ToolDetail";
 import { AgentDispatchCard } from "./AgentDispatchCard";
+import { SystemEventRow } from "./SystemEventRow";
 import { ConversationNav, type NavRow } from "./ConversationNav";
 import { MessageActions } from "./MessageActions";
 import { Onboarding } from "./Onboarding";
@@ -157,6 +158,14 @@ type Row =
    */
   | { kind: "dispatch"; key: string; m: UiMessage }
   /**
+   * A machine-injected user turn (worker report / GitHub event, see
+   * `UiMessage.injectedEvent`): rendered as a quiet system note instead of a
+   * user bubble, and treated as a turn boundary by `foldTurns` — the
+   * orchestrator's reaction that follows is a new turn, same as after a
+   * genuine prompt.
+   */
+  | { kind: "event"; key: string; m: UiMessage }
+  /**
    * A finished turn's working process — the tool rows/groups between the user
    * prompt and the final answer — folded behind one summary line by
    * `foldTurns` once the run has ended. Only PURE tool work folds: an
@@ -219,7 +228,9 @@ function toRows(messages: UiMessage[]): Row[] {
     )
       continue;
     flush();
-    rows.push({ kind: "msg", key: m.id, m });
+    if (m.role === "user" && m.injectedEvent)
+      rows.push({ kind: "event", key: m.id, m });
+    else rows.push({ kind: "msg", key: m.id, m });
   }
   flush();
   return rows;
@@ -240,9 +251,10 @@ function foldTurns(rows: Row[], running: boolean): Row[] {
   let i = 0;
   while (i < rows.length) {
     // Copy the user prompt that opens the segment (the first segment of a
-    // thread may start without one).
+    // thread may start without one). An injected event row opens a segment
+    // the same way — the reaction that follows is its own turn.
     const head = rows[i];
-    if (head.kind === "msg" && head.m.role === "user") {
+    if ((head.kind === "msg" && head.m.role === "user") || head.kind === "event") {
       out.push(head);
       i++;
     }
@@ -250,7 +262,7 @@ function foldTurns(rows: Row[], running: boolean): Row[] {
     const seg: Row[] = [];
     while (i < rows.length) {
       const r = rows[i];
-      if (r.kind === "msg" && r.m.role === "user") break;
+      if ((r.kind === "msg" && r.m.role === "user") || r.kind === "event") break;
       seg.push(r);
       i++;
     }
@@ -675,6 +687,8 @@ const RowView = memo(function RowView({
       <SingleTool m={row.m} />
     ) : row.kind === "dispatch" ? (
       <AgentDispatchCard m={row.m} />
+    ) : row.kind === "event" ? (
+      <SystemEventRow m={row.m} />
     ) : (
       <MessageRow
         m={row.m}

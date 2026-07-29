@@ -77,7 +77,9 @@ const zhCN: typeof En = {
     dispatchReview: '已派发代码评审给 Agent',
     dispatchTaskFailed: '编码任务派发失败',
     dispatchReviewFailed: '代码评审派发失败',
-    dispatching: '派发中'
+    dispatching: '派发中',
+    workerReport: 'Agent 汇报',
+    githubEvent: 'GitHub 动态'
   },
   /** 右侧详情面板：模型信息 + 工作目录文件。 */
   panel: {

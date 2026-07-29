@@ -13,6 +13,7 @@ import type {
 import { parseWebToolResult, type SearchSource } from '@shared/web-search'
 import { parseTodos, type TodoItem } from '@shared/todo'
 import { stripImageDescriptions } from '@shared/image-description'
+import { parseInjectedEvent, type InjectedEventKind } from '@shared/injected-events'
 import { formatToolArgs, toolArgSummary, toolDisplayKey } from '@/lib/tool-display'
 import i18n from '@/i18n'
 
@@ -57,6 +58,14 @@ export interface UiMessage {
    * that the image was never seen.
    */
   imagesIgnored?: boolean
+  /**
+   * For a `user`-role message the MACHINE injected (a worker completion report
+   * or a GitHub state change — see `@shared/injected-events`): the event kind.
+   * Rendered as a system event row instead of a user bubble; `text` holds the
+   * body with the prefix already stripped. Stamped identically by the live
+   * stream and replay so a watched session and its reload look the same.
+   */
+  injectedEvent?: InjectedEventKind
   /**
    * For `tool` messages: the call's most telling argument (file path, search
    * pattern, command…) shown after the label in the expanded row. Derived by
@@ -955,6 +964,30 @@ function applyEvent(
           // hydrate the message from live state right before its message_end lands,
           // and we must not render it twice.
           const last = cleared[cleared.length - 1]
+          // A machine-injected turn (worker report / GitHub event, submitted by
+          // the main process): no optimistic bubble exists, so append its system
+          // event row here — mirroring hydrateMessages, which strips the prefix
+          // and stamps the kind on replay. Dedup against a cold open that
+          // hydrated this message right before its message_end landed.
+          const injected = e.role === 'user' && e.text ? parseInjectedEvent(e.text) : null
+          if (injected) {
+            const dup = last?.injectedEvent === injected.kind && last.text === injected.body
+            return dup
+              ? { ...rt, messages: cleared }
+              : {
+                  ...rt,
+                  messages: [
+                    ...cleared,
+                    {
+                      id: e.messageId || crypto.randomUUID(),
+                      role: 'user' as const,
+                      text: injected.body,
+                      injectedEvent: injected.kind,
+                      timestamp: e.timestamp ?? Date.now()
+                    }
+                  ]
+                }
+          }
           const alreadyShown =
             last?.role === 'user' &&
             last.text === (e.text ?? '') &&
@@ -1175,11 +1208,16 @@ function hydrateMessages(raw: unknown[]): UiMessage[] {
         // part riding on the message) — the bubble shows only what was typed.
         const text = stripImageDescriptions(partsToText(m.content))
         const images = partsToImages(m.content)
+        // Machine-injected turns (worker reports / GitHub events) render as
+        // system event rows, not user bubbles — same detection as the live
+        // stream, so replay matches what was watched.
+        const injected = parseInjectedEvent(text)
         if (text || images.length)
           out.push({
             id: m.id ?? crypto.randomUUID(),
             role: 'user',
-            text,
+            text: injected ? injected.body : text,
+            injectedEvent: injected?.kind,
             images: images.length ? images : undefined,
             sourceIndex: i,
             timestamp: m.timestamp

@@ -80,7 +80,9 @@ const en = {
     dispatchReview: 'Code review dispatched to an agent',
     dispatchTaskFailed: 'Could not dispatch the coding task',
     dispatchReviewFailed: 'Could not dispatch the review',
-    dispatching: 'Dispatching'
+    dispatching: 'Dispatching',
+    workerReport: 'Agent report',
+    githubEvent: 'GitHub update'
   },
   /** Right-side details panel: model info + workspace files. */
   panel: {

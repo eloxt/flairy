@@ -1,4 +1,5 @@
 import { IPC, type WorkerRun } from '@shared/ipc'
+import { GITHUB_EVENT_PREFIX } from '@shared/injected-events'
 import type { AgentManager } from '../agent/agent-manager'
 import { getSession, listPrOpenedWorkerRuns, updateWorkerRun } from '../store/db'
 import { broadcast } from '../windows'
@@ -82,7 +83,7 @@ export class GithubPoller {
       this.ci.delete(run.id)
       this.inject(
         run.sessionId,
-        `[github event] PR #${run.prNumber} was merged (${pr.html_url}).` +
+        `${GITHUB_EVENT_PREFIX} PR #${run.prNumber} was merged (${pr.html_url}).` +
           (run.issueNumber ? ` Issue #${run.issueNumber} should now be closed.` : '')
       )
       return
@@ -94,7 +95,7 @@ export class GithubPoller {
       this.ci.delete(run.id)
       this.inject(
         run.sessionId,
-        `[github event] PR #${run.prNumber} was closed WITHOUT merging (${pr.html_url}). Ask the user how to proceed if unclear.`
+        `${GITHUB_EVENT_PREFIX} PR #${run.prNumber} was closed WITHOUT merging (${pr.html_url}). Ask the user how to proceed if unclear.`
       )
       return
     }
@@ -121,8 +122,8 @@ export class GithubPoller {
     this.inject(
       run.sessionId,
       aggregate === 'success'
-        ? `[github event] CI is green on PR #${run.prNumber} (${pr.html_url}) — ready for review/merge.`
-        : `[github event] CI FAILED on PR #${run.prNumber} (${pr.html_url}): ${failed
+        ? `${GITHUB_EVENT_PREFIX} CI is green on PR #${run.prNumber} (${pr.html_url}) — ready for review/merge.`
+        : `${GITHUB_EVENT_PREFIX} CI FAILED on PR #${run.prNumber} (${pr.html_url}): ${failed
             .map((c) => `${c.name} (${c.conclusion})`)
             .join(', ')}. Diagnose and re-dispatch a fix.`
     )
