@@ -313,6 +313,15 @@
         font-feature-settings: "ss01", "cv01", "cv11";
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
+        /* Native-app feel: UI chrome (labels, buttons, sidebars) is not
+           selectable. Content surfaces opt back in with `select-text`. */
+        user-select: none;
+    }
+
+    input,
+    textarea,
+    [contenteditable] {
+        user-select: text;
     }
 
     ::selection {

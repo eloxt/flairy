@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 import { AdvancedSection } from './advanced/AdvancedSection'
+import { CopyButton } from '@/components/chat/MessageActions'
 
 type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'github' | 'acp' | 'about' | 'advanced'
 
@@ -1100,13 +1101,20 @@ function AboutSection(): React.JSX.Element {
             </div>
             <IconChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/cfg:rotate-90" />
           </summary>
-          <pre className="overflow-x-auto border-t border-border/60 px-3.5 py-3 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
-            {!loaded
-              ? t('settings.loadingConfig')
-              : !config
-                ? t('settings.noConfig')
-                : JSON.stringify(config, null, 2)}
-          </pre>
+          <div className="relative border-t border-border/60">
+            <pre className="overflow-x-auto px-3.5 py-3 font-mono text-[10.5px] leading-relaxed text-muted-foreground select-text">
+              {!loaded
+                ? t('settings.loadingConfig')
+                : !config
+                  ? t('settings.noConfig')
+                  : JSON.stringify(config, null, 2)}
+            </pre>
+            {loaded && config && (
+              <div className="absolute top-1.5 right-1.5">
+                <CopyButton text={JSON.stringify(config, null, 2)} />
+              </div>
+            )}
+          </div>
         </details>
       </Group>
     </>

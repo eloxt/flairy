@@ -65,7 +65,7 @@ export function AgentDispatchCard({ m }: { m: UiMessage }): React.JSX.Element {
               {t(isReview ? "chat.dispatchReviewFailed" : "chat.dispatchTaskFailed")}
             </div>
             {m.text.trim() && (
-              <div className="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground">
+              <div className="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground select-text">
                 {m.text.trim()}
               </div>
             )}

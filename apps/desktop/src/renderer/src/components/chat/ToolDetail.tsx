@@ -117,7 +117,7 @@ function Card({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[10px] border bg-card",
+        "overflow-hidden rounded-[10px] border bg-card select-text",
         error ? "border-destructive/30" : "border-border",
       )}
     >

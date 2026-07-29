@@ -913,7 +913,7 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
           {/* Sent text is plain (not markdown), so keep the author's own line
               breaks instead of letting HTML collapse them. */}
           {m.text && (
-            <div className="max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words text-secondary-foreground">
+            <div className="max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words text-secondary-foreground select-text">
               {m.text}
             </div>
           )}
@@ -972,7 +972,7 @@ function AssistantRow({
                 plugins={plugins}
                 remarkPlugins={STREAMDOWN_REMARK_PLUGINS}
                 components={STREAMDOWN_COMPONENTS}
-                className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono pt-1"
+                className="space-y-3 text-sm leading-relaxed [&_:where(h1,h2,h3,h4)]:tracking-tight [&_code]:font-mono pt-1 select-text"
               >
                 {m.text}
               </Streamdown>

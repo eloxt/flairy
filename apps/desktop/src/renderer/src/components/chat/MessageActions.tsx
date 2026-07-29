@@ -56,7 +56,7 @@ export function MessageActions({
  * Built on the same bare {@link TooltipTrigger}-as-button pattern the composer
  * uses, so no TooltipProvider is required.
  */
-function CopyButton({ text }: { text: string }): React.JSX.Element {
+export function CopyButton({ text }: { text: string }): React.JSX.Element {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

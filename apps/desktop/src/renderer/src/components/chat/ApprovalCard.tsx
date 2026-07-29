@@ -58,7 +58,7 @@ export function ApprovalCard({
           {t('approval.details')}
         </button>
         {showDetails && (
-          <pre className="mt-2 max-h-44 overflow-auto rounded-lg border border-border bg-card p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+          <pre className="mt-2 max-h-44 overflow-auto rounded-lg border border-border bg-card p-3 font-mono text-xs leading-relaxed text-muted-foreground select-text">
             {JSON.stringify(payload.args, null, 2)}
           </pre>
         )}
