@@ -4,7 +4,8 @@ import { IconArrowUp, IconCheck, IconChevronDown, IconFolder, IconPaperclip, Ico
 import type { Attachment, PermissionMode } from "@shared/ipc";
 import type { TodoItem } from "@shared/todo";
 import { cn } from "@/lib/utils";
-import { useChat, selectCwd } from "@/store/chat-store";
+import { useChat, selectCwd, selectProjectWorkspace } from "@/store/chat-store";
+import { useFileMention, FileMentionPopup } from "./file-mention";
 import { useImageInputSupport } from "@/hooks/use-image-input-supported";
 import { useMainModel } from "@/hooks/use-main-model";
 import { ApprovalCard } from "./ApprovalCard";
@@ -215,6 +216,12 @@ export function Composer(): React.JSX.Element {
   // pending folder pick means the next message opens a project session.
   const isProject = useChat((s) => (s.sessionId ? false : !!s.pendingCwd)) || workspaceLocked;
 
+  // Root for `@` file mentions: the session's workspace, or on the home screen
+  // the pending pick (fs:list-files accepts it — every pick lands in recents).
+  const mentionRoot = useChat((s) =>
+    s.sessionId ? selectProjectWorkspace(s) : s.pendingCwd,
+  );
+
   // Interaction cards docked in the composer shell: the pending `ask` question
   // and tool approval (each the head of its queue) and the live plan while a
   // run is in flight.
@@ -241,6 +248,25 @@ export function Composer(): React.JSX.Element {
     return () => ro.disconnect();
   }, []);
 
+  // Grow the textarea with content up to a ceiling, then scroll.
+  const autosize = (el: HTMLTextAreaElement): void => {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  };
+
+  // `@` file mentions (workspace sessions only — mentionRoot is null in chats).
+  const mention = useFileMention({
+    root: mentionRoot,
+    taRef,
+    onApplyText: (next) => {
+      setText(next);
+      // The controlled value lands on the next commit; size to it then.
+      requestAnimationFrame(() => {
+        if (taRef.current) autosize(taRef.current);
+      });
+    },
+  });
+
   const submit = (): void => {
     if (!canSend) return;
     const wire = attachments.map((a) => a.attachment);
@@ -249,14 +275,9 @@ export function Composer(): React.JSX.Element {
     void send(text, wire.length ? wire : undefined, { imagesIgnored });
     setText("");
     setAttachments([]);
+    mention.close();
     // Reset the auto-grown height after sending.
     if (taRef.current) taRef.current.style.height = "auto";
-  };
-
-  // Grow the textarea with content up to a ceiling, then scroll.
-  const autosize = (el: HTMLTextAreaElement): void => {
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
   const onPickFiles = async (
@@ -332,7 +353,10 @@ export function Composer(): React.JSX.Element {
     >
       <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
-          <div className="rounded-2xl [corner-shape:squircle] border border-border bg-muted">
+          <div className="relative rounded-2xl [corner-shape:squircle] border border-border bg-muted">
+            {/* `@` file suggestions, floating above the shell (absolute, so the
+                published --composer-h never includes it). */}
+            <FileMentionPopup mention={mention} />
             {/* Interaction cards slide out of the shell above the input: plan
                 progress on top, the question card below it (closer to the input,
                 waiting on the user's next action). Question keyed per request so
@@ -423,11 +447,17 @@ export function Composer(): React.JSX.Element {
                 // candidate text, not the message). keyCode 229 covers browsers
                 // that don't set isComposing on the Enter keydown.
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                // The open mention popup owns arrows/Enter/Tab/Escape.
+                if (mention.onKeyDown(e)) return;
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   submit();
                 }
               }}
+              // Fires on every caret move (typing included) — the one hook
+              // point that keeps the `@` token tracking the live cursor.
+              onSelect={mention.refresh}
+              onBlur={mention.close}
               onPaste={(e) => void onPaste(e)}
               placeholder={t('composer.placeholder')}
               rows={1}

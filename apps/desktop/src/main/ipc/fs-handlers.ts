@@ -11,7 +11,7 @@ import {
   type ReadWorkspaceFileResult,
   type WorkspaceGitStatusEntry
 } from '@shared/ipc'
-import { listSessions } from '../store/db'
+import { listSessions, listRecentDirectories } from '../store/db'
 import { resolveBinary } from '../agent/tools/binaries'
 
 /**
@@ -39,8 +39,17 @@ function isWithin(abs: string, root: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
 }
 
+/**
+ * A root is trusted iff the user explicitly picked it: a project session's
+ * workspacePath, or a recent working-directory pick (covers the home screen's
+ * pending workspace, which has no session until the first message — every
+ * pick goes through addRecentDirectory before it can become pendingCwd).
+ */
 function isKnownWorkspace(root: string): boolean {
-  return listSessions().some((s) => s.workspacePath === root)
+  return (
+    listSessions().some((s) => s.workspacePath === root) ||
+    listRecentDirectories().includes(root)
+  )
 }
 
 /** All file paths under `root` (relative, posix), gitignore-aware via bundled fd. */
