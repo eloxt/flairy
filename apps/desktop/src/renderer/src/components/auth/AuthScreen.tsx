@@ -114,8 +114,8 @@ export function AuthScreen(): React.JSX.Element {
           </Button>
         </form>
 
-        {/* Local, account-less use: lands in Advanced settings (unlocked) to
-            switch on local mode / import a configuration. */}
+        {/* Local, account-less use: unhides Advanced settings (where the
+            detached client is configured) and enters the app. */}
         <button
           type="button"
           onClick={() => void skip()}

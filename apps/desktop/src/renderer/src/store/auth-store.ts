@@ -21,10 +21,10 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
   /**
-   * Enter the app without an account (local, non-synced use). Unlocks the
-   * hidden Advanced settings tab and lands there, so the user can switch to
-   * local mode / import a configuration — the only way a detached client
-   * becomes functional.
+   * Enter the app without an account (local, non-synced use). Unhides the
+   * Advanced settings tab (no 10×-tap dance) and switches to local mode, so
+   * the user can configure the detached client whenever they open Settings —
+   * nothing is opened for them.
    */
   skip: () => Promise<void>
   logout: () => Promise<void>
@@ -50,15 +50,15 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   skip: async () => {
+    // Unhide the Advanced tab — an account-less client is configured there,
+    // so it must not sit behind the 10×-version-tap discovery gate.
     await window.api.setAdvancedUnlocked(true)
     // "Use locally" means it: detach from the server right away. This is also
-    // what keeps the Settings window open (its auth gate resolves local-mode
-    // clients to `authed`) and what bypasses the login wall on relaunch.
+    // what lets the Settings window open at all for an anonymous session (its
+    // auth gate resolves local-mode clients to `authed`) and what bypasses
+    // the login wall on relaunch.
     await window.api.setConfigMode('local')
     set({ phase: 'authed', user: null, error: null })
-    // Settings is a separate WINDOW (not a route in this one) — open it on
-    // the Advanced tab so the user lands where the configuration lives.
-    void window.api.openSettings('advanced')
   },
 
   login: async (email, password) => {
