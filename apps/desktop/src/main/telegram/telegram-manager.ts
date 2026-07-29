@@ -28,7 +28,8 @@ import {
   appendTelegramAudit,
   createSession,
   getSession,
-  deleteSession
+  deleteSession,
+  listSessions
 } from '../store/db'
 import {
   setTelegramToken,
@@ -39,6 +40,8 @@ import {
 import { toTelegramHtml, splitForTelegram, escapeHtml } from './format'
 
 const PAIR_TTL_MS = 5 * 60 * 1000
+/** How many recent conversations the `/sessions` picker shows. */
+const SESSION_LIST_LIMIT = 10
 const PAIR_MAX_ATTEMPTS = 5
 const PAIR_LOCKOUT_MS = 10 * 60 * 1000
 const TYPING_INTERVAL_MS = 4500
@@ -221,6 +224,16 @@ export class TelegramManager implements InteractionChannel {
       const me = await bot.api.getMe()
       this.botUsername = me.username
       this.token = token
+      // Populate Telegram's "/" command menu (best-effort, purely discoverability).
+      void bot.api
+        .setMyCommands([
+          { command: 'new', description: 'Start a fresh conversation in this topic' },
+          { command: 'sessions', description: 'Continue an existing conversation here' },
+          { command: 'status', description: 'Show connection status' },
+          { command: 'cancel', description: 'Stop the current reply' },
+          { command: 'delete', description: 'Delete this conversation' }
+        ])
+        .catch((err) => this.logError('setMyCommands', err))
       this.registerHandlers(bot)
       bot.catch((err) => this.onBotError(err))
       for (const id of listTelegramSessionIds()) this.owned.add(id)
@@ -584,6 +597,10 @@ export class TelegramManager implements InteractionChannel {
         broadcast(IPC.SessionsChanged)
         return true
       }
+      case '/sessions': {
+        await this.sendSessionList(chatId, threadKey)
+        return true
+      }
       case '/cancel': {
         const existing = getTelegramThread(chatId, threadKey)
         if (existing) {
@@ -597,6 +614,95 @@ export class TelegramManager implements InteractionChannel {
       default:
         return false
     }
+  }
+
+  /* ---------------- session picker (/sessions) ---------------- */
+
+  /**
+   * `/sessions`: list the most recent Flairy conversations as an inline keyboard.
+   * Tapping one re-binds THIS topic to that session, so the chat continues with
+   * the session's full history (getOrCreate reloads it from SQLite). The desktop
+   * marks Telegram-bound sessions read-only; `/new` in the topic releases the
+   * session back to the desktop (the topic re-maps to a fresh one).
+   */
+  private async sendSessionList(chatId: string, threadKey: number): Promise<void> {
+    const current = getTelegramThread(chatId, threadKey)?.sessionId
+    const sessions = listSessions()
+      .filter((s) => s.id !== current)
+      .slice(0, SESSION_LIST_LIMIT)
+    if (sessions.length === 0) {
+      await this.sendPlain(chatId, threadKey, 'No other conversations yet — just keep chatting here.')
+      return
+    }
+    const kb = new InlineKeyboard()
+    for (const s of sessions) {
+      // 📁 = has a workspace folder; ✈️ = already lives in another Telegram topic
+      // (picking it moves it here). callback_data stays well under Telegram's
+      // 64-byte cap: 'r|' + threadKey + '|' + uuid ≈ 50 bytes.
+      const marker = s.kind === 'project' ? '📁 ' : s.fromTelegram ? '✈️ ' : ''
+      kb.text(`${marker}${this.truncateLabel(s.title)}`, `r|${threadKey}|${s.id}`).row()
+    }
+    await this.sendKeyboard(
+      chatId,
+      threadKey,
+      '<b>Continue a conversation</b>\nPick one to carry on in this topic:',
+      'Continue a conversation\nPick one to carry on in this topic:',
+      kb
+    )
+  }
+
+  /** `r|<threadKey>|<sessionId>`: re-bind the tapped topic to an existing session. */
+  private async handleResumeCallback(ctx: Context, data: string): Promise<void> {
+    if (!this.isAuthorizedCallback(ctx)) {
+      await ctx.answerCallbackQuery({ text: 'Not allowed.' })
+      return
+    }
+    const [, threadStr, sessionId] = data.split('|')
+    const threadKey = Number(threadStr)
+    const chatId = String(ctx.callbackQuery?.message?.chat.id ?? '')
+    const meta = sessionId ? getSession(sessionId) : undefined
+    if (!chatId || !Number.isInteger(threadKey) || !meta) {
+      await ctx.answerCallbackQuery({ text: 'That conversation no longer exists.' })
+      return
+    }
+    const existing = getTelegramThread(chatId, threadKey)
+    if (existing?.sessionId === meta.id) {
+      await ctx.answerCallbackQuery({ text: 'Already active here.' })
+      return
+    }
+    // Swap out the topic's current session — same path as /new: the runtime is
+    // fully disposed and the topic mapping cleared; the session row + history stay.
+    if (existing) this.agents.delete(existing.sessionId)
+    // If the chosen session already lives in another topic, move it: drop only its
+    // old mapping (keep the runtime + approvals) so the PK insert below can't
+    // collide. The old topic simply starts a fresh conversation on its next message.
+    deleteTelegramThread(meta.id)
+    createTelegramThread({ sessionId: meta.id, chatId, threadKey, title: meta.title })
+    this.owned.add(meta.id)
+    broadcast(IPC.SessionsChanged)
+    await ctx.answerCallbackQuery({ text: 'Switched' })
+    try {
+      await ctx.editMessageReplyMarkup()
+    } catch {
+      // Best-effort: stripping the picker keyboard after a choice is non-critical.
+    }
+    // Best-effort: name the topic after the session (the General topic, threadKey
+    // 0, can't be renamed this way).
+    if (threadKey !== 0 && this.bot) {
+      void this.bot.api
+        .editForumTopic(Number(chatId), threadKey, { name: meta.title })
+        .then(() => updateTelegramThreadTitle(meta.id, meta.title))
+        .catch((err) => this.logError('editForumTopic', err))
+    }
+    await this.sendPlain(
+      chatId,
+      threadKey,
+      `Continuing “${meta.title}”. Send a message to pick up where you left off.`
+    )
+  }
+
+  private truncateLabel(text: string, max = 32): string {
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text
   }
 
   /* ---------------- pairing ---------------- */
@@ -1387,6 +1493,10 @@ export class TelegramManager implements InteractionChannel {
     if (!data) return
     if (data.startsWith('q|')) {
       await this.handleQuestionCallback(ctx, data)
+      return
+    }
+    if (data.startsWith('r|')) {
+      await this.handleResumeCallback(ctx, data)
       return
     }
     const [code, nonce] = data.split('|')
