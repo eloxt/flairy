@@ -71,7 +71,10 @@ export function RunTranscriptSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-xl">
+      {/* app-no-drag: the sheet overlays the window's draggable header strip;
+          -webkit-app-region ignores DOM stacking, so without this the close
+          button (top-right) sits on the drag region and never receives clicks. */}
+      <SheetContent side="right" className="app-no-drag sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{t('panel.transcriptTitle', { run: title })}</SheetTitle>
           <SheetDescription>
