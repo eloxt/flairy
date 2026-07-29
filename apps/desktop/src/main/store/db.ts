@@ -657,14 +657,6 @@ export function listWorkerRuns(sessionId: string): WorkerRun[] {
   return rows.map(mapWorkerRunRow)
 }
 
-/** Runs awaiting merge — the GitHub poller's watch list (all sessions). */
-export function listPrOpenedWorkerRuns(): WorkerRun[] {
-  const rows = db
-    .prepare("SELECT * FROM worker_runs WHERE status = 'pr_opened'")
-    .all() as WorkerRunRow[]
-  return rows.map(mapWorkerRunRow)
-}
-
 /**
  * Startup reconciliation: any run still marked live from a previous process is
  * an orphan (its child process died with the app). Returns the repaired runs.

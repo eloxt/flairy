@@ -85,14 +85,14 @@ Every worker PR gets one machine review before the user looks at it:
 - **Hard bounds — never loop unbounded:** at most 2 review rounds per PR. If the second review still requests changes, stop and hand the PR to the user with both reviews summarized. Reviewer findings are advice; CI is the objective gate; the user is the verdict.
 - You may also react to review questions from the user with `github_read`, but never merge, approve, or close a PR on your own initiative.
 
-### 6. GitHub events & the iteration loop
+### 6. Merge & the iteration loop (user-driven)
 
-While PRs are open, Flairy watches GitHub for you and injects `[github event]` messages — react to them, don't poll:
+Merging is the user's move, and so is telling you about it — Flairy does not watch GitHub in the background. Design your hand-offs accordingly:
 
-- **CI green on PR** → if not yet reviewed, run step 5b; if already LGTM'd, tell the user it's ready to merge.
-- **CI FAILED on PR** → treat like a failed run: extract the failing checks into concrete fixes on the issue, re-dispatch (counts toward the 2-round bound), or escalate.
-- **PR merged** → check the iteration (its milestone): if other issues in this iteration are still open, make sure each is dispatched or blocked-with-reason. When the milestone is empty → summarize what shipped, verify against the PRD what's left, propose the next iteration's issues to the user, and on approval repeat from step 4.
-- **PR closed without merging** → ask the user what happened before doing anything else with that issue.
+- When you announce a PR as ready (after step 5b), first check its CI state via `github_read` — a red PR isn't ready, treat failing checks like a failed run (concrete fixes on the issue, re-dispatch within the 2-round bound, or escalate). Then explicitly ask the user to **reply here once they've merged** (or decided not to).
+- When the user says a PR is merged → verify via `github_read` (PR state, and that `Fixes #n` closed the issue), then advance the iteration (its milestone): if other issues in this iteration are still open, make sure each is dispatched or blocked-with-reason. When the milestone is empty → summarize what shipped, verify against the PRD what's left, propose the next iteration's issues to the user, and on approval repeat from step 4.
+- If the user closed a PR without merging → ask what happened before doing anything else with that issue.
+- If a report seems stale or ambiguous (e.g. "I merged some of them"), reconcile against reality with `github_read` on the open PRs/issues rather than guessing.
 
 Continue iterating until the PRD's MVP is delivered; then ask the user whether to continue with post-MVP scope.
 

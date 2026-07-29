@@ -1,11 +1,14 @@
 /**
- * Machine-injected user turns. Worker completion reports (acp/dispatch.ts) and
- * GitHub state changes (github/poller.ts) enter a session as `user` messages via
- * AgentManager.submit — that is what wakes the orchestrator and survives idle
- * eviction — but they are not something the user typed, so the chat view must
- * not render them as user bubbles. Each carries one of these prefixes; the
- * renderer detects it (live stream and replay alike) and shows a system event
- * row instead.
+ * Machine-injected user turns. Worker completion reports (acp/dispatch.ts)
+ * enter a session as `user` messages via AgentManager.submit — that is what
+ * wakes the orchestrator and survives idle eviction — but they are not
+ * something the user typed, so the chat view must not render them as user
+ * bubbles. Each carries one of these prefixes; the renderer detects it (live
+ * stream and replay alike) and shows a system event row instead.
+ *
+ * The github prefix belonged to the removed GitHub poller (merge state is now
+ * relayed by the user); it stays here so historical transcripts keep rendering
+ * as event rows.
  */
 export const WORKER_REPORT_PREFIX = '[worker report]'
 export const GITHUB_EVENT_PREFIX = '[github event]'

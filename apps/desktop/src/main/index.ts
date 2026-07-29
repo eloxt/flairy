@@ -14,7 +14,6 @@ import { registerWorkerRunHandlers } from "./ipc/worker-run-handlers";
 import { registerAcpHandlers } from "./ipc/acp-handlers";
 import { initDispatch, workers } from "./acp/dispatch";
 import { sweepOldTranscripts } from "./acp/transcript";
-import { GithubPoller } from "./github/poller";
 import { failOrphanWorkerRuns } from "./store/db";
 import { registerFsHandlers } from "./ipc/fs-handlers";
 import { ServerClient } from "./sync/server-client";
@@ -83,11 +82,6 @@ if (!app.requestSingleInstanceLock()) {
     // them before any window can list runs.
     initDispatch(agents);
     failOrphanWorkerRuns();
-    // Webhook substitute: watches dispatched PRs (merge/close/CI) and injects
-    // "[github event]" messages into their sessions so the orchestrator can
-    // advance the iteration without the user relaying GitHub state.
-    const githubPoller = new GithubPoller(agents);
-    githubPoller.start();
     // Telegram remote-chat front-end onto the same session runtime. Registers its
     // interaction channel + outbound bus subscriber on construction; auto-starts
     // below only if a stored token + enabled binding already exist.
@@ -126,7 +120,6 @@ if (!app.requestSingleInstanceLock()) {
       markQuitting();
       updates.stop();
       void telegram.stop();
-      githubPoller.stop();
       workers.disposeAll();
       agents.disposeAll();
       mcp.dispose();
