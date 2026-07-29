@@ -164,6 +164,10 @@ const en = {
     web_fetch_other: 'fetched {{count}} web pages',
     todo_write_one: 'made 1 plan update',
     todo_write_other: 'made {{count}} plan updates',
+    github_one: 'performed 1 GitHub action',
+    github_other: 'performed {{count}} GitHub actions',
+    dispatch_one: 'dispatched 1 agent run',
+    dispatch_other: 'dispatched {{count}} agent runs',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -467,6 +471,13 @@ const en = {
     web_search: 'Search the web',
     web_fetch: 'Fetch a web page',
     todo_write: 'Update the plan',
+    github_read: 'Check GitHub',
+    github_create_repo: 'Create a GitHub repository',
+    github_push: 'Push to GitHub',
+    github_issue_write: 'Update GitHub issues',
+    github_pr_write: 'Update a pull request',
+    dispatch_task: 'Dispatch a coding task',
+    dispatch_review: 'Dispatch a code review',
     fallback: 'Use a tool'
   },
   citations: {

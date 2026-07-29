@@ -20,7 +20,14 @@ const BUILTIN_KEYS: Record<string, string> = {
   ask: 'tools.ask',
   web_search: 'tools.web_search',
   web_fetch: 'tools.web_fetch',
-  todo_write: 'tools.todo_write'
+  todo_write: 'tools.todo_write',
+  github_read: 'tools.github_read',
+  github_create_repo: 'tools.github_create_repo',
+  github_push: 'tools.github_push',
+  github_issue_write: 'tools.github_issue_write',
+  github_pr_write: 'tools.github_pr_write',
+  dispatch_task: 'tools.dispatch_task',
+  dispatch_review: 'tools.dispatch_review'
 }
 
 /** Resolve the i18n key for a tool name's user-facing label. */
@@ -47,7 +54,16 @@ const ACTIVITY_BUCKETS: Record<string, string> = {
   ask: 'ask',
   web_search: 'web_search',
   web_fetch: 'web_fetch',
-  todo_write: 'todo_write'
+  todo_write: 'todo_write',
+  // All GitHub operations aggregate into one clause; both dispatch flavors
+  // (implement / review) into another.
+  github_read: 'github',
+  github_create_repo: 'github',
+  github_push: 'github',
+  github_issue_write: 'github',
+  github_pr_write: 'github',
+  dispatch_task: 'dispatch',
+  dispatch_review: 'dispatch'
 }
 
 /** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */
@@ -87,6 +103,20 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
       return str(a.query)
     case 'web_fetch':
       return str(a.url)
+    case 'github_read':
+      return str(a.action)
+    case 'github_create_repo':
+      return str(a.name)
+    case 'github_push':
+      return str(a.branch)
+    case 'github_issue_write':
+      return str(a.title) ?? (a.number != null ? `${str(a.action) ?? ''} #${a.number}`.trim() : str(a.action))
+    case 'github_pr_write':
+      return str(a.title) ?? (a.number != null ? `#${a.number}` : str(a.action))
+    case 'dispatch_task':
+      return a.issueNumber != null ? `#${a.issueNumber}` : undefined
+    case 'dispatch_review':
+      return a.prNumber != null ? `PR #${a.prNumber}` : undefined
     default:
       return undefined
   }

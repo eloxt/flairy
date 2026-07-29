@@ -155,6 +155,10 @@ const zhCN: typeof En = {
     web_fetch_other: '抓取了 {{count}} 个网页',
     todo_write_one: '更新了 {{count}} 次计划',
     todo_write_other: '更新了 {{count}} 次计划',
+    github_one: '执行了 {{count}} 次 GitHub 操作',
+    github_other: '执行了 {{count}} 次 GitHub 操作',
+    dispatch_one: '派发了 {{count}} 个任务',
+    dispatch_other: '派发了 {{count}} 个任务',
     other_one: '使用了 {{count}} 个工具',
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
@@ -441,6 +445,13 @@ const zhCN: typeof En = {
     web_search: '搜索网络',
     web_fetch: '抓取网页',
     todo_write: '更新计划',
+    github_read: '查看 GitHub',
+    github_create_repo: '创建 GitHub 仓库',
+    github_push: '推送到 GitHub',
+    github_issue_write: '更新 GitHub issue',
+    github_pr_write: '更新 Pull Request',
+    dispatch_task: '派发编码任务',
+    dispatch_review: '派发代码评审',
     fallback: '工具'
   },
   citations: {

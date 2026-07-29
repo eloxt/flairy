@@ -1,11 +1,13 @@
 import { Fragment, lazy, Suspense, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  IconBrandGithub,
   IconFileText,
   IconFolder,
   IconLink,
   IconListSearch,
   IconPencil,
+  IconRobot,
   IconSearch,
   IconWorld,
 } from "@tabler/icons-react";
@@ -55,6 +57,16 @@ export function ToolDetail({ m }: { m: UiMessage }): React.JSX.Element | null {
       break;
     case "web_fetch":
       return <FetchDetail m={m} args={args} text={text} />;
+    case "github_read":
+      return <GithubReadDetail m={m} args={args} text={text} />;
+    case "github_create_repo":
+    case "github_push":
+    case "github_issue_write":
+    case "github_pr_write":
+      return <GithubActionDetail m={m} args={args} text={text} />;
+    case "dispatch_task":
+    case "dispatch_review":
+      return <DispatchDetail m={m} args={args} text={text} />;
     case "ask": {
       const qa = parseAskResult(text);
       if (qa) return <AskDetail pairs={qa} />;
@@ -559,6 +571,269 @@ function AskDetail({ pairs }: { pairs: { q: string; a: string }[] }): React.JSX.
           </div>
         ))}
       </div>
+    </Card>
+  );
+}
+
+/* ── github_read · issue/PR rows or repo facts ──────────────────────────── */
+
+/** A slim issue/PR shape as emitted by the github_read tool's JSON output. */
+interface GithubItem {
+  number: number;
+  title: string;
+  state?: string;
+  url?: string;
+  labels?: string[];
+  body?: string;
+}
+
+const isGithubItem = (v: unknown): v is GithubItem =>
+  !!v &&
+  typeof v === "object" &&
+  typeof (v as GithubItem).number === "number" &&
+  typeof (v as GithubItem).title === "string";
+
+function StateChip({ state }: { state?: string }): React.JSX.Element | null {
+  if (!state) return null;
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium",
+        state === "open"
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          : "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+      )}
+    >
+      {state}
+    </span>
+  );
+}
+
+function GithubItemRow({ item }: { item: GithubItem }): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      disabled={!item.url}
+      onClick={() => item.url && void window.api.openExternal(item.url)}
+      className="flex w-full min-w-0 items-center gap-2.5 rounded-[7px] px-2 py-1 text-left transition-colors enabled:hover:bg-accent"
+    >
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/60">
+        #{item.number}
+      </span>
+      <span className="min-w-0 truncate text-[13px] text-foreground">{item.title}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-3">
+        {item.labels?.slice(0, 3).map((l) => (
+          <span
+            key={l}
+            className="rounded bg-foreground/[0.06] px-1 py-px text-[10px] text-muted-foreground"
+          >
+            {l}
+          </span>
+        ))}
+        <StateChip state={item.state} />
+      </span>
+    </button>
+  );
+}
+
+function GithubReadDetail({
+  m,
+  args,
+  text,
+}: {
+  m: UiMessage;
+  args?: Record<string, unknown>;
+  text: string;
+}): React.JSX.Element | null {
+  const action = argStr(args, "action") ?? m.toolArg ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+
+  // List actions → clickable issue/PR rows, like the web-search source list.
+  if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(isGithubItem)) {
+    return (
+      <Card error={m.isError}>
+        <CardHead icon={<IconBrandGithub strokeWidth={2} />} primary={action} mono={false} />
+        <Clamp collapsedClass="max-h-72">
+          <div className="p-1.5">
+            {parsed.map((item) => (
+              <GithubItemRow key={item.number} item={item} />
+            ))}
+          </div>
+        </Clamp>
+      </Card>
+    );
+  }
+
+  // Single issue/PR → header row + its description body.
+  if (isGithubItem(parsed)) {
+    return (
+      <Card error={m.isError}>
+        <div className="p-1.5 pb-0">
+          <GithubItemRow item={parsed} />
+        </div>
+        {parsed.body && (
+          <Clamp>
+            <div className="px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+              {parsed.body}
+            </div>
+          </Clamp>
+        )}
+      </Card>
+    );
+  }
+
+  // Repo info (or any flat object) → the quiet key · value grid.
+  if (parsed && typeof parsed === "object") {
+    return (
+      <Card error={m.isError}>
+        <CardHead icon={<IconBrandGithub strokeWidth={2} />} primary={action} mono={false} />
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-0.5 border-t border-border px-3 py-2 font-mono text-xs leading-relaxed">
+          {Object.entries(parsed as Record<string, unknown>).map(([k, v]) => (
+            <Fragment key={k}>
+              <dt className="text-muted-foreground/60">{k}</dt>
+              <dd className="m-0 min-w-0 break-all text-foreground">
+                {typeof v === "string" ? v : JSON.stringify(v)}
+              </dd>
+            </Fragment>
+          ))}
+        </dl>
+      </Card>
+    );
+  }
+
+  // "(no issues)" placeholders and error text.
+  if (!text.trim()) return null;
+  return (
+    <Card error={m.isError}>
+      <CardHead icon={<IconBrandGithub strokeWidth={2} />} primary={action} mono={false} />
+      <MonoBody text={text} error={m.isError} />
+    </Card>
+  );
+}
+
+/* ── github mutations · action head + linkified result ──────────────────── */
+
+/** Render text with bare https URLs as clickable spans (results end in a PR/issue link). */
+function Linkified({ text }: { text: string }): React.JSX.Element {
+  const parts = text.split(/(https:\/\/[^\s)]+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("https://") ? (
+          <button
+            key={i}
+            type="button"
+            onClick={() => void window.api.openExternal(part)}
+            className="break-all text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground"
+          >
+            {part}
+          </button>
+        ) : (
+          <Fragment key={i}>{part}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+function GithubActionDetail({
+  m,
+  args,
+  text,
+}: {
+  m: UiMessage;
+  args?: Record<string, unknown>;
+  text: string;
+}): React.JSX.Element | null {
+  const primary =
+    argStr(args, "title") ??
+    argStr(args, "name") ??
+    argStr(args, "branch") ??
+    (args?.number != null ? `#${args.number}` : undefined) ??
+    m.toolArg ??
+    "";
+  const action = argStr(args, "action");
+  const body = argStr(args, "body");
+  if (!primary && !text.trim() && !body) return null;
+  return (
+    <Card error={m.isError}>
+      {primary && (
+        <CardHead
+          icon={<IconBrandGithub strokeWidth={2} />}
+          primary={primary}
+          mono={false}
+          meta={action}
+        />
+      )}
+      {body && (
+        <Clamp collapsedClass="max-h-40">
+          <div
+            className={cn(
+              "px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground",
+              primary && "border-t border-border",
+            )}
+          >
+            {body}
+          </div>
+        </Clamp>
+      )}
+      {text.trim() && (
+        <div
+          className={cn(
+            "px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap",
+            (primary || body) && "border-t border-border",
+            m.isError ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          <Linkified text={text.trim()} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ── dispatch_task / dispatch_review · handoff card ─────────────────────── */
+
+function DispatchDetail({
+  m,
+  args,
+  text,
+}: {
+  m: UiMessage;
+  args?: Record<string, unknown>;
+  text: string;
+}): React.JSX.Element {
+  const isReview = m.toolName === "dispatch_review";
+  const target =
+    args?.issueNumber != null
+      ? `#${args.issueNumber}`
+      : args?.prNumber != null
+        ? `PR #${args.prNumber}`
+        : (m.toolArg ?? "");
+  const backend = argStr(args, "backend");
+  return (
+    <Card error={m.isError}>
+      <CardHead
+        icon={<IconRobot strokeWidth={2} />}
+        primary={backend ? `${target} → ${backend}` : target}
+        mono={false}
+        meta={isReview ? "review" : undefined}
+      />
+      {text.trim() && (
+        <div
+          className={cn(
+            "border-t border-border px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap",
+            m.isError ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {text.trim()}
+        </div>
+      )}
     </Card>
   );
 }
