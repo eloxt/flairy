@@ -199,7 +199,7 @@ async function runReviewPipeline(runId: string, args: ReviewArgs, backendId: str
         if (now - lastTailEmit < 300) return
         lastTailEmit = now
         const run = getWorkerRun(runId)
-        if (run) emitRun({ ...run, tail: workers.tailFor(runId) })
+        if (run) emitRun({ ...run, tail: workers.tailFor(runId), hasTranscript: hasTranscript(runId) })
       }
     })
 
@@ -324,7 +324,7 @@ async function runPipeline(runId: string, args: DispatchArgs, backendId: string)
         if (now - lastTailEmit < 300) return
         lastTailEmit = now
         const run = getWorkerRun(runId)
-        if (run) emitRun({ ...run, tail: workers.tailFor(runId) })
+        if (run) emitRun({ ...run, tail: workers.tailFor(runId), hasTranscript: hasTranscript(runId) })
       }
     })
 

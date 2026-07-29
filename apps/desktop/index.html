@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>夜雨的窗</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌧️</text></svg>" />
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0f16;
+    font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+    color: rgba(226, 233, 240, 0.8);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas#glass {
+    position: fixed; inset: 0;
+    width: 100vw; height: 100vh;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .clock {
+    position: fixed; top: 7vh; left: 0; right: 0;
+    text-align: center;
+    pointer-events: none;
+    text-shadow: 0 2px 24px rgba(0,0,0,.6);
+  }
+  .clock time {
+    display: block;
+    font-size: clamp(2.4rem, 7vw, 4.2rem);
+    font-weight: 300;
+    letter-spacing: .12em;
+    color: rgba(230, 237, 244, .62);
+    font-variant-numeric: tabular-nums;
+  }
+  .clock small {
+    display: block;
+    margin-top: .9em;
+    font-size: .8rem;
+    letter-spacing: .9em;
+    text-indent: .9em; /* 视觉居中：抵消最后一个字后的字距 */
+    color: rgba(210, 220, 230, .38);
+  }
+  .hint {
+    position: fixed; left: 0; right: 0; bottom: 16vh;
+    text-align: center;
+    font-size: .85rem;
+    letter-spacing: .5em;
+    text-indent: .5em;
+    color: rgba(215, 224, 233, .45);
+    pointer-events: none;
+    transition: opacity 2.5s ease;
+    animation: hintbreathe 5s ease-in-out infinite;
+  }
+  .hint.gone { opacity: 0; animation: none; }
+  @keyframes hintbreathe {
+    0%, 100% { opacity: .35; }
+    50% { opacity: .8; }
+  }
+  button.sound {
+    position: fixed; right: 22px; bottom: 20px;
+    appearance: none;
+    background: rgba(16, 22, 30, .35);
+    border: 1px solid rgba(200, 214, 228, .18);
+    border-radius: 999px;
+    color: rgba(214, 224, 234, .55);
+    font: inherit;
+    font-size: .78rem;
+    letter-spacing: .35em;
+    text-indent: .35em;
+    padding: .55em 1.1em .55em 1.35em;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: color .4s, border-color .4s;
+  }
+  button.sound:hover { color: rgba(230, 238, 246, .85); }
+  button.sound[aria-pressed="true"] {
+    color: rgba(244, 232, 205, .9);
+    border-color: rgba(244, 232, 205, .35);
+  }
+  button.sound:focus-visible {
+    outline: 2px solid rgba(244, 232, 205, .7);
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hint { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="glass" aria-label="一扇起雾的玻璃窗，可以用指尖擦拭"></canvas>
+
+<div class="clock">
+  <time id="clock">--:--</time>
+  <small>晚　安</small>
+</div>
+
+<p class="hint" id="hint">用 指 尖 擦 一 擦 玻 璃</p>
+
+<button class="sound" id="sound" aria-pressed="false">雨声　关</button>
+
+<script>
+(() => {
+  "use strict";
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas = document.getElementById("glass");
+  const ctx = canvas.getContext("2d");
+
+  let W = 0, H = 0, dpr = 1;
+  let sharp, fogSrc, fog, fogCtx;   // 窗外清晰景、雾面底图、当前雾层
+  const droplets = [];
+  const rain = [];
+  const RAIN_N = reduced ? 0 : 70;
+
+  const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  // ---------- 窗外的夜景 ----------
+  function paintScene() {
+    sharp = mk(W * dpr, H * dpr);
+    const s = sharp.getContext("2d");
+    s.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const sky = s.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#0a0e15");
+    sky.addColorStop(0.55, "#0f141d");
+    sky.addColorStop(0.8, "#171724");
+    sky.addColorStop(1, "#0d0d14");
+    s.fillStyle = sky;
+    s.fillRect(0, 0, W, H);
+
+    // 月亮，半掩在云后
+    const mx = W * 0.76, my = H * 0.16, mr = Math.min(W, H) * 0.055;
+    let g = s.createRadialGradient(mx, my, 0, mx, my, mr * 5);
+    g.addColorStop(0, "rgba(226,230,224,0.30)");
+    g.addColorStop(0.12, "rgba(220,226,222,0.12)");
+    g.addColorStop(1, "rgba(220,226,222,0)");
+    s.fillStyle = g;
+    s.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
+    g = s.createRadialGradient(mx - mr * 0.2, my - mr * 0.2, 0, mx, my, mr);
+    g.addColorStop(0, "rgba(234,236,228,0.9)");
+    g.addColorStop(0.55, "rgba(222,227,221,0.72)");
+    g.addColorStop(0.8, "rgba(216,222,218,0.35)");
+    g.addColorStop(1, "rgba(216,222,218,0)");
+    s.fillStyle = g;
+    s.beginPath(); s.arc(mx, my, mr, 0, Math.PI * 2); s.fill();
+
+    // 远处楼群剪影
+    const horizon = H * 0.68;
+    s.fillStyle = "#0b0e14";
+    let x = -20;
+    const roofs = [];
+    while (x < W + 40) {
+      const bw = rnd(40, 130), bh = rnd(H * 0.06, H * 0.24);
+      s.fillRect(x, horizon - bh, bw, H - horizon + bh);
+      roofs.push({ x, w: bw, top: horizon - bh });
+      x += bw + rnd(2, 14);
+    }
+
+    // 亮着的窗与街灯（画成柔光，隔着玻璃本就不该锐利）
+    const palette = [
+      [255, 178, 100], [255, 233, 201], [127, 212, 216],
+      [255, 178, 100], [255, 122, 110], [180, 144, 216], [255, 233, 201],
+    ];
+    const light = (lx, ly, r, c, a) => {
+      const lg = s.createRadialGradient(lx, ly, 0, lx, ly, r);
+      lg.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`);
+      lg.addColorStop(0.35, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.45})`);
+      lg.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+      s.fillStyle = lg;
+      s.beginPath(); s.arc(lx, ly, r, 0, Math.PI * 2); s.fill();
+    };
+    // 楼里的窗
+    for (const b of roofs) {
+      const n = Math.floor(b.w / 22);
+      for (let i = 0; i < n; i++) {
+        if (Math.random() < 0.4) continue;
+        light(b.x + rnd(6, b.w - 6), rnd(b.top + 8, horizon - 6),
+              rnd(2.5, 5.5), palette[Math.floor(rnd(0, 3))], rnd(0.5, 0.95));
+      }
+    }
+    // 街面的大灯与地面反光
+    for (let i = 0; i < 32; i++) {
+      const c = palette[Math.floor(rnd(0, palette.length))];
+      const lx = rnd(0, W), ly = rnd(horizon, H * 0.94);
+      const r = rnd(8, Math.min(W, H) * 0.05);
+      const a = rnd(0.4, 0.95);
+      light(lx, ly, r, c, a);
+      // 湿漉漉路面上的竖直拉丝反光
+      const rg = s.createLinearGradient(lx, ly, lx, Math.min(ly + r * 6, H));
+      rg.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.28})`);
+      rg.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+      s.fillStyle = rg;
+      s.fillRect(lx - r * 0.18, ly, r * 0.36, r * 6);
+    }
+  }
+
+  // 反复降采样得到毛玻璃底图（不依赖 ctx.filter，Safari 也稳）
+  function paintFogSource() {
+    const s1 = mk(Math.max(2, W >> 2), Math.max(2, H >> 2));
+    const s2 = mk(Math.max(2, W >> 3), Math.max(2, H >> 3));
+    s1.getContext("2d").drawImage(sharp, 0, 0, s1.width, s1.height);
+    s2.getContext("2d").drawImage(s1, 0, 0, s2.width, s2.height);
+    fogSrc = mk(W * dpr, H * dpr);
+    const f = fogSrc.getContext("2d");
+    f.setTransform(dpr, 0, 0, dpr, 0, 0);
+    f.imageSmoothingEnabled = true;
+    f.drawImage(s2, 0, 0, W, H);
+    f.fillStyle = "rgba(196,208,220,0.17)"; // 呵在玻璃上的那层白
+    f.fillRect(0, 0, W, H);
+  }
+
+  function resetFog() {
+    fog = mk(W * dpr, H * dpr);
+    fogCtx = fog.getContext("2d");
+    fogCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fogCtx.drawImage(fogSrc, 0, 0, W, H);
+  }
+
+  // ---------- 擦拭 ----------
+  function wipe(x, y, r, soft, strength = 0.95) {
+    fogCtx.globalCompositeOperation = "destination-out";
+    const g = fogCtx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(0,0,0,${strength})`);
+    g.addColorStop(soft, `rgba(0,0,0,${strength * 0.85})`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    fogCtx.fillStyle = g;
+    fogCtx.beginPath(); fogCtx.arc(x, y, r, 0, Math.PI * 2); fogCtx.fill();
+    fogCtx.globalCompositeOperation = "source-over";
+  }
+
+  // ---------- 雨滴在玻璃上往下爬 ----------
+  function spawnDroplet(y) {
+    droplets.push({
+      x: rnd(0, W), y: y ?? rnd(-14, -4),
+      r: rnd(1.6, 4.2), v: rnd(0.3, 1.2), wob: rnd(0, Math.PI * 2),
+    });
+  }
+  function stepDroplets() {
+    const rate = reduced ? 0.004 : 0.013;
+    if (Math.random() < rate && droplets.length < 22) spawnDroplet();
+    for (let i = droplets.length - 1; i >= 0; i--) {
+      const d = droplets[i];
+      d.v = Math.min(d.v + 0.012 + d.r * 0.006, 2.6 + d.r * 0.4);
+      if (Math.random() < 0.012) d.v *= 0.25;          // 偶尔挂住
+      if (Math.random() < 0.006) d.v += rnd(0.5, 1.5); // 偶尔汇成一股冲下去
+      d.y += d.v;
+      d.x += Math.sin(d.y * 0.018 + d.wob) * 0.15;
+      wipe(d.x, d.y, d.r + 1.0, 0.5, 0.16); // 每帧叠加，走过之后剩约四成雾
+      if (d.y > H + 20) droplets.splice(i, 1);
+    }
+  }
+
+  // ---------- 玻璃外的雨丝（只在擦净处可见） ----------
+  function initRain() {
+    rain.length = 0;
+    for (let i = 0; i < RAIN_N; i++)
+      rain.push({ x: rnd(0, W), y: rnd(0, H), l: rnd(9, 22), v: rnd(7, 14) });
+  }
+  function drawRain() {
+    ctx.strokeStyle = "rgba(190,205,220,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const p of rain) {
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.l * 0.12, p.y + p.l);
+      p.y += p.v; p.x -= p.v * 0.12;
+      if (p.y > H) { p.y = -p.l; p.x = rnd(0, W + 30); }
+    }
+    ctx.stroke();
+  }
+
+  // ---------- 主循环 ----------
+  function frame() {
+    // 雾气悄悄爬回来
+    fogCtx.globalAlpha = 0.0012;
+    fogCtx.drawImage(fogSrc, 0, 0, W, H);
+    fogCtx.globalAlpha = 1;
+
+    stepDroplets();
+
+    ctx.drawImage(sharp, 0, 0, W, H);
+    if (!reduced) drawRain();
+    ctx.drawImage(fog, 0, 0, W, H);
+
+    // 雨滴上的一点高光
+    ctx.fillStyle = "rgba(235,242,248,0.28)";
+    for (const d of droplets) {
+      ctx.beginPath();
+      ctx.arc(d.x - d.r * 0.25, d.y - d.r * 0.25, Math.max(0.6, d.r * 0.4), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- 指尖 ----------
+  let down = false, lx = 0, ly = 0;
+  const hint = document.getElementById("hint");
+  canvas.addEventListener("pointerdown", (e) => {
+    down = true; lx = e.clientX; ly = e.clientY;
+    wipe(lx, ly, 34, 0.6);
+    hint.classList.add("gone");
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly;
+    const dist = Math.hypot(dx, dy), step = 10;
+    for (let t = step; t <= dist; t += step)
+      wipe(lx + (dx * t) / dist, ly + (dy * t) / dist, 34, 0.6);
+    wipe(e.clientX, e.clientY, 34, 0.6);
+    lx = e.clientX; ly = e.clientY;
+  });
+  addEventListener("pointerup", () => { down = false; });
+  addEventListener("pointercancel", () => { down = false; });
+
+  // ---------- 时钟 ----------
+  const clock = document.getElementById("clock");
+  function tickClock() {
+    const t = new Date();
+    clock.textContent =
+      String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+  }
+  tickClock();
+  setInterval(tickClock, 10 * 1000);
+
+  // ---------- 雨声（WebAudio 现场合成，无任何外部资源） ----------
+  const soundBtn = document.getElementById("sound");
+  let ac = null, master = null, patterTimer = 0;
+  function buildAudio() {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    const len = ac.sampleRate * 2;
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+    master = ac.createGain();
+    master.gain.value = 0;
+    master.connect(ac.destination);
+
+    // 雨的身体：低通后的噪声，音量缓慢起伏
+    const body = ac.createBufferSource();
+    body.buffer = buf; body.loop = true;
+    const lp = ac.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 520; lp.Q.value = 0.4;
+    const bodyGain = ac.createGain();
+    bodyGain.gain.value = 0.5;
+    body.connect(lp).connect(bodyGain).connect(master);
+    body.start();
+    const lfo = ac.createOscillator(), lfoGain = ac.createGain();
+    lfo.frequency.value = 0.11; lfoGain.gain.value = 0.1;
+    lfo.connect(lfoGain).connect(bodyGain.gain);
+    lfo.start();
+
+    // 打在窗上的细碎雨点：带通噪声，随机忽强忽弱
+    const patter = ac.createBufferSource();
+    patter.buffer = buf; patter.loop = true; patter.playbackRate.value = 1.31;
+    const bp = ac.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 3800; bp.Q.value = 0.8;
+    const patterGain = ac.createGain();
+    patterGain.gain.value = 0.04;
+    patter.connect(bp).connect(patterGain).connect(master);
+    patter.start();
+    patterTimer = setInterval(() => {
+      patterGain.gain.setTargetAtTime(rnd(0.015, 0.085), ac.currentTime, 0.6);
+    }, 900);
+  }
+  soundBtn.addEventListener("click", async () => {
+    const on = soundBtn.getAttribute("aria-pressed") !== "true";
+    if (on) {
+      if (!ac) buildAudio();
+      await ac.resume();
+      master.gain.setTargetAtTime(0.55, ac.currentTime, 1.2);
+      soundBtn.textContent = "雨声　开";
+    } else {
+      master.gain.setTargetAtTime(0, ac.currentTime, 0.5);
+      soundBtn.textContent = "雨声　关";
+    }
+    soundBtn.setAttribute("aria-pressed", String(on));
+  });
+
+  // ---------- 尺寸与启动 ----------
+  function layout() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paintScene();
+    paintFogSource();
+    resetFog();
+    initRain();
+    droplets.length = 0;
+    // 预跑一段：初见时玻璃上已有几道旧雨痕，且已半被雾气盖回
+    for (let i = 0; i < 5; i++) spawnDroplet(rnd(0, H * 0.4));
+    for (let i = 0; i < 200; i++) stepDroplets();
+    fogCtx.globalAlpha = 0.4;
+    fogCtx.drawImage(fogSrc, 0, 0, W, H);
+    fogCtx.globalAlpha = 1;
+  }
+  let resizeTimer = 0;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(layout, 200);
+  });
+
+  layout();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

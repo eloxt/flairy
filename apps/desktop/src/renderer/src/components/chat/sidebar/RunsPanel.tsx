@@ -114,7 +114,9 @@ function RunCard({ run }: { run: WorkerRun }): React.JSX.Element {
           {run.summary}
         </p>
       )}
-      {run.hasTranscript && (
+      {/* Keep the sheet mounted while open even if hasTranscript flickers on a
+          partial run event — unmounting would slam it shut mid-read. */}
+      {(run.hasTranscript || transcriptOpen) && (
         <RunTranscriptSheet run={run} open={transcriptOpen} onOpenChange={setTranscriptOpen} />
       )}
     </div>

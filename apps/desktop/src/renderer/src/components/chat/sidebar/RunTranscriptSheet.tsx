@@ -35,8 +35,11 @@ export function RunTranscriptSheet({
   onOpenChange: (open: boolean) => void
 }): React.JSX.Element {
   const { t } = useTranslation()
-  const [events, setEvents] = useState<TranscriptEvent[]>([])
+  const [rawEvents, setRawEvents] = useState<TranscriptEvent[]>([])
   const [truncated, setTruncated] = useState(false)
+  // Time-sliced flushes split one narration into several blocks on disk; merge
+  // consecutive same-type text events back together for display.
+  const events = mergeTextEvents(rawEvents)
 
   const live = ['preparing', 'running', 'pushing'].includes(run.status)
 
@@ -46,7 +49,7 @@ export function RunTranscriptSheet({
     const load = (): void => {
       void window.api.readWorkerRunTranscript(run.id).then((r) => {
         if (!alive) return
-        setEvents(r.events)
+        setRawEvents(r.events)
         setTruncated(r.truncated)
       })
     }
@@ -103,6 +106,27 @@ export function RunTranscriptSheet({
 }
 
 const time = (t: number): string => new Date(t).toLocaleTimeString()
+
+/** Merge runs of consecutive same-type text events (message/thought/stderr). */
+function mergeTextEvents(events: TranscriptEvent[]): TranscriptEvent[] {
+  const TEXTUAL = new Set(['message', 'thought', 'stderr'])
+  const out: TranscriptEvent[] = []
+  for (const e of events) {
+    const prev = out[out.length - 1]
+    if (
+      prev &&
+      TEXTUAL.has(e.type) &&
+      prev.type === e.type &&
+      'text' in prev &&
+      'text' in e
+    ) {
+      out[out.length - 1] = { ...prev, text: prev.text + e.text }
+    } else {
+      out.push(e)
+    }
+  }
+  return out
+}
 
 function TranscriptRow({ event: e }: { event: TranscriptEvent }): React.JSX.Element | null {
   const { t } = useTranslation()

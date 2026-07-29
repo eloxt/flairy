@@ -29,6 +29,13 @@ const DIR_NAME = 'worker-transcripts'
 const MAX_AGE_DAYS = 14
 /** Coalesced text blocks flush at this size even without a stream switch. */
 const FLUSH_THRESHOLD = 16_384
+/**
+ * ...and at this age: the live viewer re-reads the file every few seconds, so
+ * a long uninterrupted narration must still reach disk promptly. The viewer
+ * merges consecutive same-type blocks, so time-sliced flushes cost nothing
+ * visually.
+ */
+const FLUSH_AGE_MS = 2_000
 /** Reader cap: don't ship unbounded logs across IPC. */
 const MAX_READ_EVENTS = 5_000
 
@@ -96,7 +103,7 @@ export function createTranscript(runId: string): TranscriptWriter {
         bufStart = Date.now()
       }
       buf += chunk
-      if (buf.length >= FLUSH_THRESHOLD) flush()
+      if (buf.length >= FLUSH_THRESHOLD || Date.now() - bufStart >= FLUSH_AGE_MS) flush()
     },
     tool: (title, kind, input) => {
       flush()
