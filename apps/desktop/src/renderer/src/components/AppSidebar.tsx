@@ -306,15 +306,17 @@ export function AppSidebar(): React.JSX.Element {
                   </SidebarMenu>
                 )}
               </Section>
-              {grouped.chats.length === 0 ? (
-                <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                  {t('chat.chatsWillAppearHere')}
-                </p>
-              ) : (
-                <Section
-                  label={t('chat.chats')}
-                  triggerClassName="font-semibold text-sidebar-foreground"
-                >
+              {/* Chats mirrors Projects: the section header always renders,
+                  with the same quiet hint inside while the list is empty. */}
+              <Section
+                label={t('chat.chats')}
+                triggerClassName="font-semibold text-sidebar-foreground"
+              >
+                {grouped.chats.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-muted-foreground">
+                    {t('chat.chatsWillAppearHere')}
+                  </p>
+                ) : (
                   <SidebarMenuSub className="mr-0 pr-0">
                     {grouped.chats.map((s) => (
                       <SessionRow
@@ -328,8 +330,8 @@ export function AppSidebar(): React.JSX.Element {
                       />
                     ))}
                   </SidebarMenuSub>
-                </Section>
-              )}
+                )}
+              </Section>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
