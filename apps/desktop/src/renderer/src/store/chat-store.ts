@@ -176,6 +176,14 @@ export interface SessionRuntime {
    * so a false value keeps their optimistic-bubble path untouched (no duplicates).
    */
   fromTelegram: boolean
+  /**
+   * True from the moment a run ends (agent_end / error / abort) until the next
+   * run starts. Lets the composer's plan card linger after the run — showing
+   * "done" or "paused" — instead of vanishing with `running`. Deliberately not
+   * persisted: a cold-opened (or evicted-and-rebuilt) runtime starts false, so
+   * reopening an old session doesn't resurrect a stale plan card.
+   */
+  planAfterglow: boolean
 }
 
 /**
@@ -252,7 +260,8 @@ function emptyRuntime(): SessionRuntime {
     approvalQueue: [],
     questionQueue: [],
     hydrated: true,
-    fromTelegram: false
+    fromTelegram: false,
+    planAfterglow: false
   }
 }
 
@@ -283,6 +292,8 @@ interface ChatState {
   approvalQueue: ApprovalRequestPayload[]
   /** Pending `ask` questions for the open session, oldest first; each renders a card. */
   questionQueue: QuestionRequestPayload[]
+  /** Mirror of the foreground session's run-just-ended flag (plan-card lingering). */
+  planAfterglow: boolean
   /** Global tool-approval posture; applies to every session (resets to 'ask' on restart). */
   permissionMode: PermissionMode
   /**
@@ -361,6 +372,7 @@ export const useChat = create<ChatState>((set, get) => ({
   retrying: null,
   approvalQueue: [],
   questionQueue: [],
+  planAfterglow: false,
   permissionMode: 'ask',
   pendingCwd: null,
   pendingScrollIndex: null,
@@ -591,6 +603,7 @@ export const useChat = create<ChatState>((set, get) => ({
     updateRuntime(set, get, sessionId, (rt) => ({
       ...rt,
       running: false,
+      planAfterglow: true,
       approvalQueue: [],
       questionQueue: []
     }))
@@ -747,6 +760,7 @@ function mirror(rt: SessionRuntime | null): {
   retrying: { attempt: number; max: number } | null
   approvalQueue: ApprovalRequestPayload[]
   questionQueue: QuestionRequestPayload[]
+  planAfterglow: boolean
 } {
   return {
     messages: rt?.messages ?? [],
@@ -754,7 +768,8 @@ function mirror(rt: SessionRuntime | null): {
     compressing: rt?.compressing ?? false,
     retrying: rt?.retrying ?? null,
     approvalQueue: rt?.approvalQueue ?? [],
-    questionQueue: rt?.questionQueue ?? []
+    questionQueue: rt?.questionQueue ?? [],
+    planAfterglow: rt?.planAfterglow ?? false
   }
 }
 
@@ -899,7 +914,7 @@ function applyEvent(
 
   switch (e.type) {
     case 'agent_start':
-      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: true }))
+      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: true, planAfterglow: false }))
       break
     case 'message_start':
       // New turn → new batch for the tool calls it's about to issue. Also clear
@@ -1132,12 +1147,13 @@ function applyEvent(
       }))
       break
     case 'agent_end':
-      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: false }))
+      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: false, planAfterglow: true }))
       break
     case 'error':
       updateRuntime(set, get, sessionId, (rt) => ({
         ...rt,
         running: false,
+        planAfterglow: true,
         retrying: null,
         messages: [
           ...rt.messages,

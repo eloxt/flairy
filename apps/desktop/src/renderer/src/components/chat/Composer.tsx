@@ -76,27 +76,41 @@ function normalizeDir(path: string): string {
 
 /**
  * The current plan: the most recent todo-bearing message's list (`todo_write`
- * rewrites the whole plan each call). A plan that was fully completed in an
- * earlier round (a user message sits between it and now) is finished business —
- * it doesn't resurface when the user starts the next turn; an unfinished one
- * does, since the agent may be continuing it. Returns the todos array by
- * reference — it lives on a settled tool-result message, so the selector stays
- * referentially stable across streamed tokens and doesn't re-render the
- * composer per token.
+ * rewrites the whole plan each call). Visibility follows the plan's lifecycle,
+ * not the raw `running` flag:
+ *
+ * - Written THIS round (no user message after it): shown while the run is live,
+ *   and it lingers after the run ends (`planAfterglow`) — as "done" or "paused"
+ *   — until the user sends the next message. Reopening an old session doesn't
+ *   resurrect it: afterglow is per-runtime and never persisted.
+ * - Written LAST round and unfinished: shown only while a follow-up run is
+ *   actually in flight (the agent may be continuing it). Once that run ends
+ *   without touching it, the plan is abandoned and stays gone.
+ * - Anything older (two or more user messages back) never resurfaces.
+ *
+ * Returns the todos array by reference — it lives on a settled tool-result
+ * message, so the selector stays referentially stable across streamed tokens
+ * and doesn't re-render the composer per token.
  */
 function selectLiveTodos(s: {
   messages: { role: string; todos?: TodoItem[] }[];
+  running: boolean;
+  planAfterglow: boolean;
 }): TodoItem[] | null {
-  let previousRound = false;
+  let roundsBack = 0;
   for (let i = s.messages.length - 1; i >= 0; i--) {
     const m = s.messages[i];
     if (m.todos?.length) {
-      if (previousRound && m.todos.every((t) => t.status === "completed")) {
+      if (roundsBack === 0) {
+        return s.running || s.planAfterglow ? m.todos : null;
+      }
+      // Previous round: only a live continuation of unfinished business shows.
+      if (!s.running || m.todos.every((t) => t.status === "completed")) {
         return null;
       }
       return m.todos;
     }
-    if (m.role === "user") previousRound = true;
+    if (m.role === "user" && ++roundsBack >= 2) return null;
   }
   return null;
 }
@@ -108,19 +122,56 @@ function selectLiveTodos(s: {
  * the card leaves with it, and the thread just keeps its quiet "updated the
  * plan" tool rows.
  */
-function LivePlanCard({ todos }: { todos: TodoItem[] }): React.JSX.Element {
+function LivePlanCard({
+  todos,
+  running,
+}: {
+  todos: TodoItem[];
+  running: boolean;
+}): React.JSX.Element {
   const { t } = useTranslation();
+  // Temporarily fold the plan away so the conversation behind it is readable.
+  const [collapsed, setCollapsed] = useState(false);
   const done = todos.filter((x) => x.status === "completed").length;
   return (
-    <div className="rounded-t-2xl [corner-shape:squircle] border-b border-border bg-background px-4 pb-2.5 pt-3">
-      <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+    <div className="rounded-t-2xl [corner-shape:squircle] px-4 pb-2.5 pt-3">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? t("common.expand") : t("common.collapse")}
+        className="flex w-full items-baseline gap-2 text-xs text-muted-foreground"
+      >
         <span className="font-medium text-foreground">{t("composer.plan")}</span>
+        {/* Post-run status: the card lingers after the run ends, so say why. */}
+        {!running && (
+          <span>{done === todos.length ? t("composer.planDone") : t("composer.planPaused")}</span>
+        )}
         <div className="flex-1" />
         <span className="tabular-nums">
           {done}/{todos.length}
         </span>
+        <IconChevronDown
+          className={cn(
+            "size-3.5 self-center transition-transform duration-200",
+            collapsed && "rotate-180",
+          )}
+          strokeWidth={2}
+        />
+      </button>
+      {/* Grid 0fr↔1fr fold: the list stays mounted and glides shut. */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+          collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+        )}
+        inert={collapsed}
+        aria-hidden={collapsed}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <TodoList todos={todos} className="mt-2 gap-1 [&_li]:text-xs [&_li]:leading-normal" />
+        </div>
       </div>
-      <TodoList todos={todos} className="mt-2 gap-1 [&_li]:text-xs [&_li]:leading-normal" />
     </div>
   );
 }
@@ -171,7 +222,7 @@ export function Composer(): React.JSX.Element {
   const approval = useChat((s) => s.approvalQueue[0]);
   const approvalsQueued = useChat((s) => s.approvalQueue.length - 1);
   const liveTodos = useChat(selectLiveTodos);
-  const showPlan = running && !!liveTodos;
+  const showPlan = !!liveTodos;
 
   // Publish the composer's live height so the message list can reserve matching
   // bottom space and never let content hide behind the floating composer.
@@ -281,14 +332,14 @@ export function Composer(): React.JSX.Element {
     >
       <div className="pointer-events-auto mx-auto w-full max-w-(--composer-width) px-6">
         <div className="bg-linear-to-t from-background via-background to-transparent pb-5">
-          <div className="rounded-2xl [corner-shape:squircle] border border-border bg-muted/60">
+          <div className="rounded-2xl [corner-shape:squircle] border border-border bg-muted">
             {/* Interaction cards slide out of the shell above the input: plan
                 progress on top, the question card below it (closer to the input,
                 waiting on the user's next action). Question keyed per request so
                 a new ask resets the card's answer state. */}
             {showPlan && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <LivePlanCard todos={liveTodos} />
+                <LivePlanCard todos={liveTodos} running={running} />
               </div>
             )}
             {question && (

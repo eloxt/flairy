@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconArrowLeft, IconCheck } from '@tabler/icons-react'
+import { IconArrowLeft, IconCheck, IconChevronDown } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useChat } from '@/store/chat-store'
@@ -36,7 +36,27 @@ export function QuestionCard({
     Object.fromEntries(payload.questions.map((q) => [q.id, { selected: new Set<string>(), custom: '' }]))
   )
   const [index, setIndex] = useState(0)
+  // Temporarily fold the card to a one-line summary so the conversation
+  // behind it is readable; a new ask remounts the card (keyed) expanded.
+  const [collapsed, setCollapsed] = useState(false)
   const total = payload.questions.length
+
+  // The slide deck is a flex row, so its natural height is the tallest
+  // question's. Track the active slide's measured height instead and animate
+  // the clipping container to it, so short questions don't leave dead space.
+  const slideRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [deckHeight, setDeckHeight] = useState<number>()
+  useLayoutEffect(() => {
+    if (collapsed) return
+    const el = slideRefs.current[index]
+    if (!el) return
+    const sync = (): void => setDeckHeight(el.offsetHeight)
+    sync()
+    // Width changes (composer resize) reflow the slide; keep the height synced.
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [index, collapsed])
 
   const stateFor = (id: string): AnswerState => answers[id] ?? { selected: new Set(), custom: '' }
 
@@ -87,9 +107,58 @@ export function QuestionCard({
     respondQuestion(payload.questionId, result)
   }
 
+  // Collapse/expand animate via the grid 0fr↔1fr row trick: both the summary
+  // row and the full card stay mounted (answers survive), one folds shut while
+  // the other unfolds, and the composer's total height glides between them.
+  const foldBase =
+    'grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none'
+
   return (
-    <div className="px-4 pb-3.5 pt-3">
-        <div className="overflow-hidden">
+    <div>
+      <div
+        className={cn(foldBase, collapsed ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}
+        inert={!collapsed}
+        aria-hidden={!collapsed}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            aria-expanded={false}
+            aria-label={t('common.expand')}
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="min-w-0 flex-1 truncate">{payload.questions[index].question}</span>
+            {total > 1 && (
+              <span className="shrink-0 tabular-nums">
+                {index + 1}/{total}
+              </span>
+            )}
+            <IconChevronDown className="size-3.5 shrink-0 rotate-180" strokeWidth={2} />
+          </button>
+        </div>
+      </div>
+
+      <div
+        className={cn(foldBase, collapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]')}
+        inert={collapsed}
+        aria-hidden={collapsed}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="relative px-4 pb-3.5 pt-3">
+      <button
+        type="button"
+        onClick={() => setCollapsed(true)}
+        aria-expanded
+        aria-label={t('common.collapse')}
+        className="absolute right-2.5 top-2 z-10 flex size-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <IconChevronDown className="size-3.5" strokeWidth={2} />
+      </button>
+        <div
+          className="overflow-hidden transition-[height] duration-300 ease-out motion-reduce:transition-none"
+          style={total > 1 ? { height: deckHeight } : undefined}
+        >
           <div
             className="flex items-start transition-transform duration-300 ease-out motion-reduce:transition-none"
             style={{ transform: `translateX(-${index * 100}%)` }}
@@ -100,6 +169,9 @@ export function QuestionCard({
               return (
                 <div
                   key={q.id}
+                  ref={(el) => {
+                    slideRefs.current[i] = el
+                  }}
                   inert={i !== index}
                   aria-hidden={i !== index}
                   className={cn(
@@ -108,7 +180,7 @@ export function QuestionCard({
                   )}
                 >
                   {(q.header || multi) && (
-                    <div className="flex items-baseline gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    <div className="flex items-baseline gap-2 pr-8 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                       {q.header && <span>{q.header}</span>}
                       {multi && (
                         <span className="font-normal normal-case tracking-normal text-muted-foreground/80">
@@ -117,7 +189,7 @@ export function QuestionCard({
                       )}
                     </div>
                   )}
-                  <p className="text-sm font-medium leading-relaxed text-foreground">{q.question}</p>
+                  <p className="pr-8 text-sm font-medium leading-relaxed text-foreground">{q.question}</p>
                   <div className="flex flex-col gap-1.5">
                     {q.options.map((opt) => {
                       const checked = a.selected.has(opt.label)
@@ -218,6 +290,9 @@ export function QuestionCard({
             )}
           </div>
         </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

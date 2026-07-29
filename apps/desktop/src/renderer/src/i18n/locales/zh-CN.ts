@@ -8,7 +8,9 @@ import type En from './en'
 
 const zhCN: typeof En = {
   common: {
-    settings: '设置'
+    settings: '设置',
+    collapse: '收起',
+    expand: '展开'
   },
   auth: {
     signInToContinue: '登录以继续',
@@ -210,6 +212,8 @@ const zhCN: typeof En = {
   },
   composer: {
     plan: '计划',
+    planDone: '已完成',
+    planPaused: '已暂停',
     placeholder: '让 Flairy 帮你做点什么…',
     telegramReadOnly: '此对话由 Telegram 控制，这里仅供查看。',
     addImage: '添加图片',

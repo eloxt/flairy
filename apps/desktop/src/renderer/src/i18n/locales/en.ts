@@ -9,7 +9,9 @@
  */
 const en = {
   common: {
-    settings: 'Settings'
+    settings: 'Settings',
+    collapse: 'Collapse',
+    expand: 'Expand'
   },
   auth: {
     signInToContinue: 'Sign in to continue',
@@ -221,6 +223,8 @@ const en = {
   },
   composer: {
     plan: 'Plan',
+    planDone: 'Done',
+    planPaused: 'Paused',
     placeholder: 'Ask Flairy to do something…',
     telegramReadOnly: 'This chat is controlled from Telegram — read-only here.',
     addImage: 'Add image',
