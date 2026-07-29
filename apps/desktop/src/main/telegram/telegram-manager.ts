@@ -1,6 +1,3 @@
-import { app } from 'electron'
-import { join } from 'node:path'
-import { mkdirSync } from 'node:fs'
 import { randomBytes, createHash } from 'node:crypto'
 import { Bot, InlineKeyboard, GrammyError, BotError, type Context } from 'grammy'
 import {
@@ -166,8 +163,6 @@ export class TelegramManager implements InteractionChannel {
     number,
     { count: number; lockedUntil: number; last: number }
   >()
-
-  private workspace: string | undefined
 
   constructor(
     private readonly server: ServerClient,
@@ -502,8 +497,8 @@ export class TelegramManager implements InteractionChannel {
   }
 
   /**
-   * Map (chatId, threadKey) → a persistent Flairy session, creating one (pinned to
-   * the Telegram workspace cwd) on first contact. Self-heals an orphaned mapping
+   * Map (chatId, threadKey) → a persistent Flairy session, creating a plain
+   * chat-kind one (no workspace) on first contact. Self-heals an orphaned mapping
    * whose session row was deleted: it recreates the session and rebinds the row,
    * avoiding the UNIQUE(chat_id, thread_key) block.
    */
@@ -518,8 +513,7 @@ export class TelegramManager implements InteractionChannel {
         // Orphaned mapping → recreate + rebind.
         deleteTelegramThread(existing.sessionId)
         this.owned.delete(existing.sessionId)
-        const workspace = this.workspaceDir()
-        const healed = createSession({ cwd: workspace, workspacePath: workspace })
+        const healed = createSession({ cwd: '~' })
         createTelegramThread({
           sessionId: healed.id,
           chatId,
@@ -530,8 +524,7 @@ export class TelegramManager implements InteractionChannel {
         broadcast(IPC.SessionsChanged)
         return healed.id
       }
-      const workspace = this.workspaceDir()
-      const meta = createSession({ cwd: workspace, workspacePath: workspace })
+      const meta = createSession({ cwd: '~' })
       createTelegramThread({ sessionId: meta.id, chatId, threadKey })
       this.owned.add(meta.id)
       broadcast(IPC.SessionsChanged)
@@ -567,8 +560,7 @@ export class TelegramManager implements InteractionChannel {
           // are kept; the topic just re-maps to the fresh session below.
           this.agents.delete(existing.sessionId)
         }
-        const workspace = this.workspaceDir()
-        const meta = createSession({ cwd: workspace, workspacePath: workspace })
+        const meta = createSession({ cwd: '~' })
         createTelegramThread({ sessionId: meta.id, chatId, threadKey })
         this.owned.add(meta.id)
         broadcast(IPC.SessionsChanged)
@@ -1403,15 +1395,6 @@ export class TelegramManager implements InteractionChannel {
       return false
     }
     return true
-  }
-
-  private workspaceDir(): string {
-    if (!this.workspace) {
-      const dir = join(app.getPath('userData'), 'telegram-workspace')
-      mkdirSync(dir, { recursive: true })
-      this.workspace = dir
-    }
-    return this.workspace
   }
 
   private prettyArgs(args: unknown): string {
