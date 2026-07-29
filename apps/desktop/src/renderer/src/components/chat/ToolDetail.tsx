@@ -2,6 +2,7 @@ import { Fragment, lazy, Suspense, useLayoutEffect, useRef, useState } from "rea
 import { useTranslation } from "react-i18next";
 import {
   IconBrandGithub,
+  IconClock,
   IconFileText,
   IconFolder,
   IconLink,
@@ -70,6 +71,8 @@ export function ToolDetail({ m }: { m: UiMessage }): React.JSX.Element | null {
       if (qa) return <AskDetail pairs={qa} />;
       break;
     }
+    case "schedule":
+      return <ScheduleDetail m={m} args={args} text={text} />;
   }
   return <GenericDetail m={m} args={args} text={text} />;
 }
@@ -789,6 +792,140 @@ function GithubActionDetail({
           )}
         >
           <Linkified text={text.trim()} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ── schedule · scheduled-task management ───────────────────────────────── */
+
+/** One row of the schedule tool's `list` output (see tools/schedule.ts doList). */
+interface ScheduleListRow {
+  id: string;
+  title: string;
+  scheduleText: string;
+  status: string;
+  nextRun: string;
+  here: boolean;
+}
+
+/** Parse the list action's `- id … · "…" · …` lines; null if the shape differs. */
+function parseScheduleList(text: string): ScheduleListRow[] | null {
+  const lines = text.split("\n").filter((l) => l.trim());
+  if (lines.length === 0) return null;
+  const rows: ScheduleListRow[] = [];
+  for (const line of lines) {
+    const match =
+      /^- id (\S+) · "(.+)" · (.+) · status: (\w+) · next run: (.+?) · runs in (this|another) conversation$/.exec(
+        line.trim(),
+      );
+    if (!match) return null;
+    rows.push({
+      id: match[1],
+      title: match[2],
+      scheduleText: match[3],
+      status: match[4],
+      nextRun: match[5],
+      here: match[6] === "this",
+    });
+  }
+  return rows;
+}
+
+function ScheduleStatusChip({ status }: { status: string }): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium",
+        status === "active"
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          : status === "paused"
+            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+            : "bg-foreground/[0.08] text-muted-foreground",
+      )}
+    >
+      {t(`toolDetail.scheduleStatus.${status}`, { defaultValue: status })}
+    </span>
+  );
+}
+
+function ScheduleDetail({
+  m,
+  args,
+  text,
+}: {
+  m: UiMessage;
+  args?: Record<string, unknown>;
+  text: string;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const action = argStr(args, "action") ?? "";
+
+  if (action === "list" && text.trim()) {
+    const rows = parseScheduleList(text);
+    if (rows)
+      return (
+        <Card error={m.isError}>
+          <div className="flex flex-col gap-0.5 px-1.5 py-1.5">
+            {rows.map((r) => (
+              <div key={r.id} className="flex min-w-0 items-center gap-2.5 rounded-[7px] px-2 py-1">
+                <IconClock className="size-3.5 shrink-0 text-muted-foreground/60" strokeWidth={2} />
+                <span className="min-w-0 truncate text-[13px] text-foreground" title={r.title}>
+                  {r.title}
+                </span>
+                <span className="ml-auto flex shrink-0 items-center gap-2 pl-3 text-xs text-muted-foreground">
+                  <span>{r.scheduleText}</span>
+                  <ScheduleStatusChip status={r.status} />
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      );
+    // Empty list / unexpected shape: the plain sentence reads fine as-is.
+  }
+
+  // create / update / pause / resume / delete / get share one card: the task
+  // name atop, the human schedule + next-run line, and (create/update) the
+  // instruction the runs will follow. Values come from the ARGS first and fall
+  // back to parsing the result sentence (pause/resume/delete carry no args).
+  const title = argStr(args, "title") ?? /"([^"]+)"/.exec(text)?.[1] ?? "";
+  const scheduleText =
+    argStr(args, "scheduleDescription") ?? /Schedule: (.+?)\. Next run/.exec(text)?.[1];
+  const nextRun = /Next run: (.+?)\.?\s*$/m.exec(text)?.[1];
+  const prompt =
+    argStr(args, "prompt") ?? /^Instruction: ([\s\S]+)$/m.exec(text)?.[1];
+  if (!title && !text.trim()) return null;
+  return (
+    <Card error={m.isError}>
+      <CardHead
+        icon={<IconClock strokeWidth={2} />}
+        primary={title || t("toolDetail.scheduleTask")}
+        mono={false}
+        meta={action ? t(`toolDetail.scheduleAction.${action}`, { defaultValue: action }) : undefined}
+      />
+      {(scheduleText || nextRun) && !m.isError && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3.5 py-2 text-[13px] text-muted-foreground">
+          {scheduleText && <span className="text-foreground">{scheduleText}</span>}
+          {nextRun && nextRun !== "—" && (
+            <span>
+              {t("toolDetail.scheduleNextRun")} · {nextRun}
+            </span>
+          )}
+        </div>
+      )}
+      {prompt && !m.isError && (
+        <Clamp collapsedClass="max-h-40">
+          <div className="border-t border-border px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            {prompt}
+          </div>
+        </Clamp>
+      )}
+      {m.isError && text.trim() && (
+        <div className="px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-destructive">
+          {text.trim()}
         </div>
       )}
     </Card>

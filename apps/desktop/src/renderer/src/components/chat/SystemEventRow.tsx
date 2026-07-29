@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { IconChevronRight, IconRobot } from "@tabler/icons-react";
+import { IconChevronRight, IconClock, IconRobot } from "@tabler/icons-react";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
   Collapsible,
@@ -19,15 +19,17 @@ import type { UiMessage } from "@/store/chat-store";
 export function SystemEventRow({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
   const firstLine = m.text.split("\n", 1)[0].trim();
+  const schedule = m.injectedEvent === "schedule";
+  const Icon = schedule ? IconClock : IconRobot;
 
   return (
     <div className="mx-auto w-full max-w-(--chat-width) px-6 py-0.5">
       <Collapsible className="py-0.5">
         <Marker render={<CollapsibleTrigger />} className="py-1">
           <MarkerContent className="flex items-center gap-2">
-            <IconRobot className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
+            <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
             <span className="shrink-0 text-sm font-medium text-muted-foreground">
-              {t("chat.workerReport")}
+              {t(schedule ? "chat.scheduledRun" : "chat.workerReport")}
             </span>
             {firstLine && (
               <span

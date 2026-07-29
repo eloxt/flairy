@@ -150,7 +150,8 @@ export const IPC = {
   ConfigModeChanged: 'config:mode-changed',
   AgentCompressStatus: 'agent:compress-status',
   LauncherShown: 'launcher:shown',
-  LauncherOpenSession: 'launcher:open-session'
+  LauncherOpenSession: 'launcher:open-session',
+  ScheduleOpenSession: 'schedule:open-session'
 } as const
 
 /** UI language. The single source of truth for both renderer and main catalogs. */
@@ -1091,4 +1092,6 @@ export interface FlairyApi {
   onLauncherShown(cb: (payload: LauncherShownPayload) => void): () => void
   /** Fires in the main window when the launcher hands a conversation off to it. */
   onLauncherOpenSession(cb: (meta: SessionMeta) => void): () => void
+  /** Fires when the user clicks a scheduled-run notification: open that conversation. */
+  onScheduleOpenSession(cb: (meta: SessionMeta) => void): () => void
 }

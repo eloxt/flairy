@@ -32,6 +32,7 @@ import { createTools, isReadOnlyTool } from "./tools";
 import { createAskTool } from "./tools/ask";
 import { createMemoryTool } from "./tools/memory";
 import { createTodoTool } from "./tools/todo";
+import { createScheduleTool } from "./tools/schedule";
 import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import { createWebFetchTool } from "./tools/web-fetch";
 import { createGithubTools } from "../github/tools";
@@ -401,6 +402,9 @@ export class AgentService {
         // so it's inherently safe and exempt — gating it would nag for something
         // the assistant does silently and often while working.
         if (name === "todo_write") return undefined;
+        // `schedule` only writes local task metadata (no files/commands run at
+        // creation time); the runs themselves are gated per-tool when they fire.
+        if (name === "schedule") return undefined;
         const origin = this.activeTurnOrigin;
         // "Full access" auto-approves everything — but only for a purely
         // desktop-origin turn (most-restrictive-origin-wins). Any telegram
@@ -576,6 +580,10 @@ export class AgentService {
         origin: this.activeTurnOrigin,
         channel: this.resolveChannel(this.activeTurnOrigin),
       })),
+      // Scheduled tasks can be set up from ANY session (chat or project): the
+      // task binds to this session and its runs reply here. Approval-exempt
+      // (local metadata only) — see beforeToolCall.
+      createScheduleTool(this.sessionId),
     ];
     if (!chat) {
       tools.push(
@@ -779,8 +787,11 @@ export class AgentService {
     // First user message in a fresh session → generate a title from it. Capture
     // "is first" BEFORE agent.prompt mutates state.messages, and fire it off
     // before the await so it runs in parallel with (never blocks) the turn.
+    // Schedule-origin turns are machine-authored ("[scheduled run] …") — never
+    // derive a session title from them (edge case: a task session with an empty
+    // history would otherwise get titled from the injected trigger text).
     const isFirst = this.agent.state.messages.length === 0;
-    if (isFirst && !this.titleGenerated && text.trim()) {
+    if (isFirst && !this.titleGenerated && text.trim() && origin.kind !== "schedule") {
       void this.maybeGenerateTitle(text);
     }
     // Mark running BEFORE the (potentially seconds-long) compression await:

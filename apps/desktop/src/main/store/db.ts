@@ -144,6 +144,26 @@ export function initDb(): void {
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
     );
+    -- Scheduled tasks (the schedule tool). LOCAL-ONLY per device — never synced
+    -- (the server has no device identity, so a synced task would fire once per
+    -- device). A task belongs to the session it was created in: the trigger
+    -- message and the agent's reply land in that same conversation. Exactly one
+    -- of cron / once_at is set. Deletes are SOFT (status = 'deleted') so a
+    -- deleted task can never be resurrected by a stale in-memory job.
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id            TEXT PRIMARY KEY,
+      session_id    TEXT NOT NULL,
+      title         TEXT NOT NULL,
+      prompt        TEXT NOT NULL,
+      cron          TEXT,
+      once_at       INTEGER,
+      schedule_text TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'active',
+      last_run_at   INTEGER,
+      next_run_at   INTEGER,
+      created_at    INTEGER NOT NULL,
+      updated_at    INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS telegram_audit (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id   TEXT,
@@ -526,6 +546,12 @@ export function deleteSession(id: string): boolean {
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts WHERE sessionId = ?').run(sid)
     db.prepare('DELETE FROM context_compression WHERE sessionId = ?').run(sid)
     db.prepare('DELETE FROM worker_runs WHERE session_id = ?').run(sid)
+    // Scheduled tasks bound to the session can never fire again — soft-delete
+    // (not hard) so an in-memory croner job that races this sees 'deleted'.
+    // Callers must also tell the scheduler to drop its jobs (reconcileJobs).
+    db.prepare(
+      "UPDATE scheduled_tasks SET status = 'deleted', updated_at = ? WHERE session_id = ?"
+    ).run(Date.now(), sid)
     const res = db.prepare('DELETE FROM sessions WHERE id = ?').run(sid)
     return res.changes > 0
   })(id)
@@ -551,6 +577,9 @@ export function clearAllSessions(): void {
     db.prepare('DELETE FROM context_compression').run()
     db.prepare('DELETE FROM telegram_threads').run()
     db.prepare('DELETE FROM worker_runs').run()
+    // Sign-out wipes every session, so no scheduled task can ever fire again;
+    // hard-delete (local-only data, nothing to propagate).
+    db.prepare('DELETE FROM scheduled_tasks').run()
   })()
 }
 
@@ -673,6 +702,159 @@ export function failOrphanWorkerRuns(): WorkerRun[] {
     stmt.run('Interrupted: the app quit while this run was in progress.', now, now, r.id)
     return { ...mapWorkerRunRow(r), status: 'failed' as const, endedAt: now, updatedAt: now }
   })
+}
+
+/* ── Scheduled tasks (schedule tool) ──────────────────────────────────────── */
+
+export type ScheduledTaskStatus = 'active' | 'paused' | 'completed' | 'deleted'
+
+/** A scheduled task. Local-only; `cron` XOR `onceAt` describes when it fires. */
+export interface ScheduledTask {
+  id: string
+  sessionId: string
+  title: string
+  /** Self-contained instruction the agent executes on each run. */
+  prompt: string
+  /** 5-field cron expression in local time (recurring tasks). */
+  cron?: string
+  /** Epoch ms of a one-shot run. */
+  onceAt?: number
+  /** Model-authored human description of the schedule, in the user's language. */
+  scheduleText: string
+  status: ScheduledTaskStatus
+  lastRunAt?: number
+  nextRunAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+interface ScheduledTaskRow {
+  id: string
+  session_id: string
+  title: string
+  prompt: string
+  cron: string | null
+  once_at: number | null
+  schedule_text: string
+  status: string
+  last_run_at: number | null
+  next_run_at: number | null
+  created_at: number
+  updated_at: number
+}
+
+function mapScheduledTaskRow(r: ScheduledTaskRow): ScheduledTask {
+  return {
+    id: r.id,
+    sessionId: r.session_id,
+    title: r.title,
+    prompt: r.prompt,
+    cron: r.cron ?? undefined,
+    onceAt: r.once_at ?? undefined,
+    scheduleText: r.schedule_text,
+    status: r.status as ScheduledTaskStatus,
+    lastRunAt: r.last_run_at ?? undefined,
+    nextRunAt: r.next_run_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }
+}
+
+export function createScheduledTask(
+  task: Omit<ScheduledTask, 'id' | 'status' | 'createdAt' | 'updatedAt'>
+): ScheduledTask {
+  const now = Date.now()
+  const full: ScheduledTask = { ...task, id: randomUUID(), status: 'active', createdAt: now, updatedAt: now }
+  db.prepare(
+    `INSERT INTO scheduled_tasks (id, session_id, title, prompt, cron, once_at, schedule_text,
+       status, last_run_at, next_run_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    full.id,
+    full.sessionId,
+    full.title,
+    full.prompt,
+    full.cron ?? null,
+    full.onceAt ?? null,
+    full.scheduleText,
+    full.status,
+    full.lastRunAt ?? null,
+    full.nextRunAt ?? null,
+    full.createdAt,
+    full.updatedAt
+  )
+  return full
+}
+
+export function getScheduledTask(id: string): ScheduledTask | undefined {
+  const row = db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(id) as
+    | ScheduledTaskRow
+    | undefined
+  return row ? mapScheduledTaskRow(row) : undefined
+}
+
+/** All tasks that can still fire (active/paused), or every non-deleted one. */
+export function listScheduledTasks(includeEnded = false): ScheduledTask[] {
+  const rows = db
+    .prepare(
+      includeEnded
+        ? "SELECT * FROM scheduled_tasks WHERE status != 'deleted' ORDER BY created_at DESC"
+        : "SELECT * FROM scheduled_tasks WHERE status IN ('active', 'paused') ORDER BY created_at DESC"
+    )
+    .all() as ScheduledTaskRow[]
+  return rows.map(mapScheduledTaskRow)
+}
+
+/** Active tasks whose next run is already in the past (missed → catch up once). */
+export function listOverdueScheduledTasks(now: number): ScheduledTask[] {
+  const rows = db
+    .prepare("SELECT * FROM scheduled_tasks WHERE status = 'active' AND next_run_at <= ?")
+    .all(now) as ScheduledTaskRow[]
+  return rows.map(mapScheduledTaskRow)
+}
+
+export function updateScheduledTask(
+  id: string,
+  patch: Partial<
+    Pick<
+      ScheduledTask,
+      'title' | 'prompt' | 'cron' | 'onceAt' | 'scheduleText' | 'status' | 'lastRunAt' | 'nextRunAt'
+    >
+  >
+): ScheduledTask | undefined {
+  const existing = getScheduledTask(id)
+  if (!existing) return undefined
+  const next: ScheduledTask = { ...existing, ...patch, updatedAt: Date.now() }
+  // A schedule swap (cron ↔ once) must clear the other column, so spread-merge
+  // semantics apply the patch keys verbatim (undefined in the patch = clear).
+  if ('cron' in patch) next.cron = patch.cron
+  if ('onceAt' in patch) next.onceAt = patch.onceAt
+  db.prepare(
+    `UPDATE scheduled_tasks SET title = ?, prompt = ?, cron = ?, once_at = ?, schedule_text = ?,
+       status = ?, last_run_at = ?, next_run_at = ?, updated_at = ? WHERE id = ?`
+  ).run(
+    next.title,
+    next.prompt,
+    next.cron ?? null,
+    next.onceAt ?? null,
+    next.scheduleText,
+    next.status,
+    next.lastRunAt ?? null,
+    next.nextRunAt ?? null,
+    next.updatedAt,
+    id
+  )
+  return next
+}
+
+/** Live (active or paused) tasks bound to a session — the delete-warning set. */
+export function tasksForSession(sessionId: string): ScheduledTask[] {
+  const rows = db
+    .prepare(
+      "SELECT * FROM scheduled_tasks WHERE session_id = ? AND status IN ('active', 'paused')"
+    )
+    .all(sessionId) as ScheduledTaskRow[]
+  return rows.map(mapScheduledTaskRow)
 }
 
 export function loadMessages(sessionId: string): unknown[] {

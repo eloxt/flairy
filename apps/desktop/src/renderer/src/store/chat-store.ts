@@ -722,7 +722,10 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   deleteSession: async (sessionId) => {
-    await window.api.deleteSession({ sessionId })
+    // Main may refuse (the user cancelled the "this conversation has scheduled
+    // tasks" confirm) — then nothing was deleted and the row must stay.
+    const removed = await window.api.deleteSession({ sessionId })
+    if (!removed) return
     runtimeUsedAt.delete(sessionId)
     unwatch(sessionId)
     set((s) => {

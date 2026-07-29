@@ -13,6 +13,7 @@ import { registerGithubHandlers } from "./ipc/github-handlers";
 import { registerWorkerRunHandlers } from "./ipc/worker-run-handlers";
 import { registerAcpHandlers } from "./ipc/acp-handlers";
 import { initDispatch, workers } from "./acp/dispatch";
+import { initScheduler, stopScheduler } from "./schedule/scheduler";
 import { sweepOldTranscripts } from "./acp/transcript";
 import { failOrphanWorkerRuns } from "./store/db";
 import { registerFsHandlers } from "./ipc/fs-handlers";
@@ -86,6 +87,9 @@ if (!app.requestSingleInstanceLock()) {
     // interaction channel + outbound bus subscriber on construction; auto-starts
     // below only if a stored token + enabled binding already exist.
     const telegram = new TelegramManager(server, agents);
+    // Scheduled tasks (schedule tool): croner jobs + missed-run catch-up +
+    // completion reminders. Needs the DB (task rows) and all three managers.
+    initScheduler(agents, server, telegram);
     // Watches for newer releases and badges the header. On packaged Windows it
     // also downloads and installs them in place; elsewhere it just links out.
     const updates = new UpdateManager();
@@ -119,6 +123,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on("before-quit", () => {
       markQuitting();
       updates.stop();
+      stopScheduler();
       void telegram.stop();
       workers.disposeAll();
       agents.disposeAll();

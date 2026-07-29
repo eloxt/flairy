@@ -27,7 +27,8 @@ const BUILTIN_KEYS: Record<string, string> = {
   github_issue_write: 'tools.github_issue_write',
   github_pr_write: 'tools.github_pr_write',
   dispatch_task: 'tools.dispatch_task',
-  dispatch_review: 'tools.dispatch_review'
+  dispatch_review: 'tools.dispatch_review',
+  schedule: 'tools.schedule'
 }
 
 /** Resolve the i18n key for a tool name's user-facing label. */
@@ -63,7 +64,8 @@ const ACTIVITY_BUCKETS: Record<string, string> = {
   github_issue_write: 'github',
   github_pr_write: 'github',
   dispatch_task: 'dispatch',
-  dispatch_review: 'dispatch'
+  dispatch_review: 'dispatch',
+  schedule: 'schedule'
 }
 
 /** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */
@@ -117,6 +119,8 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
       return a.issueNumber != null ? `#${a.issueNumber}` : undefined
     case 'dispatch_review':
       return a.prNumber != null ? `PR #${a.prNumber}` : undefined
+    case 'schedule':
+      return str(a.title) ?? str(a.action)
     default:
       return undefined
   }

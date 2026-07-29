@@ -8,7 +8,14 @@
  */
 export const WORKER_REPORT_PREFIX = '[worker report]'
 
-export type InjectedEventKind = 'worker'
+/**
+ * Scheduled-task trigger messages (schedule/scheduler.ts) enter the task's
+ * session the same way: a machine-authored `user` message carrying the task
+ * instruction, rendered as a quiet system row rather than a user bubble.
+ */
+export const SCHEDULE_RUN_PREFIX = '[scheduled run]'
+
+export type InjectedEventKind = 'worker' | 'schedule'
 
 /**
  * Detect an injected event message; returns its kind and the body with the
@@ -19,5 +26,7 @@ export function parseInjectedEvent(
 ): { kind: InjectedEventKind; body: string } | null {
   if (text.startsWith(WORKER_REPORT_PREFIX))
     return { kind: 'worker', body: text.slice(WORKER_REPORT_PREFIX.length).trim() }
+  if (text.startsWith(SCHEDULE_RUN_PREFIX))
+    return { kind: 'schedule', body: text.slice(SCHEDULE_RUN_PREFIX.length).trim() }
   return null
 }

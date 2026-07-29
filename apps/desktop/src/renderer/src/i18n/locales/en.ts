@@ -84,7 +84,8 @@ const en = {
     dispatchTaskFailed: 'Could not dispatch the coding task',
     dispatchReviewFailed: 'Could not dispatch the review',
     dispatching: 'Dispatching',
-    workerReport: 'Agent report'
+    workerReport: 'Agent report',
+    scheduledRun: 'Scheduled task'
   },
   /** Right-side details panel: model info + workspace files. */
   panel: {
@@ -176,6 +177,8 @@ const en = {
     github_other: 'performed {{count}} GitHub actions',
     dispatch_one: 'dispatched 1 agent run',
     dispatch_other: 'dispatched {{count}} agent runs',
+    schedule_one: 'managed 1 scheduled task',
+    schedule_other: 'managed {{count}} scheduled tasks',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -193,7 +196,26 @@ const en = {
     entryCount_other: '{{count}} items',
     resultCount_one: '{{count}} result',
     resultCount_other: '{{count}} results',
-    planProgress: '{{done}}/{{total}} done'
+    planProgress: '{{done}}/{{total}} done',
+    scheduleTask: 'Scheduled task',
+    scheduleNextRun: 'Next run',
+    scheduleInstruction: 'Instruction',
+    scheduleThisConversation: 'this conversation',
+    scheduleAction: {
+      create: 'Created',
+      update: 'Updated',
+      pause: 'Paused',
+      resume: 'Resumed',
+      delete: 'Deleted',
+      list: 'Task list',
+      get: 'Details'
+    },
+    scheduleStatus: {
+      active: 'Active',
+      paused: 'Paused',
+      completed: 'Done',
+      deleted: 'Deleted'
+    }
   },
   onboarding: {
     cwdTitle: 'Set your working folder',
@@ -496,6 +518,7 @@ const en = {
     github_pr_write: 'Update a pull request',
     dispatch_task: 'Dispatch a coding task',
     dispatch_review: 'Dispatch a code review',
+    schedule: 'Manage scheduled tasks',
     fallback: 'Use a tool'
   },
   citations: {

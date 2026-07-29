@@ -88,3 +88,20 @@ export class DesktopChannel implements InteractionChannel {
 
 /** Shared desktop channel instance (stateless; safe to reuse everywhere). */
 export const desktopChannel = new DesktopChannel()
+
+/**
+ * The channel for schedule-origin turns: nobody is present, so nothing can be
+ * confirmed. Dangerous tools are denied outright (the agent gets a tool error
+ * and continues with read-only means), and `ask` fails with a steering message
+ * telling the model to decide for itself — both resolve immediately, so a
+ * scheduled run can never block on a human. Stateless; one shared instance.
+ */
+export const scheduleChannel: InteractionChannel = {
+  requestApproval: async () => ({ approved: false, scope: 'once' }),
+  askQuestion: async () => {
+    throw new Error(
+      'The user is not available during a scheduled run — make a reasonable choice yourself and note it in your reply.'
+    )
+  },
+  rejectSession: () => {}
+}

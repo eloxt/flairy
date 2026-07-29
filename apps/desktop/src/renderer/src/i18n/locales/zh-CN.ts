@@ -81,7 +81,8 @@ const zhCN: typeof En = {
     dispatchTaskFailed: '编码任务派发失败',
     dispatchReviewFailed: '代码评审派发失败',
     dispatching: '派发中',
-    workerReport: 'Agent 汇报'
+    workerReport: 'Agent 汇报',
+    scheduledRun: '定时任务'
   },
   /** 右侧详情面板：模型信息 + 工作目录文件。 */
   panel: {
@@ -167,6 +168,8 @@ const zhCN: typeof En = {
     github_other: '执行了 {{count}} 次 GitHub 操作',
     dispatch_one: '派发了 {{count}} 个任务',
     dispatch_other: '派发了 {{count}} 个任务',
+    schedule_one: '管理了 {{count}} 个定时任务',
+    schedule_other: '管理了 {{count}} 个定时任务',
     other_one: '使用了 {{count}} 个工具',
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
@@ -184,7 +187,26 @@ const zhCN: typeof En = {
     entryCount_other: '{{count}} 项',
     resultCount_one: '{{count}} 条结果',
     resultCount_other: '{{count}} 条结果',
-    planProgress: '{{done}}/{{total}} 已完成'
+    planProgress: '{{done}}/{{total}} 已完成',
+    scheduleTask: '定时任务',
+    scheduleNextRun: '下次运行',
+    scheduleInstruction: '任务指令',
+    scheduleThisConversation: '本对话',
+    scheduleAction: {
+      create: '已创建',
+      update: '已更新',
+      pause: '已暂停',
+      resume: '已恢复',
+      delete: '已删除',
+      list: '任务列表',
+      get: '详情'
+    },
+    scheduleStatus: {
+      active: '进行中',
+      paused: '已暂停',
+      completed: '已完成',
+      deleted: '已删除'
+    }
   },
   onboarding: {
     cwdTitle: '设置工作文件夹',
@@ -467,6 +489,7 @@ const zhCN: typeof En = {
     github_pr_write: '更新 Pull Request',
     dispatch_task: '派发编码任务',
     dispatch_review: '派发代码评审',
+    schedule: '管理定时任务',
     fallback: '工具'
   },
   citations: {

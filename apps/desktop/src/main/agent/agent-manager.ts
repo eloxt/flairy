@@ -5,7 +5,7 @@ import type { McpManager } from './mcp'
 import { AgentService } from './agent-service'
 import { getSession, loadMessages, deleteTelegramThread } from '../store/db'
 import type { TurnOrigin } from './turn-origin'
-import { desktopChannel, type InteractionChannel } from './interaction'
+import { desktopChannel, scheduleChannel, type InteractionChannel } from './interaction'
 
 /**
  * Process-level owner of the per-session `AgentService` instances (lifted out of
@@ -229,8 +229,12 @@ export class AgentManager {
    * Resolve the interaction channel (approval + `ask`) for a turn's origin:
    * desktop turns use the desktop channel; telegram turns use the registered
    * Telegram channel, falling back to the desktop channel until it is registered.
+   * Schedule-origin turns run with nobody present, so they get the auto-deny
+   * channel — never the desktop fallback (which would pop a modal at 7am and
+   * block the turn until someone clicks).
    */
   channelFor(origin: TurnOrigin): InteractionChannel {
+    if (origin.kind === 'schedule') return scheduleChannel
     if (origin.kind === 'telegram' && this.telegramChannel) return this.telegramChannel
     return desktopChannel
   }

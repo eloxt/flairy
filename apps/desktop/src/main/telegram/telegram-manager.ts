@@ -788,6 +788,27 @@ export class TelegramManager implements InteractionChannel {
     }
   }
 
+  /**
+   * Deliver a scheduled-run result to Telegram. Schedule-origin turns are
+   * invisible to the regular outbound subscriber (it filters on telegram
+   * origin), so the scheduler calls this directly: the session's mapped topic
+   * when one exists (task created from a Telegram chat), else the bound chat.
+   * Best-effort silent no-op when the bot is off or nothing is bound — the
+   * desktop notification is the primary reminder channel.
+   */
+  async sendScheduledResult(sessionId: string, markdown: string): Promise<void> {
+    if (!this.bot || !markdown.trim()) return
+    const thread = getTelegramThreadBySession(sessionId)
+    if (thread) {
+      await this.deliver(thread.chatId, thread.threadKey, markdown)
+      return
+    }
+    const binding = getTelegramBinding()
+    if (binding?.chatId && binding.enabled) {
+      await this.deliver(binding.chatId, 0, markdown)
+    }
+  }
+
   /** Throttle draft pushes to near-realtime: immediate if quiet, else coalesced. */
   private streamPush(state: StreamState): void {
     if (state.flushTimer) {

@@ -33,6 +33,7 @@ import type { TelegramManager } from '../telegram/telegram-manager'
 import type { AgentEventInternalEnvelope } from '../agent/turn-origin'
 import { approvals } from '../agent/approvals'
 import { questions } from '../agent/questions'
+import { reconcileJobs } from '../schedule/scheduler'
 import {
   setSecret,
   hasSecret,
@@ -52,6 +53,7 @@ import {
   updateSessionCwd,
   updateSessionTitle,
   deleteSession,
+  tasksForSession,
   clearAllSessions,
   addRecentDirectory,
   ensureRecentDirectory,
@@ -222,7 +224,8 @@ export function registerIpcHandlers(
     if (getSession(sessionId)?.kind === 'project') return
     agents.delete(sessionId, true) // also delete the mapped Telegram topic
     agents.rejectInteractions(sessionId)
-    deleteSession(sessionId)
+    deleteSession(sessionId) // cascades: this session's scheduled tasks → 'deleted'
+    reconcileJobs() // no dialog possible for a remote delete — cascade silently
     scheduleImageSweep() // its images may now be orphaned
     broadcast(IPC.SessionsChanged)
   })
@@ -479,13 +482,33 @@ export function registerIpcHandlers(
   // delete it (and propagate to the user's other devices) so a restart/reconnect
   // doesn't pull it back. No-op if offline; an unsynced session never existed
   // server-side, so a pull can't resurrect it.
-  ipcMain.handle(IPC.SessionDelete, (_e, args: DeleteSessionArgs) => {
+  ipcMain.handle(IPC.SessionDelete, async (_e, args: DeleteSessionArgs) => {
+    // Scheduled tasks bound to this conversation die with it — confirm first
+    // (the renderer's generic delete confirm doesn't know about them). Returning
+    // false leaves the session untouched; the renderer keeps it.
+    const tasks = tasksForSession(args.sessionId)
+    if (tasks.length > 0) {
+      const win = getMainWindow()
+      const opts = {
+        type: 'warning' as const,
+        message: t('schedule.deleteTitle'),
+        detail: t('schedule.deleteWithTasks').replace('{count}', String(tasks.length)),
+        buttons: [t('schedule.deleteConfirm'), t('schedule.deleteCancel')],
+        defaultId: 0,
+        cancelId: 1
+      }
+      const { response } = win
+        ? await dialog.showMessageBox(win, opts)
+        : await dialog.showMessageBox(opts)
+      if (response !== 0) return false
+    }
     agents.delete(args.sessionId, true) // also delete the mapped Telegram topic
     agents.rejectInteractions(args.sessionId)
     if (getSession(args.sessionId)?.kind === 'chat') {
       server.sendSessionDelete({ sessionId: args.sessionId })
     }
-    const removed = deleteSession(args.sessionId)
+    const removed = deleteSession(args.sessionId) // cascades: tasks → 'deleted'
+    reconcileJobs() // drop the croner jobs of the cascaded tasks
     scheduleImageSweep() // its images may now be orphaned
     return removed
   })

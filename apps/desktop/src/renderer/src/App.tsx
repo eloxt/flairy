@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { createHashRouter, RouterProvider, Outlet } from "react-router";
+import { createHashRouter, RouterProvider, Outlet, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ChatWidth, SessionMeta } from "@shared/ipc";
 import { IconLayoutSidebarRight } from "@tabler/icons-react";
@@ -89,6 +89,7 @@ function AppLayout(): React.JSX.Element {
   const init = useChat((s) => s.init);
   const loadSessions = useChat((s) => s.loadSessions);
   const newChat = useChat((s) => s.newChat);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const dispose = init();
@@ -105,6 +106,12 @@ function AppLayout(): React.JSX.Element {
       void useChat.getState().openSession(meta);
     };
     const offLauncher = window.api.onLauncherOpenSession(openFromLauncher);
+    // Clicking a scheduled-run notification: same handoff shape — ensure the
+    // session is listed, then open it on the chat page (wherever we were).
+    const offSchedule = window.api.onScheduleOpenSession((meta) => {
+      openFromLauncher(meta);
+      navigate("/");
+    });
     void (async () => {
       // Load the session list to populate the sidebar, but always land on the
       // blank "new conversation" page instead of auto-opening the latest chat.
@@ -117,9 +124,10 @@ function AppLayout(): React.JSX.Element {
     })();
     return () => {
       offLauncher();
+      offSchedule();
       dispose();
     };
-  }, [init, loadSessions, newChat]);
+  }, [init, loadSessions, newChat, navigate]);
 
   return (
     <SidebarProvider>

@@ -218,6 +218,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, meta: SessionMeta): void => cb(meta)
     ipcRenderer.on(IPC.LauncherOpenSession, listener)
     return () => ipcRenderer.removeListener(IPC.LauncherOpenSession, listener)
+  },
+  onScheduleOpenSession: (cb) => {
+    const listener = (_e: unknown, meta: SessionMeta): void => cb(meta)
+    ipcRenderer.on(IPC.ScheduleOpenSession, listener)
+    return () => ipcRenderer.removeListener(IPC.ScheduleOpenSession, listener)
   }
 }
 

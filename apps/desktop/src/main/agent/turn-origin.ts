@@ -16,6 +16,7 @@ import type { AgentStreamEvent } from '@shared/ipc'
 export type TurnOrigin =
   | { kind: 'desktop' }
   | { kind: 'telegram'; chatId: string; threadKey: number /* message_thread_id ?? 0 */ }
+  | { kind: 'schedule'; taskId: string /* scheduled_tasks.id */ }
 
 /** The default origin: the desktop window. Every turn starts here unless told otherwise. */
 export const DESKTOP_ORIGIN: TurnOrigin = { kind: 'desktop' }
