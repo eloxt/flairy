@@ -20,6 +20,13 @@ interface AuthState {
   checkStatus: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
+  /**
+   * Enter the app without an account (local, non-synced use). Unlocks the
+   * hidden Advanced settings tab and lands there, so the user can switch to
+   * local mode / import a configuration — the only way a detached client
+   * becomes functional.
+   */
+  skip: () => Promise<void>
   logout: () => Promise<void>
   clearError: () => void
 }
@@ -32,10 +39,22 @@ export const useAuth = create<AuthState>((set) => ({
 
   checkStatus: async () => {
     const status = await window.api.authStatus()
-    set({
-      phase: status.authenticated ? 'authed' : 'anon',
-      user: status.user ?? null
-    })
+    if (status.authenticated) {
+      set({ phase: 'authed', user: status.user ?? null })
+      return
+    }
+    // A detached (local-mode) client runs without an account — don't put the
+    // login wall in front of it on relaunch.
+    const mode = await window.api.getConfigMode().catch(() => 'server' as const)
+    set({ phase: mode === 'local' ? 'authed' : 'anon', user: null })
+  },
+
+  skip: async () => {
+    await window.api.setAdvancedUnlocked(true)
+    // Land directly on the Advanced settings tab (SettingsPage reads ?tab=…)
+    // BEFORE the phase flip mounts the router, so it opens on that route.
+    window.location.hash = '#/settings?tab=advanced'
+    set({ phase: 'authed', user: null, error: null })
   },
 
   login: async (email, password) => {

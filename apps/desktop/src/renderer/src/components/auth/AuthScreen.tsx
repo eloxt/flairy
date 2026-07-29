@@ -15,7 +15,7 @@ type Mode = 'login' | 'register'
  */
 export function AuthScreen(): React.JSX.Element {
   const { t } = useTranslation()
-  const { login, register, busy, error, clearError } = useAuth()
+  const { login, register, skip, busy, error, clearError } = useAuth()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -113,6 +113,17 @@ export function AuthScreen(): React.JSX.Element {
                 : t('auth.createAccount')}
           </Button>
         </form>
+
+        {/* Local, account-less use: lands in Advanced settings (unlocked) to
+            switch on local mode / import a configuration. */}
+        <button
+          type="button"
+          onClick={() => void skip()}
+          disabled={busy}
+          className="mt-5 w-full text-center text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {t('auth.skipLogin')}
+        </button>
       </div>
     </div>
   )

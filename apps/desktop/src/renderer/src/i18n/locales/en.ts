@@ -13,6 +13,7 @@ const en = {
   },
   auth: {
     signInToContinue: 'Sign in to continue',
+    skipLogin: 'Skip sign-in and use locally',
     createYourAccount: 'Create your account',
     signIn: 'Sign in',
     register: 'Register',
@@ -381,6 +382,20 @@ const en = {
       localModeDescription:
         'Disconnect from the server and use the configuration below instead. Conversations and memory stay on this device and stop syncing.',
       localModeOffHint: 'Turn on local mode to edit and use the configuration below.',
+      importLabel: 'Import configuration JSON',
+      importDescription:
+        'Paste a server-delivered configuration (or a local config export). Imported values fill the editor below — review them, then save.',
+      importButton: 'Import JSON',
+      importCancel: 'Cancel',
+      importApply: 'Parse & fill',
+      importPlaceholder: '{ "llm": { … }, "mcpServers": [ … ], "systemPrompts": [ … ], … }',
+      importError: 'Could not parse that JSON — expecting a configuration object.',
+      importErrorShape: 'The JSON parses, but its structure is not a valid configuration (at {{path}}).',
+      importedHint: 'Imported into the editor. Review the sections below, then save.',
+      importedSkippedSkills_one:
+        'Imported. {{count}} skill was skipped (no file contents in the JSON) — review and save.',
+      importedSkippedSkills_other:
+        'Imported. {{count}} skills were skipped (no file contents in the JSON) — review and save.',
       save: 'Save',
       saving: 'Saving…',
       saved: 'Saved',

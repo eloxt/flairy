@@ -35,11 +35,23 @@ type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'github' | 'acp' | 'a
  * label + plain-language description on the left, the control in place on the
  * right (switch / segmented / popup), instead of form-like sections.
  */
+const TABS: Tab[] = ['general', 'account', 'memory', 'telegram', 'github', 'acp', 'about', 'advanced']
+
+/** One-shot deep link: `#/settings?tab=advanced` opens on that tab (used by skip-login). */
+function initialTab(): Tab {
+  const query = window.location.hash.split('?')[1]
+  const requested = query ? new URLSearchParams(query).get('tab') : null
+  return requested && (TABS as string[]).includes(requested) ? (requested as Tab) : 'general'
+}
+
 export function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<Tab>('general')
+  const [tab, setTab] = useState<Tab>(initialTab)
   const user = useAuth((s) => s.user)
-  const [advancedUnlocked, setAdvancedUnlocked] = useState(false)
+  // null = not yet known; distinct from false so the fallback effect below
+  // doesn't kick a deep-linked 'advanced' tab back to General before the
+  // async read lands.
+  const [advancedUnlocked, setAdvancedUnlocked] = useState<boolean | null>(null)
 
   // The Advanced tab is hidden until the user taps the version number 10× (in
   // AboutSection). The flag lives in main; follow it live across windows.
@@ -50,7 +62,7 @@ export function SettingsPage(): React.JSX.Element {
 
   // If the tab is hidden again while it's open, fall back to General.
   useEffect(() => {
-    if (!advancedUnlocked && tab === 'advanced') setTab('general')
+    if (advancedUnlocked === false && tab === 'advanced') setTab('general')
   }, [advancedUnlocked, tab])
 
   const navItems: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] =
