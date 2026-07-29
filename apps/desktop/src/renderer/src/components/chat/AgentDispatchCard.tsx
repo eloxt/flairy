@@ -57,7 +57,7 @@ export function AgentDispatchCard({ m }: { m: UiMessage }): React.JSX.Element {
   // card — there is no run to navigate to.
   if (m.isError) {
     return (
-      <div className="my-1 flex items-start gap-2.5 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+      <div className="my-1 flex max-w-md items-start gap-2.5 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2.5">
         <IconAlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
         <div className="min-w-0 text-[13px] leading-relaxed">
           <div className="font-medium text-destructive">
@@ -80,7 +80,7 @@ export function AgentDispatchCard({ m }: { m: UiMessage }): React.JSX.Element {
     <button
       type="button"
       onClick={() => requestRightPanelTab("runs")}
-      className="group/dispatch my-1 flex w-full items-center gap-3 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent"
+      className="group/dispatch my-1 flex w-full max-w-md items-center gap-3 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent"
     >
       <span
         className={cn(
