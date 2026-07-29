@@ -93,7 +93,11 @@ export const useUi = create<UiState>((set, get) => ({
     else get().openRightPanel()
   },
   openRightPanel: () => {
-    growWindowIfPanelWouldSqueeze(get().rightPanelWidth)
+    // The squeeze check measures the chat column as "the space the panel is
+    // about to share", which only holds while the panel is closed — re-running
+    // it on an already-open panel double-counts the width and grows the window
+    // on every call (e.g. clicking a dispatch card repeatedly).
+    if (!get().rightPanelOpen) growWindowIfPanelWouldSqueeze(get().rightPanelWidth)
     get().setRightPanelOpen(true)
   },
   requestRightPanelTab: (tab) => {
