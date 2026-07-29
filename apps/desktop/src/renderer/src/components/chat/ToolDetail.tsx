@@ -7,7 +7,6 @@ import {
   IconLink,
   IconListSearch,
   IconPencil,
-  IconRobot,
   IconSearch,
   IconWorld,
 } from "@tabler/icons-react";
@@ -64,9 +63,8 @@ export function ToolDetail({ m }: { m: UiMessage }): React.JSX.Element | null {
     case "github_issue_write":
     case "github_pr_write":
       return <GithubActionDetail m={m} args={args} text={text} />;
-    case "dispatch_task":
-    case "dispatch_review":
-      return <DispatchDetail m={m} args={args} text={text} />;
+    // dispatch_task / dispatch_review never reach here: MessageList breaks
+    // them out as standing AgentDispatchCard rows before the tool-row path.
     case "ask": {
       const qa = parseAskResult(text);
       if (qa) return <AskDetail pairs={qa} />;
@@ -791,47 +789,6 @@ function GithubActionDetail({
           )}
         >
           <Linkified text={text.trim()} />
-        </div>
-      )}
-    </Card>
-  );
-}
-
-/* ── dispatch_task / dispatch_review · handoff card ─────────────────────── */
-
-function DispatchDetail({
-  m,
-  args,
-  text,
-}: {
-  m: UiMessage;
-  args?: Record<string, unknown>;
-  text: string;
-}): React.JSX.Element {
-  const isReview = m.toolName === "dispatch_review";
-  const target =
-    args?.issueNumber != null
-      ? `#${args.issueNumber}`
-      : args?.prNumber != null
-        ? `PR #${args.prNumber}`
-        : (m.toolArg ?? "");
-  const backend = argStr(args, "backend");
-  return (
-    <Card error={m.isError}>
-      <CardHead
-        icon={<IconRobot strokeWidth={2} />}
-        primary={backend ? `${target} → ${backend}` : target}
-        mono={false}
-        meta={isReview ? "review" : undefined}
-      />
-      {text.trim() && (
-        <div
-          className={cn(
-            "border-t border-border px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap",
-            m.isError ? "text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {text.trim()}
         </div>
       )}
     </Card>

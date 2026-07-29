@@ -75,7 +75,12 @@ const en = {
     navLabel: 'Conversation navigation',
     navImageOnly: 'Image message',
     navImages_one: '{{count}} image',
-    navImages_other: '{{count}} images'
+    navImages_other: '{{count}} images',
+    dispatchTask: 'Coding task dispatched to an agent',
+    dispatchReview: 'Code review dispatched to an agent',
+    dispatchTaskFailed: 'Could not dispatch the coding task',
+    dispatchReviewFailed: 'Could not dispatch the review',
+    dispatching: 'Dispatching'
   },
   /** Right-side details panel: model info + workspace files. */
   panel: {

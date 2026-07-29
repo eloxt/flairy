@@ -49,9 +49,18 @@ function readWidth(): number {
 interface UiState {
   rightPanelOpen: boolean
   rightPanelWidth: number
+  /**
+   * One-shot request to show a specific details-panel tab (e.g. a dispatch
+   * card in the chat navigating to 'runs'). RightSidebar consumes and clears
+   * it; null when nothing is requested.
+   */
+  rightPanelTab: string | null
   toggleRightPanel: () => void
   /** Open the details panel, first widening the window if it would squeeze the chat. */
   openRightPanel: () => void
+  /** Open the panel AND switch it to `tab` (consumed by RightSidebar). */
+  requestRightPanelTab: (tab: string) => void
+  clearRightPanelTab: () => void
   setRightPanelOpen: (open: boolean) => void
   setRightPanelWidth: (width: number) => void
 }
@@ -76,6 +85,7 @@ function growWindowIfPanelWouldSqueeze(panelWidth: number): void {
 export const useUi = create<UiState>((set, get) => ({
   rightPanelOpen: readOpen(),
   rightPanelWidth: readWidth(),
+  rightPanelTab: null,
   // Opening goes through openRightPanel so it can widen the window first; closing
   // is unconditional — just clear the flag (no width check on the way down).
   toggleRightPanel: () => {
@@ -86,6 +96,11 @@ export const useUi = create<UiState>((set, get) => ({
     growWindowIfPanelWouldSqueeze(get().rightPanelWidth)
     get().setRightPanelOpen(true)
   },
+  requestRightPanelTab: (tab) => {
+    get().openRightPanel()
+    set({ rightPanelTab: tab })
+  },
+  clearRightPanelTab: () => set({ rightPanelTab: null }),
   setRightPanelOpen: (open) => {
     try {
       localStorage.setItem(OPEN_KEY, open ? '1' : '0')

@@ -47,6 +47,7 @@ import {
 } from "./Citations";
 import { cardRenderers } from "./cards/renderers";
 import { ToolDetail } from "./ToolDetail";
+import { AgentDispatchCard } from "./AgentDispatchCard";
 import { ConversationNav, type NavRow } from "./ConversationNav";
 import { MessageActions } from "./MessageActions";
 import { Onboarding } from "./Onboarding";
@@ -149,6 +150,13 @@ type Row =
   | { kind: "tool"; key: string; m: UiMessage }
   | { kind: "group"; key: string; tools: UiMessage[] }
   /**
+   * A dispatch_task / dispatch_review call: rendered as a standing agent card
+   * (live run status, click → Runs tab) rather than a collapsible tool row,
+   * and never folded away — the running worker is the thing the user wants to
+   * keep seeing.
+   */
+  | { kind: "dispatch"; key: string; m: UiMessage }
+  /**
    * A finished turn's working process — the tool rows/groups between the user
    * prompt and the final answer — folded behind one summary line by
    * `foldTurns` once the run has ended. Only PURE tool work folds: an
@@ -156,6 +164,9 @@ type Row =
    * contains `msg` rows.
    */
   | { kind: "fold"; key: string; rows: Row[] };
+
+const isDispatchTool = (m: UiMessage): boolean =>
+  m.toolName === "dispatch_task" || m.toolName === "dispatch_review";
 
 /** Group adjacent tool calls until a visible non-tool message breaks the run. */
 function toRows(messages: UiMessage[]): Row[] {
@@ -184,6 +195,14 @@ function toRows(messages: UiMessage[]): Row[] {
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     if (m.role === "tool") {
+      // Dispatch calls break out of the tool run as their own card row. The
+      // groups on either side still key off their own first call's id, so
+      // keys stay stable as the run grows.
+      if (isDispatchTool(m)) {
+        flush();
+        rows.push({ kind: "dispatch", key: m.id, m });
+        continue;
+      }
       run.push(m);
       continue;
     }
@@ -250,20 +269,29 @@ function foldTurns(rows: Row[], running: boolean): Row[] {
       }
     }
     const process = lastText > 0 ? seg.slice(0, lastText) : [];
-    const foldable =
-      // A lone tool row / tool group is already a one-line collapsed summary;
-      // wrapping it in a fold would stack two identical disclosure headers.
-      process.length > 1 &&
-      // Only PURE tool work folds. An intermediate assistant note is real
-      // content the user should keep seeing, so its presence keeps the whole
-      // process expanded.
-      process.every(
-        (r) =>
-          (r.kind === "tool" && !r.m.running) ||
-          (r.kind === "group" && r.tools.every((m) => !m.running)),
-      );
-    if (foldable) {
-      out.push({ kind: "fold", key: process[0].key, rows: process });
+    const pure = (r: Row): boolean =>
+      (r.kind === "tool" && !r.m.running) ||
+      (r.kind === "group" && r.tools.every((m) => !m.running));
+    if (process.length > 0) {
+      // Dispatch cards never fold away — the running worker must stay in
+      // view. Fold the pure tool SUBSEGMENTS around them instead; each fold
+      // keys off its own first row (stable across re-renders). Within a
+      // subsegment the original rules hold: an assistant note keeps it
+      // expanded, and a lone row isn't wrapped (it's already one line).
+      let sub: Row[] = [];
+      const flushSub = (): void => {
+        if (sub.length > 1 && sub.every(pure))
+          out.push({ kind: "fold", key: sub[0].key, rows: sub });
+        else out.push(...sub);
+        sub = [];
+      };
+      for (const r of process) {
+        if (r.kind === "dispatch") {
+          flushSub();
+          out.push(r);
+        } else sub.push(r);
+      }
+      flushSub();
       out.push(...seg.slice(lastText));
     } else {
       out.push(...seg);
@@ -645,6 +673,8 @@ const RowView = memo(function RowView({
       <ToolGroup tools={row.tools} />
     ) : row.kind === "tool" ? (
       <SingleTool m={row.m} />
+    ) : row.kind === "dispatch" ? (
+      <AgentDispatchCard m={row.m} />
     ) : (
       <MessageRow
         m={row.m}

@@ -72,7 +72,12 @@ const zhCN: typeof En = {
     navLabel: '会话导航',
     navImageOnly: '图片消息',
     navImages_one: '{{count}} 张图片',
-    navImages_other: '{{count}} 张图片'
+    navImages_other: '{{count}} 张图片',
+    dispatchTask: '已派发编码任务给 Agent',
+    dispatchReview: '已派发代码评审给 Agent',
+    dispatchTaskFailed: '编码任务派发失败',
+    dispatchReviewFailed: '代码评审派发失败',
+    dispatching: '派发中'
   },
   /** 右侧详情面板：模型信息 + 工作目录文件。 */
   panel: {

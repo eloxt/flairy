@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChat, selectProjectWorkspace } from '@/store/chat-store'
+import { useUi } from '@/store/ui-store'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { ModelPanel } from './sidebar/ModelPanel'
 
@@ -35,6 +36,18 @@ export function RightSidebar(): React.JSX.Element {
   useEffect(() => {
     if (!workspacePath) setTab((cur) => (cur === 'files' || cur === 'runs' ? 'model' : cur))
   }, [workspacePath])
+
+  // One-shot tab requests from elsewhere in the app (a dispatch card in the
+  // chat asking for 'runs'); consume and clear.
+  const requestedTab = useUi((s) => s.rightPanelTab)
+  const clearRequestedTab = useUi((s) => s.clearRightPanelTab)
+  useEffect(() => {
+    if (!requestedTab) return
+    if (requestedTab === 'model' || (workspacePath && (requestedTab === 'files' || requestedTab === 'runs'))) {
+      setTab(requestedTab)
+    }
+    clearRequestedTab()
+  }, [requestedTab, workspacePath, clearRequestedTab])
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="h-full bg-transparent">
