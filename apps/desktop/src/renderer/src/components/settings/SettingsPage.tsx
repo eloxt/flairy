@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconBrandGithub, IconChevronDown, IconChevronRight, IconInfoCircle, IconRefresh, IconRobot, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconTool } from '@tabler/icons-react'
+import { IconBrandGithub, IconChevronDown, IconChevronRight, IconClock, IconInfoCircle, IconRefresh, IconRobot, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconTool } from '@tabler/icons-react'
 import { BrandMark } from '@/components/BrandMark'
 import type {
   AcpBackendView,
@@ -10,6 +10,7 @@ import type {
   LauncherShortcutStatus,
   Memory,
   RedactedConfigSnapshot,
+  ScheduledTask,
   TelegramStatus
 } from '@shared/ipc'
 import { useAuth } from '@/store/auth-store'
@@ -27,7 +28,7 @@ import {
 import { AdvancedSection } from './advanced/AdvancedSection'
 import { CopyButton } from '@/components/chat/MessageActions'
 
-type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'github' | 'acp' | 'about' | 'advanced'
+type Tab = 'general' | 'account' | 'memory' | 'schedule' | 'telegram' | 'github' | 'acp' | 'about' | 'advanced'
 
 /**
  * End-user settings, macOS System Settings style: a frosted sidebar on the left
@@ -36,7 +37,7 @@ type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'github' | 'acp' | 'a
  * label + plain-language description on the left, the control in place on the
  * right (switch / segmented / popup), instead of form-like sections.
  */
-const TABS: Tab[] = ['general', 'account', 'memory', 'telegram', 'github', 'acp', 'about', 'advanced']
+const TABS: Tab[] = ['general', 'account', 'memory', 'schedule', 'telegram', 'github', 'acp', 'about', 'advanced']
 
 /**
  * One-shot deep link: the Settings window can be opened with `?tab=advanced`
@@ -72,6 +73,7 @@ export function SettingsPage(): React.JSX.Element {
     [
       { id: 'general', label: t('settings.navGeneral'), icon: IconAdjustmentsHorizontal },
       { id: 'memory', label: t('settings.tabMemory'), icon: IconSparkles },
+      { id: 'schedule', label: t('settings.tabSchedule'), icon: IconClock },
       { id: 'telegram', label: t('settings.tabTelegram'), icon: IconSend },
       { id: 'github', label: t('settings.tabGithub'), icon: IconBrandGithub },
       { id: 'acp', label: t('settings.tabAcp'), icon: IconRobot },
@@ -85,6 +87,7 @@ export function SettingsPage(): React.JSX.Element {
     general: t('settings.navGeneral'),
     account: t('settings.account'),
     memory: t('settings.tabMemory'),
+    schedule: t('settings.tabSchedule'),
     telegram: t('settings.tabTelegram'),
     github: t('settings.tabGithub'),
     acp: t('settings.tabAcp'),
@@ -154,6 +157,7 @@ export function SettingsPage(): React.JSX.Element {
           {tab === 'general' && <GeneralSection />}
           {tab === 'account' && <AccountSection />}
           {tab === 'memory' && <MemorySection />}
+          {tab === 'schedule' && <ScheduleSection />}
           {tab === 'telegram' && <TelegramSection />}
           {tab === 'github' && <GithubSection />}
           {tab === 'acp' && <AcpSection />}
@@ -424,6 +428,113 @@ function MemorySection(): React.JSX.Element {
           )}
         </Group>
       )}
+    </>
+  )
+}
+
+/* ── Scheduled tasks: list, pause/resume, delete ───────────────────────────── */
+
+function ScheduleSection(): React.JSX.Element {
+  const { t, i18n } = useTranslation()
+  const [tasks, setTasks] = useState<ScheduledTask[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+
+  // Live-refreshes via onScheduleChanged so a task the assistant just created
+  // (or one that just ran) appears/updates at once.
+  useEffect(() => {
+    void window.api.listScheduledTasks().then((ts) => {
+      setTasks(ts)
+      setLoaded(true)
+    })
+    return window.api.onScheduleChanged(() => {
+      void window.api.listScheduledTasks().then(setTasks)
+    })
+  }, [])
+
+  const fmt = (ts?: number): string =>
+    ts ? new Date(ts).toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }) : ''
+
+  const onToggle = (task: ScheduledTask): void => {
+    void window.api
+      .updateScheduledTask({ id: task.id, status: task.status === 'paused' ? 'active' : 'paused' })
+      .then(setTasks)
+  }
+
+  const onDelete = (id: string): void => {
+    void window.api.deleteScheduledTask(id).then((ts) => {
+      setTasks(ts)
+      setConfirmingId(null)
+    })
+  }
+
+  return (
+    <>
+      <Lede>{t('settings.scheduleDescription')}</Lede>
+      <Group>
+        {!loaded ? (
+          <EmptyRow>{t('settings.loadingConfig')}</EmptyRow>
+        ) : tasks.length === 0 ? (
+          <EmptyRow>{t('settings.scheduleEmpty')}</EmptyRow>
+        ) : (
+          tasks.map((task) => (
+            <div
+              key={task.id}
+              className="group/task flex min-h-[52px] items-center gap-4 px-3.5 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[13px] leading-snug font-medium">{task.title}</span>
+                  {task.status !== 'active' && (
+                    <span className="shrink-0 rounded-full bg-foreground/[0.07] px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                      {t(`toolDetail.scheduleStatus.${task.status}`)}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {task.scheduleText}
+                  {task.status === 'active' && task.nextRunAt
+                    ? ` · ${t('settings.scheduleNextRun')} ${fmt(task.nextRunAt)}`
+                    : task.lastRunAt
+                      ? ` · ${t('settings.scheduleLastRun')} ${fmt(task.lastRunAt)}`
+                      : ''}
+                </div>
+              </div>
+              {confirmingId === task.id ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button variant="destructive" size="xs" onClick={() => onDelete(task.id)}>
+                    {t('settings.scheduleDeleteConfirm')}
+                  </Button>
+                  <Button variant="outline" size="xs" onClick={() => setConfirmingId(null)}>
+                    {t('settings.cancel')}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex shrink-0 items-center gap-2 opacity-0 transition-opacity group-hover/task:opacity-100 focus-within:opacity-100">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => void window.api.revealScheduleSession(task.sessionId)}
+                  >
+                    {t('settings.scheduleOpenChat')}
+                  </Button>
+                  {(task.status === 'active' || task.status === 'paused') && (
+                    <Button variant="outline" size="xs" onClick={() => onToggle(task)}>
+                      {task.status === 'paused'
+                        ? t('settings.scheduleResume')
+                        : t('settings.schedulePause')}
+                    </Button>
+                  )}
+                  <Button variant="outline" size="xs" onClick={() => setConfirmingId(task.id)}>
+                    {t('settings.scheduleDelete')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </Group>
+      <Caption>{t('settings.scheduleHint')}</Caption>
     </>
   )
 }

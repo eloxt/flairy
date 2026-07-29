@@ -129,6 +129,10 @@ export const IPC = {
   ConfigSetMode: 'config:set-mode',
   LocalConfigGet: 'local-config:get',
   LocalConfigSave: 'local-config:save',
+  ScheduleList: 'schedule:list',
+  ScheduleUpdate: 'schedule:update',
+  ScheduleDelete: 'schedule:delete',
+  ScheduleRevealSession: 'schedule:reveal-session',
   // event streams (send)
   TelegramStatusChanged: 'telegram:status-changed',
   GithubStatusChanged: 'github:status-changed',
@@ -151,7 +155,8 @@ export const IPC = {
   AgentCompressStatus: 'agent:compress-status',
   LauncherShown: 'launcher:shown',
   LauncherOpenSession: 'launcher:open-session',
-  ScheduleOpenSession: 'schedule:open-session'
+  ScheduleOpenSession: 'schedule:open-session',
+  ScheduleChanged: 'schedule:changed'
 } as const
 
 /** UI language. The single source of truth for both renderer and main catalogs. */
@@ -781,6 +786,40 @@ export interface WorkerRun {
   updatedAt: number
 }
 
+/** Lifecycle of a scheduled task (the `schedule` tool). Deletes are soft. */
+export type ScheduledTaskStatus = 'active' | 'paused' | 'completed' | 'deleted'
+
+/**
+ * A scheduled task the agent set up: Flairy runs `prompt` headlessly in the
+ * task's own conversation when `cron` (5-field, local time) or `onceAt` fires.
+ * Local-only per device — never synced. Shared here so the Settings management
+ * list can render tasks; the rows live in the main process's SQLite.
+ */
+export interface ScheduledTask {
+  id: string
+  sessionId: string
+  title: string
+  /** Self-contained instruction the agent executes on each run. */
+  prompt: string
+  /** 5-field cron expression in local time (recurring tasks). */
+  cron?: string
+  /** Epoch ms of a one-shot run. */
+  onceAt?: number
+  /** Model-authored human description of the schedule, in the user's language. */
+  scheduleText: string
+  status: ScheduledTaskStatus
+  lastRunAt?: number
+  nextRunAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** Pause/resume patch for a scheduled task (Settings management list). */
+export interface ScheduleUpdateArgs {
+  id: string
+  status: 'active' | 'paused'
+}
+
 /** Main server socket connection state, renderer-safe and credential-free. */
 export type SocketConnectionStatus = 'disconnected' | 'connecting' | 'connected'
 
@@ -1094,4 +1133,14 @@ export interface FlairyApi {
   onLauncherOpenSession(cb: (meta: SessionMeta) => void): () => void
   /** Fires when the user clicks a scheduled-run notification: open that conversation. */
   onScheduleOpenSession(cb: (meta: SessionMeta) => void): () => void
+  /** Every non-deleted scheduled task, newest first (Settings management list). */
+  listScheduledTasks(): Promise<ScheduledTask[]>
+  /** Pause or resume a task; resolves with the fresh list. */
+  updateScheduledTask(args: ScheduleUpdateArgs): Promise<ScheduledTask[]>
+  /** Soft-delete a task (stops future runs); resolves with the fresh list. */
+  deleteScheduledTask(id: string): Promise<ScheduledTask[]>
+  /** Bring the main window forward and open the task's conversation. */
+  revealScheduleSession(sessionId: string): Promise<void>
+  /** Fires whenever any scheduled task changes (created / ran / paused / deleted). */
+  onScheduleChanged(cb: () => void): () => void
 }

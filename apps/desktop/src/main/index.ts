@@ -13,6 +13,7 @@ import { registerLocaleHandlers } from "./ipc/locale-handlers";
 import { registerTelegramHandlers } from "./ipc/telegram-handlers";
 import { registerGithubHandlers } from "./ipc/github-handlers";
 import { registerWorkerRunHandlers } from "./ipc/worker-run-handlers";
+import { registerScheduleHandlers } from "./ipc/schedule-handlers";
 import { registerAcpHandlers } from "./ipc/acp-handlers";
 import { initDispatch, workers } from "./acp/dispatch";
 import { initScheduler, stopScheduler } from "./schedule/scheduler";
@@ -106,6 +107,7 @@ if (!app.requestSingleInstanceLock()) {
     registerTelegramHandlers(telegram);
     registerGithubHandlers();
     registerWorkerRunHandlers();
+    registerScheduleHandlers();
     registerAcpHandlers();
     registerFsHandlers();
     telegram.maybeAutoStart();

@@ -223,6 +223,15 @@ const api: FlairyApi = {
     const listener = (_e: unknown, meta: SessionMeta): void => cb(meta)
     ipcRenderer.on(IPC.ScheduleOpenSession, listener)
     return () => ipcRenderer.removeListener(IPC.ScheduleOpenSession, listener)
+  },
+  listScheduledTasks: () => ipcRenderer.invoke(IPC.ScheduleList),
+  updateScheduledTask: (args) => ipcRenderer.invoke(IPC.ScheduleUpdate, args),
+  deleteScheduledTask: (id) => ipcRenderer.invoke(IPC.ScheduleDelete, id),
+  revealScheduleSession: (sessionId) => ipcRenderer.invoke(IPC.ScheduleRevealSession, sessionId),
+  onScheduleChanged: (cb) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(IPC.ScheduleChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.ScheduleChanged, listener)
   }
 }
 

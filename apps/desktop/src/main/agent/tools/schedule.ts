@@ -8,7 +8,7 @@ import {
   updateScheduledTask,
   type ScheduledTask
 } from '../../store/db'
-import { abortTaskRun, nextRunFor, syncTaskJob } from '../../schedule/scheduler'
+import { nextRunFor, notifyScheduleChanged, setTaskStatus, syncTaskJob } from '../../schedule/scheduler'
 import { getLanguage } from '../../locale'
 
 /**
@@ -89,11 +89,11 @@ export function createScheduleTool(sessionId: string): AgentTool<any> {
         case 'update':
           return doUpdate(requireTask(params?.id), params)
         case 'pause':
-          return setStatus(requireTask(params?.id), 'paused')
+          return doSetStatus(requireTask(params?.id), 'paused')
         case 'resume':
-          return setStatus(requireTask(params?.id), 'active')
+          return doSetStatus(requireTask(params?.id), 'active')
         case 'delete':
-          return setStatus(requireTask(params?.id), 'deleted')
+          return doSetStatus(requireTask(params?.id), 'deleted')
         default:
           throw new Error(`Unknown action "${String(params?.action)}" — use one of: ${ACTIONS.join(', ')}.`)
       }
@@ -166,6 +166,7 @@ function doCreate(sessionId: string, params: any): ToolResult {
     nextRunAt: nextRunFor({ cron, onceAt }) ?? undefined
   })
   syncTaskJob(task.id)
+  notifyScheduleChanged()
   const created = getScheduledTask(task.id) ?? task
   return {
     content: [
@@ -250,6 +251,7 @@ function doUpdate(task: ScheduledTask, params: any): ToolResult {
   }
   const next = updateScheduledTask(task.id, patch)!
   syncTaskJob(task.id)
+  notifyScheduleChanged()
   const fresh = getScheduledTask(task.id) ?? next
   return {
     content: [
@@ -259,22 +261,12 @@ function doUpdate(task: ScheduledTask, params: any): ToolResult {
   }
 }
 
-function setStatus(task: ScheduledTask, status: 'paused' | 'active' | 'deleted'): ToolResult {
-  const patch: Parameters<typeof updateScheduledTask>[1] = { status }
-  // Resuming recomputes the next occurrence (the paused-era one may be stale);
-  // an expired one-shot cannot be resumed — nothing left to run.
-  if (status === 'active') {
-    if (task.onceAt && task.onceAt <= Date.now()) {
-      throw new Error('That one-time task\'s moment has already passed — create a new task instead.')
-    }
-    patch.nextRunAt = nextRunFor(task) ?? undefined
-  }
-  const next = updateScheduledTask(task.id, patch)!
-  syncTaskJob(task.id)
-  if (status !== 'active') abortTaskRun(task.id)
+function doSetStatus(task: ScheduledTask, status: 'paused' | 'active' | 'deleted'): ToolResult {
+  // Shared mutation seam with the Settings management list (scheduler.ts):
+  // resume recompute, expired-one-shot guard, job sync, in-flight abort.
+  const next = setTaskStatus(task.id, status)
   const verb = status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'deleted'
-  const tail =
-    status === 'active' ? ` Next run: ${fmtTime(getScheduledTask(task.id)?.nextRunAt)}.` : ''
+  const tail = status === 'active' ? ` Next run: ${fmtTime(next.nextRunAt)}.` : ''
   return {
     content: [{ type: 'text', text: `Task "${next.title}" ${verb}.${tail}` }],
     details: { action: verb, task: next }

@@ -282,6 +282,18 @@ const en = {
     // Sidebar nav
     navGeneral: 'General',
     tabMemory: 'Memory',
+    tabSchedule: 'Scheduled tasks',
+    scheduleDescription:
+      'Things Flairy does for you automatically, on a schedule. To set one up, just ask in any conversation — for example "Every morning, send me interesting Hacker News stories."',
+    scheduleEmpty: 'No scheduled tasks yet. Ask Flairy for one in any conversation.',
+    scheduleNextRun: 'Next run',
+    scheduleLastRun: 'Last run',
+    schedulePause: 'Pause',
+    scheduleResume: 'Resume',
+    scheduleDelete: 'Delete',
+    scheduleDeleteConfirm: 'Delete task',
+    scheduleOpenChat: 'Open conversation',
+    scheduleHint: 'Results arrive as replies in the conversation each task was created in.',
     tabTelegram: 'Telegram',
     tabAbout: 'About',
     // Account

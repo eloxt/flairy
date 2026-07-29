@@ -162,6 +162,39 @@ export function nextRunFor(task: Pick<ScheduledTask, 'cron' | 'onceAt'>): number
   return null
 }
 
+/** Tell every window the task list changed (the Settings list live-refreshes). */
+export function notifyScheduleChanged(): void {
+  broadcast(IPC.ScheduleChanged)
+}
+
+/**
+ * Pause / resume / soft-delete a task and keep its croner job + any in-flight
+ * run in sync. The single mutation seam shared by the schedule tool and the
+ * Settings management IPC, so both apply identical semantics: resuming
+ * recomputes the next occurrence (an expired one-shot can't be resumed), and
+ * pausing/deleting also aborts a run that is mid-flight. Throws model/user
+ * readable errors.
+ */
+export function setTaskStatus(
+  taskId: string,
+  status: 'active' | 'paused' | 'deleted'
+): ScheduledTask {
+  const task = getScheduledTask(taskId)
+  if (!task || task.status === 'deleted') throw new Error(`No task with id "${taskId}".`)
+  const patch: Parameters<typeof updateScheduledTask>[1] = { status }
+  if (status === 'active') {
+    if (task.onceAt && task.onceAt <= Date.now()) {
+      throw new Error("That one-time task's moment has already passed — create a new task instead.")
+    }
+    patch.nextRunAt = nextRunFor(task) ?? undefined
+  }
+  const next = updateScheduledTask(taskId, patch)!
+  syncTaskJob(taskId)
+  if (status !== 'active') abortTaskRun(taskId)
+  notifyScheduleChanged()
+  return next
+}
+
 /**
  * Abort a task's in-flight run, if any (the schedule tool calls this on
  * pause/delete so a cancelled task doesn't keep talking).
@@ -232,6 +265,7 @@ function fire(taskId: string): void {
       running.delete(task.sessionId)
       console.error(`[schedule] failed to start run for task ${taskId}:`, err)
     }
+    notifyScheduleChanged() // last/next run advanced (and a one-shot completed)
   } catch (err) {
     console.error(`[schedule] fire(${taskId}) failed:`, err)
   }

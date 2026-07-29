@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { profileDir } from './profile'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
-import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode, WorkerRun, WorkerRunStatus } from '@shared/ipc'
+import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode, WorkerRun, WorkerRunStatus, ScheduledTask, ScheduledTaskStatus } from '@shared/ipc'
 import { dehydrateImages, IMAGE_REF_SCAN_RE } from './image-store'
 import { t } from '../locale'
 
@@ -681,27 +681,9 @@ export function failOrphanWorkerRuns(): WorkerRun[] {
 
 /* ── Scheduled tasks (schedule tool) ──────────────────────────────────────── */
 
-export type ScheduledTaskStatus = 'active' | 'paused' | 'completed' | 'deleted'
-
-/** A scheduled task. Local-only; `cron` XOR `onceAt` describes when it fires. */
-export interface ScheduledTask {
-  id: string
-  sessionId: string
-  title: string
-  /** Self-contained instruction the agent executes on each run. */
-  prompt: string
-  /** 5-field cron expression in local time (recurring tasks). */
-  cron?: string
-  /** Epoch ms of a one-shot run. */
-  onceAt?: number
-  /** Model-authored human description of the schedule, in the user's language. */
-  scheduleText: string
-  status: ScheduledTaskStatus
-  lastRunAt?: number
-  nextRunAt?: number
-  createdAt: number
-  updatedAt: number
-}
+// The entity types live in @shared/ipc (the Settings window renders the list);
+// re-exported here so main-process consumers keep importing them from the db.
+export type { ScheduledTask, ScheduledTaskStatus } from '@shared/ipc'
 
 interface ScheduledTaskRow {
   id: string

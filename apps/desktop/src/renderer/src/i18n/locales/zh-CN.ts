@@ -267,6 +267,18 @@ const zhCN: typeof En = {
     // 侧栏导航
     navGeneral: '通用',
     tabMemory: '记忆',
+    tabSchedule: '定时任务',
+    scheduleDescription:
+      'Flairy 按时间自动为你完成的事情。想创建一个，在任意对话里直接说就行——比如"每天早上给我发送 Hacker News 上有意思的新闻"。',
+    scheduleEmpty: '还没有定时任务。在任意对话里让 Flairy 帮你创建一个吧。',
+    scheduleNextRun: '下次运行',
+    scheduleLastRun: '上次运行',
+    schedulePause: '暂停',
+    scheduleResume: '恢复',
+    scheduleDelete: '删除',
+    scheduleDeleteConfirm: '确认删除',
+    scheduleOpenChat: '打开对话',
+    scheduleHint: '任务结果会以回复的形式出现在创建它的那个对话里。',
     tabTelegram: 'Telegram',
     tabAbout: '关于',
     // 账户
