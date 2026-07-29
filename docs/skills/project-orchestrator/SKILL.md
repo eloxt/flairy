@@ -1,6 +1,6 @@
 ---
 name: project-orchestrator
-description: Coordinate a software project end to end — expand an idea into a PRD, agree on the architecture, create the GitHub repository, break work into issues, and dispatch coding agents to implement them as pull requests. Use this whenever the user brings a product or app idea they want built, asks to "start a project", wants a PRD or architecture written, wants work split into GitHub issues, or wants coding tasks delegated to worker agents — even if they never say the word "project".
+description: Coordinate a software project end to end — expand an idea into a PRD, agree on the architecture, create the GitHub repository, break work into issues, and dispatch coding agents to implement them as pull requests; on an existing project, triage new requests (bug fix / small feature / new iteration) and run the same dispatch loop. Use this whenever the user brings a product or app idea they want built, asks to "start a project", wants a PRD or architecture written, wants work split into GitHub issues, wants coding tasks delegated to worker agents, or asks to add a feature or fix a bug in a project that already has a repository — even if they never say the word "project".
 ---
 
 # Project Orchestrator
@@ -19,12 +19,16 @@ If you notice the impulse to reach for `write`/`edit`/`bash` to change this work
 
 ## Recovering context
 
-Project state lives in the repository (`docs/PRD.md`, `docs/ARCHITECTURE.md`) and in GitHub issues/PRs — never only in this conversation. That's what lets the project survive across sessions, devices, and context compression. When resuming a project, when unsure of the current phase, or before dispatching after a long stretch of conversation, re-read this SKILL.md plus `docs/PRD.md` (read-only tools are fine — the rule bans writing, not reading) and the open issues/PRs via `github_read`.
+Project state lives in the repository (`docs/PRD.md`, `docs/ARCHITECTURE.md`) and in GitHub issues/PRs/milestones — never only in this conversation. That's what lets the project survive across sessions, devices, and context compression: a fresh conversation on an existing project is normal (and preferable to an endless one). When resuming a project, when unsure of the current phase, or before dispatching after a long stretch of conversation, re-read this SKILL.md plus `docs/PRD.md` (read-only tools are fine — the rule bans writing, not reading) and the open issues/PRs via `github_read`.
+
+## Which mode am I in?
+
+Check the workspace first: if it has no GitHub repository yet, you're **starting a project** — run the workflow below from step 1. If a repository exists, you're **iterating** — recover context (above), then triage the request per "Iterating on an existing project" and jump straight into the task-breakdown → dispatch → review loop (steps 4–6). Never re-run the greenfield gates on an existing project: the PRD and architecture are already decided; you amend them, not re-litigate them.
 
 ## The three gates (all owned by the user — use `ask`, never assume)
 
-1. PRD approved
-2. Architecture approved
+1. PRD approved (on iterations: the change's scope approved — see the tiers)
+2. Architecture approved (on iterations: only when the change touches it)
 3. PRs merged — the user merges; never merge or close a PR yourself
 
 ## Workflow
@@ -56,7 +60,8 @@ Slice the MVP into a first iteration of issues (`github_issue_write`). Each issu
 
 - Concrete scope and acceptance criteria (bullet list, testable).
 - Files/modules it will likely touch; relevant PRD/architecture references.
-- Label by area (e.g. `backend`, `frontend`, `test`, `design`); keep one iteration to a handful of issues.
+- Label by area (e.g. `backend`, `frontend`, `test`, `design`) and by kind (`feature` / `bug` / `docs`); keep one iteration to a handful of issues.
+- Group the iteration under a **milestone** (pass its title to `github_issue_write` — it's created automatically): name them plainly (`MVP`, `Iteration 2 — sharing`, …). The milestone IS the iteration's progress tracker; never keep a separate task list in conversation.
 - Minimize cross-issue dependencies; if A blocks B, say so in B's body and dispatch A first.
 
 Show the user the issue list before creating it.
@@ -86,10 +91,28 @@ While PRs are open, Flairy watches GitHub for you and injects `[github event]` m
 
 - **CI green on PR** → if not yet reviewed, run step 5b; if already LGTM'd, tell the user it's ready to merge.
 - **CI FAILED on PR** → treat like a failed run: extract the failing checks into concrete fixes on the issue, re-dispatch (counts toward the 2-round bound), or escalate.
-- **PR merged** → check the iteration: if other issues in this iteration are still open, make sure each is dispatched or blocked-with-reason. When ALL of the iteration's PRs are merged → summarize what shipped, verify against the PRD what's left, propose the next iteration's issues to the user, and on approval repeat from step 4.
+- **PR merged** → check the iteration (its milestone): if other issues in this iteration are still open, make sure each is dispatched or blocked-with-reason. When the milestone is empty → summarize what shipped, verify against the PRD what's left, propose the next iteration's issues to the user, and on approval repeat from step 4.
 - **PR closed without merging** → ask the user what happened before doing anything else with that issue.
 
 Continue iterating until the PRD's MVP is delivered; then ask the user whether to continue with post-MVP scope.
+
+## Iterating on an existing project
+
+Every request against an existing repository gets triaged into one of three tiers — propose the tier, let the user correct it. The point is proportionality: a typo fix must not trigger an architecture discussion, and a feature that changes the data model must not sneak in as "just an issue".
+
+| Tier | Flow | User gates |
+|---|---|---|
+| **Bug fix** | Pin down reproduction → one issue → dispatch | 1 — the issue content |
+| **Small feature** (no PRD/architecture impact) | Brief approach discussion → one issue (or two) → dispatch | 1 — approach + issue |
+| **New iteration** (multiple features, or PRD/architecture changes) | Mini-PRD discussion → milestone + issues (docs update rides the first issue) → dispatch loop | 2 — scope, then issue list |
+
+All tiers converge on the same steps 4–6 machinery: issues under a milestone (bug fixes may go milestone-less), dispatch, review loop, user merges. What differs is only how much conversation happens before the first issue exists.
+
+**Bug issues have a stricter template.** A worker cannot ask the reporter questions, so the issue must carry: reproduction steps, expected vs actual behavior, any error output — and the acceptance criteria MUST include a regression test that fails before the fix and passes after. A fix without a test is not done; say so in the issue. Before writing the issue you may localize the fault yourself with read-only tools (`grep`/`read` on the workspace, `github_read` on recent PRs) — an issue that names the likely file and cause doubles the worker's hit rate. If you cannot localize it, write what you observed and dispatch anyway; the worker investigates in its own worktree.
+
+**Documents evolve by the same one path as everything else.** When an iteration changes the PRD or architecture, the doc update is part of the iteration's first issue (mirroring scaffold-as-issue-#1) — the worker updates `docs/PRD.md` / `docs/ARCHITECTURE.md` in the same PR that starts the feature, so docs never drift from what's merged and never bypass review.
+
+**Dependency discipline carries over**: if the iteration's first issue rewrites shared foundations, wait for its merge before dispatching the rest (same reason as the scaffold rule).
 
 ## Anti-patterns (each of these has actually gone wrong — don't repeat them)
 

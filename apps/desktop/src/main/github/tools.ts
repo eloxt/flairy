@@ -234,24 +234,48 @@ export function createGithubIssueWriteTool(cwd: string): AgentTool<any> {
     name: 'github_issue_write',
     label: 'GitHub issue write',
     description:
-      "Create or modify issues in the workspace's GitHub repository. Actions: 'create' (requires title; body/labels optional), 'update' (requires number; any of title/body/state/labels), 'comment' (requires number + body).",
+      "Create or modify issues in the workspace's GitHub repository. Actions: 'create' (requires title; body/labels/milestone optional), 'update' (requires number; any of title/body/state/labels/milestone), 'comment' (requires number + body). `milestone` is a title — it is created on the repo if it doesn't exist yet.",
     parameters: Type.Object({
       action: Type.String({ description: "One of: 'create' | 'update' | 'comment'" }),
       number: Type.Optional(Type.Number({ description: 'Issue number (update/comment)' })),
       title: Type.Optional(Type.String()),
       body: Type.Optional(Type.String({ description: 'Issue body / comment text (markdown)' })),
       labels: Type.Optional(Type.Array(Type.String(), { description: 'Label names' })),
+      milestone: Type.Optional(
+        Type.String({ description: 'Milestone TITLE (create/update); created if missing' })
+      ),
       state: Type.Optional(Type.String({ description: "For update: 'open' | 'closed'" }))
     }),
     executionMode: 'sequential',
-    execute: async (_id, { action, number, title, body, labels, state }: any, signal) => {
+    execute: async (_id, { action, number, title, body, labels, milestone, state }: any, signal) => {
       if (signal?.aborted) throw new Error('Operation aborted')
       const { owner, repo } = await resolveRepoFromCwd(cwd)
       const gh = getOctokit()
+      // The REST API wants a milestone NUMBER; the model speaks in titles.
+      // Resolve (or create) lazily so iteration planning is one tool call.
+      const resolveMilestone = async (t: string): Promise<number> => {
+        const { data: all } = await gh.rest.issues.listMilestones({
+          owner,
+          repo,
+          state: 'all',
+          per_page: 100
+        })
+        const found = all.find((m) => m.title === t)
+        if (found) return found.number
+        const { data: created } = await gh.rest.issues.createMilestone({ owner, repo, title: t })
+        return created.number
+      }
       switch (action) {
         case 'create': {
           if (!title) throw new Error("action 'create' requires `title`")
-          const { data } = await gh.rest.issues.create({ owner, repo, title, body, labels })
+          const { data } = await gh.rest.issues.create({
+            owner,
+            repo,
+            title,
+            body,
+            labels,
+            milestone: milestone ? await resolveMilestone(milestone) : undefined
+          })
           return ok(`Created issue #${data.number}: ${data.title}\n${data.html_url}`, {
             number: data.number
           })
@@ -265,6 +289,7 @@ export function createGithubIssueWriteTool(cwd: string): AgentTool<any> {
             title,
             body,
             labels,
+            milestone: milestone ? await resolveMilestone(milestone) : undefined,
             state: state as 'open' | 'closed' | undefined
           })
           return ok(`Updated issue #${data.number} (${data.state}).\n${data.html_url}`)
