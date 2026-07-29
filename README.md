@@ -15,6 +15,39 @@ A desktop AI agent for **non-technical users**. Concepts like MCP, skills, model
 - **Multi-device session sync** — local-first sessions are mirrored to the server and pushed to your other devices over socket.io.
 - **Credentials stay in the main process** — encrypted with Electron `safeStorage`; they never reach the renderer or hit disk in plaintext.
 
+## Features
+
+**Chat**
+
+- Rich streaming conversations: Markdown with syntax-highlighted code, file-change diffs, inline UI cards, and a live plan card in the composer.
+- Built-in web search & fetch with inline `[n]` citations, link previews, and opt-in image embeds.
+- Image input, backed by an auxiliary visual model for image understanding.
+- Persistent agent memory, synced across devices.
+- Rolling context compression keeps long conversations going; transient model errors auto-retry; multiple sessions stream in parallel in the background.
+- Per-device model picker in the composer (from the admin-allowed list).
+
+**Projects (workspaces)**
+
+- Attach a folder to a conversation: file tree + text preview in the details panel, `@` file mentions in the composer, and file/shell tools gated behind an approval flow.
+
+**Telegram**
+
+- Pair a bot and drive your agent from anywhere: replies live-stream into Telegram's native draft, dangerous tools ask for approval via inline buttons, and `/sessions` lets you continue any desktop conversation from your phone.
+
+**Scheduled tasks**
+
+- Ask in any conversation ("every morning, send me interesting Hacker News stories") — the agent sets up timed runs that reply into that same conversation; pause/resume/delete them in Settings.
+
+**Coding-agent orchestration**
+
+- Connect GitHub (Device Flow) and dispatch implementation tasks to local ACP workers — Claude Code, Codex, Gemini CLI, or OpenCode — with milestone-based iteration, live structured transcripts, and a review loop.
+
+**Desktop app**
+
+- Spotlight-style quick launcher, system tray with close-to-tray, native macOS vibrancy, Windows auto-update + bundled shell.
+- Per-account storage profiles: signing out keeps your data; accounts never mix.
+- Local detached mode: run without a server via config import in Advanced settings.
+
 ## Architecture
 
 ```
