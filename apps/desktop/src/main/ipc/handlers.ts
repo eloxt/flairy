@@ -1,4 +1,4 @@
-import { ipcMain, dialog, Menu, shell } from 'electron'
+import { app, ipcMain, dialog, Menu, shell } from 'electron'
 import {
   IPC,
   type PromptArgs,
@@ -29,7 +29,6 @@ import {
 } from '@shared/ipc'
 import { t } from '../locale'
 import type { AgentManager } from '../agent/agent-manager'
-import type { TelegramManager } from '../telegram/telegram-manager'
 import type { AgentEventInternalEnvelope } from '../agent/turn-origin'
 import { approvals } from '../agent/approvals'
 import { questions } from '../agent/questions'
@@ -54,7 +53,6 @@ import {
   updateSessionTitle,
   deleteSession,
   tasksForSession,
-  clearAllSessions,
   addRecentDirectory,
   ensureRecentDirectory,
   removeRecentDirectory,
@@ -64,16 +62,13 @@ import {
   listMemories,
   softDeleteMemory,
   upsertRemoteMemories,
-  clearAllMemories,
   getCloseToTrayPref,
   setCloseToTrayPref,
   getChatWidthPref,
   setChatWidthPref,
   getAdvancedUnlockedPref,
-  setAdvancedUnlockedPref,
-  clearTelegramBinding
+  setAdvancedUnlockedPref
 } from '../store/db'
-import { clearAllImages } from '../store/image-store'
 import { scheduleImageSweep } from '../store/image-gc'
 import { login, register } from '../auth'
 import type { ServerClient } from '../sync/server-client'
@@ -108,20 +103,31 @@ const pendingViewerImages = new Map<string, ViewerImage>()
 let pendingLauncherSession: SessionMeta | null = null
 
 /**
- * Persist a freshly issued token + user, open the authenticated socket, and
- * return the renderer-facing status. Shared by login and register.
+ * Persist a freshly issued token + user, then relaunch into their profile.
+ * Shared by login and register.
+ *
+ * Storage is per-account (`userData/profiles/<userId>`) and the active profile
+ * is resolved ONCE at process start — so any auth change restarts the process
+ * instead of hot-swapping the DB, image store, secrets, and every subsystem
+ * seeded from them. The fresh process boots signed-in and connects normally.
  */
-function establishSession(
-  server: ServerClient,
-  token: string,
-  user: AuthUser
-): AuthStatus {
+function establishSession(token: string, user: AuthUser): AuthStatus {
   setAuthToken(token)
   setAuthUser(user)
-  server.connect(token)
-  // Let every window refresh its auth state (other windows may be open).
-  broadcast(IPC.AuthChanged)
+  relaunchIntoProfile()
   return { authenticated: true, user }
+}
+
+/**
+ * Relaunch the app to re-resolve the active storage profile. Deferred a beat so
+ * the pending IPC reply reaches the renderer before the window goes away; quit
+ * (not exit) so the before-quit teardown persists in-flight turns first.
+ */
+function relaunchIntoProfile(): void {
+  setTimeout(() => {
+    app.relaunch()
+    app.quit()
+  }, 150)
 }
 
 /** Show the native folder picker; returns the chosen path or null if cancelled. */
@@ -140,8 +146,7 @@ async function pickDirectory(): Promise<string | null> {
 export function registerIpcHandlers(
   server: ServerClient,
   updates: UpdateManager,
-  agents: AgentManager,
-  telegram: TelegramManager
+  agents: AgentManager
 ): void {
   // Which windows hold a runtime for which session. Renderers register via
   // AgentWatchSession when they create a session runtime and unregister when it
@@ -626,43 +631,24 @@ export function registerIpcHandlers(
   // the authenticated socket so config + session sync start flowing.
   ipcMain.handle(IPC.AuthLogin, async (_e, args: LoginArgs): Promise<AuthStatus> => {
     const { token, user } = await login(args.email, args.password)
-    return establishSession(server, token, user)
+    return establishSession(token, user)
   })
 
-  // Registration mirrors login: create the account, persist, connect, return status.
+  // Registration mirrors login: create the account, persist, relaunch.
   ipcMain.handle(IPC.AuthRegister, async (_e, args: RegisterArgs): Promise<AuthStatus> => {
     const { token, user } = await register(args.email, args.password, args.displayName)
-    return establishSession(server, token, user)
+    return establishSession(token, user)
   })
 
-  // Sign out: drop the socket and wipe persisted credentials, then tell every
-  // window to re-gate (the main window flips to the auth screen; a settings
-  // window closes itself).
+  // Sign out: drop only the device-level login state and relaunch. The account's
+  // profile directory (sessions, memories, images, config cache, Telegram
+  // pairing) stays on disk untouched — signing back in reopens it. The fresh
+  // process boots into the signed-out `local` profile, so none of it (including
+  // the Telegram token, which would otherwise let the paired chat keep driving
+  // an agent) is reachable until that account signs in again.
   ipcMain.handle(IPC.AuthLogout, async () => {
-    // Fully revoke Telegram on sign-out (HIGH-1): stop polling + forget the bot
-    // token, then drop the chat binding — so the prior account's paired chat can't
-    // drive the agent, and the next account on this machine isn't remote-controlled
-    // by it. (clearAllSessions() below also wipes the telegram_threads mappings in
-    // its transaction, so none self-heal into the next account's agent.)
-    await telegram.disconnect()
-    clearTelegramBinding()
-    server.disconnect()
-    server.clearConfig()
-    // Tear down live agents and wipe locally-cached sessions so the signed-out
-    // user's history can't leak to the next account on this machine. The server
-    // keeps the history; a relogin repopulates it via session:pull.
-    agents.disposeAll()
-    clearAllSessions()
-    // The session wipe orphans every stored image at once — and a signed-out
-    // machine must not keep the previous account's pictures on disk. Full
-    // clear (no age guard); a relogin's session:pull re-extracts what's needed.
-    clearAllImages()
-    // Wipe locally-cached memories too so one account's memories can't leak to
-    // the next account signed in on this machine; a relogin repopulates them via
-    // memory:pull (the server keeps them).
-    clearAllMemories()
     clearAuth()
-    broadcast(IPC.AuthChanged)
+    relaunchIntoProfile()
   })
 
   ipcMain.handle(IPC.AuthStatus, (): AuthStatus => {

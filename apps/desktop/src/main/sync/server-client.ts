@@ -21,14 +21,14 @@ import {
   type SocketAuth
 } from '@flairy/shared'
 import { getAuthToken } from '../store/secrets'
-import { saveCachedConfig, loadCachedConfig, clearCachedConfig } from '../store/config-cache'
+import { saveCachedConfig, loadCachedConfig } from '../store/config-cache'
 import {
   getConfigModePref,
   getPreferredMainModelPref,
   setConfigModePref,
   setPreferredMainModelPref
 } from '../store/db'
-import { loadLocalConfig, clearLocalConfig, type LocalConfigBundle } from '../store/local-config'
+import { loadLocalConfig, type LocalConfigBundle } from '../store/local-config'
 import { materializeSkills, materializeLocalSkills } from '../agent/skill-materializer'
 import type { ConfigMode, SocketConnectionStatus } from '@shared/ipc'
 
@@ -250,32 +250,6 @@ export class ServerClient {
       this.socket = null
     }
     this.setSocketStatus('disconnected')
-  }
-
-  /**
-   * Forget the current config entirely (sign-out): drop the in-memory snapshot
-   * and the encrypted on-disk cache so no stale config survives the next launch.
-   * Also drops any local config and resets to server mode — a signed-out machine
-   * keeps no secrets. Kept separate from disconnect(), which fires on reconnect.
-   */
-  clearConfig(): void {
-    this.config = null
-    this.lastEmittedConfigJson = null
-    clearCachedConfig()
-    // Sign-out drops the offline outbox too: local sessions/memories are wiped
-    // right after, so nothing queued should reach the next account's socket.
-    this.pendingSessionUpserts.clear()
-    this.pendingSessionDeletes.clear()
-    this.pendingTitlePatches.clear()
-    this.pendingMemoryUpserts.clear()
-    this.localConfig = null
-    this.localSkills = []
-    clearLocalConfig()
-    this.configMode = 'server'
-    setConfigModePref('server')
-    // A model pick must not leak to the next signed-in account.
-    this.preferredMainModelId = null
-    setPreferredMainModelPref(null)
   }
 
   /**

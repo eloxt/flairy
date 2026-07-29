@@ -9,7 +9,8 @@ import {
   writeFileSync
 } from 'node:fs'
 import { join } from 'node:path'
-import { app, protocol } from 'electron'
+import { protocol } from 'electron'
+import { profileDir } from './profile'
 
 /**
  * Content-addressed on-disk store for chat images.
@@ -71,7 +72,7 @@ let dir: string | null = null
 
 function imagesDir(): string {
   if (!dir) {
-    dir = join(app.getPath('userData'), 'images')
+    dir = join(profileDir(), 'images')
     mkdirSync(dir, { recursive: true })
   }
   return dir
@@ -223,28 +224,6 @@ export function sweepOrphanImages(liveNames: Set<string>): number {
     }
   }
   return deleted
-}
-
-/**
- * Remove EVERY stored image, age guard included (sign-out): the session wipe
- * orphans them all at once, and a signed-out machine must not keep the previous
- * account's pictures on disk — mirrors clearAllSessions/clearAllMemories.
- */
-export function clearAllImages(): void {
-  let entries: string[]
-  try {
-    entries = readdirSync(imagesDir())
-  } catch {
-    return
-  }
-  for (const name of entries) {
-    if (!FILE_NAME_RE.test(name)) continue
-    try {
-      unlinkSync(join(imagesDir(), name))
-    } catch {
-      // Best-effort; a straggler is caught by the next sweep.
-    }
-  }
 }
 
 /**

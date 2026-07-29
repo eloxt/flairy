@@ -1,6 +1,8 @@
 import { app } from "electron";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
 import { initDb } from "./store/db";
+import { initProfile } from "./store/profile";
+import { getAuthUser, migrateDeviceSecretsToProfile } from "./store/secrets";
 import {
   registerImageProtocol,
   registerImageProtocolPrivileges,
@@ -56,6 +58,12 @@ if (!app.requestSingleInstanceLock()) {
       optimizer.watchWindowShortcuts(window);
     });
 
+    // Resolve the per-account storage profile BEFORE anything touches storage:
+    // db, image store, skills, transcripts, and integration secrets all live
+    // under profiles/<userId> (or profiles/local when signed out). Auth changes
+    // relaunch the process, so this is decided exactly once per run.
+    initProfile(getAuthUser()?.id ?? null);
+    migrateDeviceSecretsToProfile();
     initDb();
     // Serve stored chat images to the renderers (flairy-img://<hash>.<ext>).
     registerImageProtocol();
@@ -94,7 +102,7 @@ if (!app.requestSingleInstanceLock()) {
     // also downloads and installs them in place; elsewhere it just links out.
     const updates = new UpdateManager();
     createMainWindow();
-    registerIpcHandlers(server, updates, agents, telegram);
+    registerIpcHandlers(server, updates, agents);
     registerTelegramHandlers(telegram);
     registerGithubHandlers();
     registerWorkerRunHandlers();

@@ -9,8 +9,8 @@ import {
   type WriteStream
 } from 'node:fs'
 import { join } from 'node:path'
-import { app } from 'electron'
 import type { TranscriptEvent } from '@shared/ipc'
+import { profileDir } from '../store/profile'
 
 /**
  * Structured on-disk transcripts for ACP worker runs, one JSONL file per run
@@ -40,7 +40,7 @@ const FLUSH_AGE_MS = 2_000
 const MAX_READ_EVENTS = 5_000
 
 export function transcriptsDir(): string {
-  return join(app.getPath('userData'), DIR_NAME)
+  return join(profileDir(), DIR_NAME)
 }
 
 /** Derived, deterministic path. Run ids are UUIDs; sanitize anyway. */

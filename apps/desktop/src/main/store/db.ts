@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'node:path'
+import { profileDir } from './profile'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
 import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode, WorkerRun, WorkerRunStatus } from '@shared/ipc'
@@ -23,7 +24,7 @@ let db: Database.Database
 let ftsAvailable = true
 
 export function initDb(): void {
-  db = new Database(join(app.getPath('userData'), 'flairy.db'))
+  db = new Database(join(profileDir(), 'flairy.db'))
   db.pragma('journal_mode = WAL')
   // WAL's standard durability setting: without it every commit fsyncs (FULL),
   // and messages are re-persisted on turn boundaries plus many small setting/
@@ -557,32 +558,6 @@ export function deleteSession(id: string): boolean {
   })(id)
 }
 
-/**
- * Wipe all locally-cached sessions and their messages (sign-out). The server is
- * the source of truth for history, so a relogin repopulates via session:pull;
- * clearing here prevents one user's sessions from leaking to the next account
- * signed in on the same machine. Atomic so a session row never outlives its
- * messages. Local-only concepts (recents, config cache) are cleared elsewhere.
- *
- * Telegram thread mappings are wiped in the same transaction: otherwise a mapping
- * would outlive its session row and "self-heal" a Telegram message into a session
- * under the NEXT account that signs in on this machine.
- */
-export function clearAllSessions(): void {
-  ftsWatermarks.clear()
-  db.transaction(() => {
-    db.prepare('DELETE FROM messages').run()
-    if (ftsAvailable) db.prepare('DELETE FROM messages_fts').run()
-    db.prepare('DELETE FROM sessions').run()
-    db.prepare('DELETE FROM context_compression').run()
-    db.prepare('DELETE FROM telegram_threads').run()
-    db.prepare('DELETE FROM worker_runs').run()
-    // Sign-out wipes every session, so no scheduled task can ever fire again;
-    // hard-delete (local-only data, nothing to propagate).
-    db.prepare('DELETE FROM scheduled_tasks').run()
-  })()
-}
-
 /* ── Worker runs (ACP dispatch_task) ──────────────────────────────────────── */
 
 interface WorkerRunRow {
@@ -1107,15 +1082,6 @@ export function upsertRemoteMemories(memories: Memory[]): void {
   db.transaction(() => {
     for (const m of memories) upsertMemory(m)
   })()
-}
-
-/**
- * Wipe all locally-cached memories (sign-out), mirroring clearAllSessions: the
- * server is the source of truth and a relogin repopulates via memory:pull, so
- * clearing here stops one account's memories leaking to the next on this machine.
- */
-export function clearAllMemories(): void {
-  db.prepare('DELETE FROM memories').run()
 }
 
 /* ---------- Telegram thread mapping ---------- */

@@ -1,8 +1,8 @@
-import { app } from 'electron'
 import { join, dirname } from 'node:path'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import type { SkillConfig, SkillFile, SkillSummary } from '@flairy/shared'
+import { profileDir } from '../store/profile'
 
 /**
  * Turns server-pushed skill summaries into on-disk Agent Skills.
@@ -33,7 +33,7 @@ interface ManifestEntry {
 
 /** Root directory holding every materialized skill, one subdir per skill name. */
 export function skillsRoot(): string {
-  return join(app.getPath('userData'), 'skills')
+  return join(profileDir(), 'skills')
 }
 
 function skillDir(name: string): string {
