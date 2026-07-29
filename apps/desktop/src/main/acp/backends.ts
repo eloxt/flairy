@@ -80,6 +80,21 @@ const BUILTINS: BuiltinBackend[] = [
     defaultEnabled: false,
     modelPlaceholder: 'gemini-3-pro',
     detectBin: 'agy'
+  },
+  {
+    // OpenCode ships ACP natively (`opencode acp`) — the agent binary IS the
+    // adapter. Its ACP mode has no session config options yet
+    // (anomalyco/opencode#14098), so the probe finds nothing and model choice
+    // is injected via OPENCODE_CONFIG_CONTENT (inline runtime config
+    // overrides); opencode model ids are provider-qualified.
+    id: 'opencode',
+    label: 'OpenCode',
+    command: 'opencode',
+    args: ['acp'],
+    applyModel: (m) => ({ env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: m }) } }),
+    defaultEnabled: false,
+    modelPlaceholder: 'anthropic/claude-sonnet-5',
+    detectBin: 'opencode'
   }
 ]
 
@@ -98,7 +113,8 @@ function detectionDirs(): string[] {
     join(homedir(), '.volta', 'bin'),
     join(homedir(), 'n', 'bin'),
     join(homedir(), '.claude', 'local'),
-    join(homedir(), '.bun', 'bin')
+    join(homedir(), '.bun', 'bin'),
+    join(homedir(), '.opencode', 'bin')
   ]
   return [...new Set([...fromPath, ...extras])]
 }
@@ -300,7 +316,8 @@ export function augmentedPath(): string {
     '/opt/homebrew/bin',
     join(homedir(), '.local', 'bin'),
     join(homedir(), '.volta', 'bin'),
-    join(homedir(), 'n', 'bin')
+    join(homedir(), 'n', 'bin'),
+    join(homedir(), '.opencode', 'bin')
   ].filter((p) => existsSync(p))
   const current = process.env.PATH ?? ''
   return [current, ...extra].filter(Boolean).join(delimiter)

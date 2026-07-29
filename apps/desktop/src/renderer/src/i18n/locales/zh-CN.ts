@@ -324,7 +324,8 @@ const zhCN: typeof En = {
     acpDesc: {
       'claude-code': 'Anthropic 的 Claude Code，经官方 ACP 适配器驱动。',
       codex: 'OpenAI 的 Codex CLI，经官方 ACP 适配器驱动。',
-      antigravity: 'Google 的 Antigravity CLI（agy，Gemini CLI 的继任者），经社区 agy-acp 适配器驱动。'
+      antigravity: 'Google 的 Antigravity CLI（agy，Gemini CLI 的继任者），经社区 agy-acp 适配器驱动。',
+      opencode: 'OpenCode，经其内置 ACP 模式（opencode acp）驱动。'
     },
     acpNotInstalled: '本机未检测到 “{{bin}}” 命令——安装并登录该 Agent 后即可启用，或在下方命令栏指定其路径。',
     acpProbing: '正在向 Agent 获取可用配置…首次可能需要下载，请稍候。',

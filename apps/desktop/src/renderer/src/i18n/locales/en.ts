@@ -348,7 +348,8 @@ const en = {
       'claude-code': "Anthropic's Claude Code, driven through the official ACP adapter.",
       codex: "OpenAI's Codex CLI, driven through the official ACP adapter.",
       antigravity:
-        "Google's Antigravity CLI (agy, successor to Gemini CLI), driven through the community agy-acp adapter."
+        "Google's Antigravity CLI (agy, successor to Gemini CLI), driven through the community agy-acp adapter.",
+      opencode: 'OpenCode, driven through its built-in ACP mode (opencode acp).'
     },
     acpNotInstalled:
       "'{{bin}}' was not found on this machine — install and sign in to this agent to enable it, or point the command below at its binary.",
