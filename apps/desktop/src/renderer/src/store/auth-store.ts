@@ -51,10 +51,14 @@ export const useAuth = create<AuthState>((set) => ({
 
   skip: async () => {
     await window.api.setAdvancedUnlocked(true)
-    // Land directly on the Advanced settings tab (SettingsPage reads ?tab=…)
-    // BEFORE the phase flip mounts the router, so it opens on that route.
-    window.location.hash = '#/settings?tab=advanced'
+    // "Use locally" means it: detach from the server right away. This is also
+    // what keeps the Settings window open (its auth gate resolves local-mode
+    // clients to `authed`) and what bypasses the login wall on relaunch.
+    await window.api.setConfigMode('local')
     set({ phase: 'authed', user: null, error: null })
+    // Settings is a separate WINDOW (not a route in this one) — open it on
+    // the Advanced tab so the user lands where the configuration lives.
+    void window.api.openSettings('advanced')
   },
 
   login: async (email, password) => {

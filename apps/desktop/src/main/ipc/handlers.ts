@@ -683,7 +683,7 @@ export function registerIpcHandlers(
   })
 
   // Open the standalone Settings window (from the sidebar).
-  ipcMain.handle(IPC.WindowOpenSettings, () => openSettingsWindow())
+  ipcMain.handle(IPC.WindowOpenSettings, (_e, tab?: string) => openSettingsWindow(tab))
 
   // Quick-launcher window controls. Show is the dev/tray fallback for the
   // global shortcut; hide is the renderer's Esc; resize is renderer-driven

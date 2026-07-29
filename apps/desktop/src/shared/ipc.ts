@@ -973,7 +973,8 @@ export interface FlairyApi {
   /** Current main server socket connection state. */
   getSocketStatus(): Promise<SocketConnectionStatus>
   /** Open (or focus) the standalone Settings window. */
-  openSettings(): Promise<void>
+  /** Open (or focus) the Settings window; `tab` preselects a tab on fresh open. */
+  openSettings(tab?: string): Promise<void>
   /** Toggle the quick-launcher window (dev/tray fallback for the global shortcut). */
   showLauncher(): Promise<void>
   /** Hide the quick-launcher window (Esc). */

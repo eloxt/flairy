@@ -153,8 +153,12 @@ export function createMainWindow(): BrowserWindow {
   return win;
 }
 
-/** Open the standalone Settings window, or focus it if already open. */
-export function openSettingsWindow(): void {
+/**
+ * Open the standalone Settings window, or focus it if already open. `tab`
+ * preselects a settings tab on a fresh open (carried as a URL query the
+ * renderer's SettingsPage reads once at mount).
+ */
+export function openSettingsWindow(tab?: string): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.focus();
     return;
@@ -190,7 +194,7 @@ export function openSettingsWindow(): void {
     settingsWindow = null;
   });
   openLinksExternally(win);
-  loadRenderer(win, "settings");
+  loadRenderer(win, "settings", tab ? `tab=${encodeURIComponent(tab)}` : "");
   settingsWindow = win;
 }
 

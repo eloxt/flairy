@@ -37,10 +37,12 @@ type Tab = 'general' | 'account' | 'memory' | 'telegram' | 'github' | 'acp' | 'a
  */
 const TABS: Tab[] = ['general', 'account', 'memory', 'telegram', 'github', 'acp', 'about', 'advanced']
 
-/** One-shot deep link: `#/settings?tab=advanced` opens on that tab (used by skip-login). */
+/**
+ * One-shot deep link: the Settings window can be opened with `?tab=advanced`
+ * in its URL (openSettingsWindow's query; used by skip-login) to preselect a tab.
+ */
 function initialTab(): Tab {
-  const query = window.location.hash.split('?')[1]
-  const requested = query ? new URLSearchParams(query).get('tab') : null
+  const requested = new URLSearchParams(window.location.search).get('tab')
   return requested && (TABS as string[]).includes(requested) ? (requested as Tab) : 'general'
 }
 
