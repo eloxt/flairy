@@ -320,13 +320,6 @@ const zhCN: typeof En = {
     githubCodeLabel: '在 GitHub 上输入此代码',
     githubCodeHint: '你在 github.com 上批准请求后，Flairy 会自动完成连接。',
     githubOpenButton: '打开 github.com',
-    githubClientIdGroup: 'OAuth 应用',
-    githubClientIdPlaceholder: 'OAuth App 客户端 ID（如 Iv1.…）',
-    githubClientIdSave: '保存',
-    githubClientIdSet: '客户端 ID 已配置',
-    githubClientIdMissing: '连接前需要先配置客户端 ID',
-    githubClientIdCaption:
-      '设备码登录需要一个 GitHub OAuth App：在 github.com → Settings → Developer settings → OAuth Apps 创建，启用 “Device Flow”，然后把公开的 Client ID 粘贴到这里（不涉及 client secret）。',
     // ACP 标签页（编码 agent 后端）
     tabAcp: 'ACP',
     acpAgents: '编码 Agent',

@@ -4,7 +4,6 @@ import {
   cancelGithubAuth,
   disconnectGithub,
   getGithubStatus,
-  setGithubClientId,
   startGithubAuth
 } from '../github/auth'
 
@@ -20,9 +19,4 @@ export function registerGithubHandlers(): void {
   ipcMain.handle(IPC.GithubAuthCancel, (): GithubStatus => cancelGithubAuth())
 
   ipcMain.handle(IPC.GithubDisconnect, (): GithubStatus => disconnectGithub())
-
-  ipcMain.handle(
-    IPC.GithubSetClientId,
-    (_e, clientId: string): GithubStatus => setGithubClientId(clientId)
-  )
 }

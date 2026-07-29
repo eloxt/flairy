@@ -624,31 +624,17 @@ function TelegramSection(): React.JSX.Element {
  * Device Flow sign-in: main returns a user code, the user approves it on
  * github.com, and the grant lands via onGithubStatusChanged. The OAuth token
  * never crosses IPC — the renderer only ever sees GithubStatus. The OAuth App
- * client ID is a public value the user pastes once.
+ * client ID ships with the app; there is nothing to configure here.
  */
 function GithubSection(): React.JSX.Element {
   const { t } = useTranslation()
   const [status, setStatus] = useState<GithubStatus | null>(null)
-  const [clientIdInput, setClientIdInput] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     void window.api.getGithubStatus().then(setStatus)
     return window.api.onGithubStatusChanged(setStatus)
   }, [])
-
-  const onSaveClientId = (): void => {
-    const id = clientIdInput.trim()
-    if (!id || busy) return
-    setBusy(true)
-    void window.api
-      .setGithubClientId(id)
-      .then((s) => {
-        setStatus(s)
-        setClientIdInput('')
-      })
-      .finally(() => setBusy(false))
-  }
 
   const onConnect = (): void => {
     if (busy) return
@@ -719,7 +705,7 @@ function GithubSection(): React.JSX.Element {
               {t('settings.githubCancelButton')}
             </Button>
           ) : (
-            <Button size="sm" onClick={onConnect} disabled={busy || !status.clientIdSet}>
+            <Button size="sm" onClick={onConnect} disabled={busy}>
               {busy ? t('settings.githubConnecting') : t('settings.githubConnectButton')}
             </Button>
           )}
@@ -749,39 +735,6 @@ function GithubSection(): React.JSX.Element {
           </>
         )}
       </Group>
-
-      {!connected && (
-        <>
-          <GroupLabel>{t('settings.githubClientIdGroup')}</GroupLabel>
-          <Group>
-            <Row
-              label={
-                status.clientIdSet
-                  ? t('settings.githubClientIdSet')
-                  : t('settings.githubClientIdMissing')
-              }
-            >
-              <StatusDot ok={status.clientIdSet} />
-            </Row>
-            <div className="flex items-center gap-2 px-3.5 py-2.5">
-              <Input
-                value={clientIdInput}
-                onChange={(e) => setClientIdInput(e.target.value)}
-                placeholder={t('settings.githubClientIdPlaceholder')}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onSaveClientId()
-                }}
-                disabled={busy}
-                className="h-7 flex-1 text-[13px]"
-              />
-              <Button size="sm" onClick={onSaveClientId} disabled={busy || !clientIdInput.trim()}>
-                {t('settings.githubClientIdSave')}
-              </Button>
-            </div>
-          </Group>
-          <Caption>{t('settings.githubClientIdCaption')}</Caption>
-        </>
-      )}
     </>
   )
 }

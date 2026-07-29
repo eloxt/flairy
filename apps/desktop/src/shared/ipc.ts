@@ -86,7 +86,6 @@ export const IPC = {
   GithubAuthStart: 'github:auth-start',
   GithubAuthCancel: 'github:auth-cancel',
   GithubDisconnect: 'github:disconnect',
-  GithubSetClientId: 'github:set-client-id',
   WorkerRunList: 'worker-run:list',
   WorkerRunAbort: 'worker-run:abort',
   WorkerRunOpenTranscript: 'worker-run:open-transcript',
@@ -642,8 +641,6 @@ export interface GithubStatus {
   connected: boolean
   /** GitHub login of the connected account. */
   login?: string
-  /** Whether an OAuth App client ID is configured (Device Flow needs one). */
-  clientIdSet: boolean
   /** Present while a device authorization is awaiting the user on github.com. */
   pending?: GithubDeviceCode
   /** Last auth failure surfaced to the settings card. */
@@ -945,8 +942,6 @@ export interface FlairyApi {
   cancelGithubAuth(): Promise<GithubStatus>
   /** Wipe the stored token and return the new status. */
   disconnectGithub(): Promise<GithubStatus>
-  /** Save the OAuth App client ID (public value) used for Device Flow. */
-  setGithubClientId(clientId: string): Promise<GithubStatus>
   /** Subscribe to GitHub status changes pushed from main. Returns an unsubscribe fn. */
   onGithubStatusChanged(cb: (s: GithubStatus) => void): () => void
   /** Worker runs for a session (live tail merged in), newest first. */

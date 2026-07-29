@@ -12,11 +12,13 @@ import { getOctokit, resetOctokit } from './client'
 /**
  * GitHub Device Flow sign-in. The renderer shows the user code + URL; the
  * @octokit/auth-oauth-device lib polls in the background and we persist the
- * granted token (safeStorage, main-only). Device Flow uses no client secret, so
- * the OAuth App client ID is a plain (public) setting the user pastes once.
+ * granted token (safeStorage, main-only). Device Flow uses no client secret,
+ * so the OAuth App client ID is a public value baked into the build (same
+ * practice as the gh CLI) — users never configure it.
  */
 
-const CLIENT_ID_SETTING = 'githubClientId'
+/** The Flairy GitHub OAuth App (Device Flow enabled). Public identifier. */
+const CLIENT_ID = 'Ov23liKC6tfD36jMqnpA'
 const LOGIN_SETTING = 'githubLogin'
 
 /** Scope note: `repo` covers create/push/issues/PRs on public + private repos. */
@@ -27,16 +29,10 @@ let lastError: string | undefined
 /** Supersede/cancel marker: a flow only commits its result if still current. */
 let generation = 0
 
-export function getGithubClientId(): string | undefined {
-  const v = getSetting(CLIENT_ID_SETTING)?.trim()
-  return v || undefined
-}
-
 export function getGithubStatus(): GithubStatus {
   return {
     connected: hasGithubToken(),
     login: getSetting(LOGIN_SETTING) || undefined,
-    clientIdSet: Boolean(getGithubClientId()),
     pending: pending ?? undefined,
     lastError
   }
@@ -46,23 +42,12 @@ function broadcastStatus(): void {
   broadcast(IPC.GithubStatusChanged, getGithubStatus())
 }
 
-export function setGithubClientId(clientId: string): GithubStatus {
-  setSetting(CLIENT_ID_SETTING, clientId.trim())
-  lastError = undefined
-  broadcastStatus()
-  return getGithubStatus()
-}
-
 /**
  * Start (or restart) a device authorization. Resolves as soon as GitHub issues
  * the user code; the grant itself lands later via the background poll, which
  * stores the token, resolves the account login, and broadcasts the new status.
  */
 export async function startGithubAuth(): Promise<GithubDeviceCode> {
-  const clientId = getGithubClientId()
-  if (!clientId) {
-    throw new Error('No GitHub OAuth App client ID configured')
-  }
   const gen = ++generation // implicitly abandons any previous pending flow
   lastError = undefined
 
@@ -70,7 +55,7 @@ export async function startGithubAuth(): Promise<GithubDeviceCode> {
     let issued = false
     const auth = createOAuthDeviceAuth({
       clientType: 'oauth-app',
-      clientId,
+      clientId: CLIENT_ID,
       scopes: SCOPES,
       onVerification: (v) => {
         if (gen !== generation) return

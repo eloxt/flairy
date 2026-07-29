@@ -187,7 +187,6 @@ const api: FlairyApi = {
   startGithubAuth: () => ipcRenderer.invoke(IPC.GithubAuthStart),
   cancelGithubAuth: () => ipcRenderer.invoke(IPC.GithubAuthCancel),
   disconnectGithub: () => ipcRenderer.invoke(IPC.GithubDisconnect),
-  setGithubClientId: (clientId) => ipcRenderer.invoke(IPC.GithubSetClientId, clientId),
   onGithubStatusChanged: (cb) => {
     const listener = (_e: unknown, s: GithubStatus): void => cb(s)
     ipcRenderer.on(IPC.GithubStatusChanged, listener)

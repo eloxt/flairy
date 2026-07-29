@@ -343,13 +343,6 @@ const en = {
     githubCodeLabel: 'Enter this code on GitHub',
     githubCodeHint: 'Flairy will connect automatically once you approve the request on github.com.',
     githubOpenButton: 'Open github.com',
-    githubClientIdGroup: 'OAuth App',
-    githubClientIdPlaceholder: 'OAuth App client ID (e.g. Iv1.…)',
-    githubClientIdSave: 'Save',
-    githubClientIdSet: 'Client ID configured',
-    githubClientIdMissing: 'Client ID required before connecting',
-    githubClientIdCaption:
-      'Device Flow sign-in needs a GitHub OAuth App: create one at github.com → Settings → Developer settings → OAuth Apps, enable "Device Flow", and paste its public Client ID here. No client secret is involved.',
     // ACP tab (coding-agent worker backends)
     tabAcp: 'ACP',
     acpAgents: 'Coding agents',
