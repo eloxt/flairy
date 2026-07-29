@@ -78,8 +78,7 @@ const zhCN: typeof En = {
     dispatchTaskFailed: '编码任务派发失败',
     dispatchReviewFailed: '代码评审派发失败',
     dispatching: '派发中',
-    workerReport: 'Agent 汇报',
-    githubEvent: 'GitHub 动态'
+    workerReport: 'Agent 汇报'
   },
   /** 右侧详情面板：模型信息 + 工作目录文件。 */
   panel: {
@@ -113,7 +112,6 @@ const zhCN: typeof En = {
       running: '进行中',
       pushing: '推送中',
       pr_opened: '已开 PR',
-      merged: '已合并',
       reviewed: '已评审',
       failed: '失败',
       cancelled: '已中止',

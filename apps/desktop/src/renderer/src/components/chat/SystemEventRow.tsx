@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { IconBrandGithub, IconChevronRight, IconRobot } from "@tabler/icons-react";
+import { IconChevronRight, IconRobot } from "@tabler/icons-react";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
   Collapsible,
@@ -9,18 +9,15 @@ import {
 import type { UiMessage } from "@/store/chat-store";
 
 /**
- * A machine-injected user turn — a worker's completion report or a GitHub
- * state change (see `@shared/injected-events`) — rendered as a quiet system
- * note in the thread instead of a user bubble: the message wasn't typed by the
- * user, it's the outside world talking to the orchestrator. Collapsed it reads
- * as one Marker line (icon + kind + first line of the report); expanding
- * reveals the full body, which the assistant's reaction below usually
- * paraphrases anyway.
+ * A machine-injected user turn — a worker's completion report (see
+ * `@shared/injected-events`) — rendered as a quiet system note in the thread
+ * instead of a user bubble: the message wasn't typed by the user, it's the
+ * dispatched worker talking to the orchestrator. Collapsed it reads as one
+ * Marker line (icon + kind + first line of the report); expanding reveals the
+ * full body, which the assistant's reaction below usually paraphrases anyway.
  */
 export function SystemEventRow({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
-  const github = m.injectedEvent === "github";
-  const Icon = github ? IconBrandGithub : IconRobot;
   const firstLine = m.text.split("\n", 1)[0].trim();
 
   return (
@@ -28,9 +25,9 @@ export function SystemEventRow({ m }: { m: UiMessage }): React.JSX.Element {
       <Collapsible className="py-0.5">
         <Marker render={<CollapsibleTrigger />} className="py-1">
           <MarkerContent className="flex items-center gap-2">
-            <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
+            <IconRobot className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
             <span className="shrink-0 text-sm font-medium text-muted-foreground">
-              {t(github ? "chat.githubEvent" : "chat.workerReport")}
+              {t("chat.workerReport")}
             </span>
             {firstLine && (
               <span

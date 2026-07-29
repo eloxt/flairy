@@ -81,8 +81,7 @@ const en = {
     dispatchTaskFailed: 'Could not dispatch the coding task',
     dispatchReviewFailed: 'Could not dispatch the review',
     dispatching: 'Dispatching',
-    workerReport: 'Agent report',
-    githubEvent: 'GitHub update'
+    workerReport: 'Agent report'
   },
   /** Right-side details panel: model info + workspace files. */
   panel: {
@@ -116,7 +115,6 @@ const en = {
       running: 'Running',
       pushing: 'Pushing',
       pr_opened: 'PR opened',
-      merged: 'Merged',
       reviewed: 'Reviewed',
       failed: 'Failed',
       cancelled: 'Cancelled',

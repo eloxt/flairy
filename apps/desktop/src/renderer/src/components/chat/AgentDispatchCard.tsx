@@ -90,7 +90,7 @@ export function AgentDispatchCard({ m }: { m: UiMessage }): React.JSX.Element {
             "grid size-8 shrink-0 place-items-center rounded-[8px]",
             live
               ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-              : status === "pr_opened" || status === "reviewed" || status === "merged"
+              : status === "pr_opened" || status === "reviewed"
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 : "bg-destructive/10 text-destructive",
           )}
@@ -129,7 +129,6 @@ function StatusChip({ status }: { status: WorkerRunStatus }): React.JSX.Element 
     running: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
     pushing: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
     pr_opened: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    merged: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
     reviewed: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
     failed: "bg-destructive/15 text-destructive",
     cancelled: "bg-foreground/10 text-muted-foreground",

@@ -712,8 +712,6 @@ export type WorkerRunStatus =
   | 'running'
   | 'pushing'
   | 'pr_opened'
-  /** Legacy: set by the removed GitHub poller; kept so old rows still render. */
-  | 'merged'
   /** Review posted on the PR (terminal state for review runs). */
   | 'reviewed'
   | 'failed'
