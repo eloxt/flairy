@@ -67,6 +67,7 @@ const zhCN: typeof En = {
     reasoning: '思考中...',
     reasoningLive: '思考中...',
     compressingContext: '正在整理较早的消息...',
+    selectingTools: '正在准备...',
     retrying: '连接不稳定，正在重试（{{attempt}}/{{max}}）...',
     error: '出错了',
     copy: '复制',

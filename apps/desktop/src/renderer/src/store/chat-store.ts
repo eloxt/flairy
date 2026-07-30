@@ -148,6 +148,11 @@ export interface SessionRuntime {
    */
   compressing: boolean
   /**
+   * True while the automatic tool-selection side call runs before a turn.
+   * Drives the message-list shimmer row, same pattern as `compressing`.
+   */
+  selectingTools: boolean
+  /**
    * Non-null while the main process is auto-retrying a failed model request
    * (backoff window). Drives the "retrying" shimmer row; `running` stays true
    * for the whole retry cycle. Cleared when the retry's response starts
@@ -255,6 +260,7 @@ function emptyRuntime(): SessionRuntime {
     messages: [],
     running: false,
     compressing: false,
+    selectingTools: false,
     retrying: null,
     liveBatchId: null,
     approvalQueue: [],
@@ -286,6 +292,8 @@ interface ChatState {
   running: boolean
   /** Mirror of the foreground session's compression-in-flight flag. */
   compressing: boolean
+  /** Mirror of the foreground session's tool-selection-in-flight flag. */
+  selectingTools: boolean
   /** Mirror of the foreground session's model-request retry state. */
   retrying: { attempt: number; max: number } | null
   /** Pending approval requests, oldest first; the dialog shows the head. */
@@ -369,6 +377,7 @@ export const useChat = create<ChatState>((set, get) => ({
   messages: [],
   running: false,
   compressing: false,
+  selectingTools: false,
   retrying: null,
   approvalQueue: [],
   questionQueue: [],
@@ -399,6 +408,9 @@ export const useChat = create<ChatState>((set, get) => ({
     })
     const offCompress = window.api.onCompressStatus(({ sessionId, active }) => {
       updateRuntime(set, get, sessionId, (rt) => ({ ...rt, compressing: active }))
+    })
+    const offToolSelection = window.api.onToolSelectionStatus(({ sessionId, active }) => {
+      updateRuntime(set, get, sessionId, (rt) => ({ ...rt, selectingTools: active }))
     })
     // Live-update the sidebar when a session title changes (auto-generated
     // locally or synced from another device).
@@ -438,6 +450,7 @@ export const useChat = create<ChatState>((set, get) => ({
       offApproval()
       offQuestion()
       offCompress()
+      offToolSelection()
       offTitle()
       offSessions()
       resetDeltaBuffer()
@@ -760,6 +773,7 @@ function mirror(rt: SessionRuntime | null): {
   messages: UiMessage[]
   running: boolean
   compressing: boolean
+  selectingTools: boolean
   retrying: { attempt: number; max: number } | null
   approvalQueue: ApprovalRequestPayload[]
   questionQueue: QuestionRequestPayload[]
@@ -769,6 +783,7 @@ function mirror(rt: SessionRuntime | null): {
     messages: rt?.messages ?? [],
     running: rt?.running ?? false,
     compressing: rt?.compressing ?? false,
+    selectingTools: rt?.selectingTools ?? false,
     retrying: rt?.retrying ?? null,
     approvalQueue: rt?.approvalQueue ?? [],
     questionQueue: rt?.questionQueue ?? [],

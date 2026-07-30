@@ -749,12 +749,27 @@ const ThreadFooter = (): React.JSX.Element => {
   // these rows' churn is invisible to the observer.
   return (
     <div>
+      <ToolSelectionRow />
       <CompressionRow />
       <RetryRow />
       <ThinkingRow />
     </div>
   );
 };
+
+/** Transient status row shown while the pre-turn tool-selection call runs. */
+function ToolSelectionRow(): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const show = useChat((s) => s.selectingTools);
+  if (!show) return null;
+  return (
+    <div className="animate-message-in mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
+      <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+        <span className="shimmer text-sm font-medium">{t("chat.selectingTools")}</span>
+      </div>
+    </div>
+  );
+}
 
 /** Transient, non-persisted status row shown while context compression runs. */
 function CompressionRow(): React.JSX.Element | null {
@@ -804,6 +819,8 @@ function RetryRow(): React.JSX.Element | null {
 function ThinkingRow(): React.JSX.Element | null {
   const show = useChat((s) => {
     if (s.compressing) return false;
+    // The tool-selection shimmer owns the gap while the pre-turn selector runs.
+    if (s.selectingTools) return false;
     // The retry shimmer owns the gap while a failed request is being retried.
     if (s.retrying) return false;
     if (!s.running) return false;

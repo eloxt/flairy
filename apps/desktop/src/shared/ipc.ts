@@ -153,6 +153,7 @@ export const IPC = {
   AdvancedUnlockedChanged: 'advanced:unlocked-changed',
   ConfigModeChanged: 'config:mode-changed',
   AgentCompressStatus: 'agent:compress-status',
+  AgentToolSelectionStatus: 'agent:tool-selection-status',
   LauncherShown: 'launcher:shown',
   LauncherOpenSession: 'launcher:open-session',
   ScheduleOpenSession: 'schedule:open-session',
@@ -260,6 +261,17 @@ export interface CompressContextArgs {
  * or ends, so the message list can show a shimmer status row while it runs.
  */
 export interface CompressStatusPayload {
+  sessionId: string
+  active: boolean
+}
+
+/**
+ * Pushed from main → renderer while the automatic tool-selection side call runs
+ * before a turn (same shimmer-row pattern as compression). Fires only when the
+ * feature is enabled (server `tool_selection` prompt present) on project
+ * sessions; the row is transient and never persisted.
+ */
+export interface ToolSelectionStatusPayload {
   sessionId: string
   active: boolean
 }
@@ -1127,6 +1139,7 @@ export interface FlairyApi {
   onUpdateState(cb: (state: UpdateState) => void): () => void
   /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */
   onCompressStatus(cb: (payload: CompressStatusPayload) => void): () => void
+  onToolSelectionStatus(cb: (payload: ToolSelectionStatusPayload) => void): () => void
   /** Fires in the launcher window each time it is summoned (fresh chat vs continue). */
   onLauncherShown(cb: (payload: LauncherShownPayload) => void): () => void
   /** Fires in the main window when the launcher hands a conversation off to it. */

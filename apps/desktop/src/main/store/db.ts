@@ -57,6 +57,17 @@ export function initDb(): void {
       upTo      INTEGER NOT NULL DEFAULT 0,
       updatedAt INTEGER NOT NULL
     );
+    -- Accumulated tool selection for a session (automatic tool selection). names
+    -- is a JSON array of tool names the selector has EVER enabled for this
+    -- session — an accumulate-only union; tools are never removed within a
+    -- session so the provider's prompt-cache prefix stays stable. Local-only,
+    -- like the rest of project-session state — never synced. Absent row = no
+    -- selection yet.
+    CREATE TABLE IF NOT EXISTS tool_selection (
+      sessionId TEXT PRIMARY KEY,
+      names     TEXT NOT NULL DEFAULT '[]',
+      updatedAt INTEGER NOT NULL
+    );
     -- Last server-pushed ConfigSnapshot, kept so the client stays usable when the
     -- server is unreachable. Single row (id = 0). The blob is the snapshot JSON
     -- ENCRYPTED via safeStorage (it carries the LLM credential) — never plaintext.
@@ -546,6 +557,7 @@ export function deleteSession(id: string): boolean {
     db.prepare('DELETE FROM messages WHERE sessionId = ?').run(sid)
     if (ftsAvailable) db.prepare('DELETE FROM messages_fts WHERE sessionId = ?').run(sid)
     db.prepare('DELETE FROM context_compression WHERE sessionId = ?').run(sid)
+    db.prepare('DELETE FROM tool_selection WHERE sessionId = ?').run(sid)
     db.prepare('DELETE FROM worker_runs WHERE session_id = ?').run(sid)
     // Scheduled tasks bound to the session can never fire again — soft-delete
     // (not hard) so an in-memory croner job that races this sees 'deleted'.
@@ -909,6 +921,35 @@ export function saveCompression(
  */
 export function clearCompression(sessionId: string): void {
   db.prepare('DELETE FROM context_compression WHERE sessionId = ?').run(sessionId)
+}
+
+/**
+ * Load the accumulated tool-selection union for a session. Returns null when no
+ * selection has ever been made (or the row is corrupt — treated as "never
+ * selected" so the session fails open to the full toolset).
+ */
+export function loadToolSelection(sessionId: string): string[] | null {
+  const row = db
+    .prepare('SELECT names FROM tool_selection WHERE sessionId = ?')
+    .get(sessionId) as { names: string } | undefined
+  if (!row) return null
+  try {
+    const parsed = JSON.parse(row.names)
+    return Array.isArray(parsed) ? parsed.filter((n) => typeof n === 'string') : null
+  } catch {
+    return null
+  }
+}
+
+/** Persist the accumulated tool-selection union. One row per session, upserted. */
+export function saveToolSelection(sessionId: string, names: string[]): void {
+  db.prepare(
+    `INSERT INTO tool_selection (sessionId, names, updatedAt)
+     VALUES (?, ?, ?)
+     ON CONFLICT(sessionId) DO UPDATE SET
+       names = excluded.names,
+       updatedAt = excluded.updatedAt`
+  ).run(sessionId, JSON.stringify(names), Date.now())
 }
 
 /**

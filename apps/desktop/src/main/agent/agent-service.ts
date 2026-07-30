@@ -11,6 +11,7 @@ import {
   MAIN_PROMPT_NAME,
   TITLE_GENERATION_PROMPT_NAME,
   COMPRESSION_PROMPT_NAME,
+  TOOL_SELECTION_PROMPT_NAME,
   type ActiveLlm,
   type ConfigSnapshot,
   type Memory,
@@ -51,6 +52,8 @@ import {
   listActiveMemoriesForPrompt,
   loadCompression,
   saveCompression,
+  loadToolSelection,
+  saveToolSelection,
 } from "../store/db";
 import { putImage, rehydrateImages } from "../store/image-store";
 import { toSyncMessage, projectText } from "../sync/session-payload";
@@ -97,6 +100,22 @@ const COMPRESS_TRIGGER_RATIO = 0.7;
  *     with ±20% jitter so parallel sessions don't re-hit a provider in lockstep.
  */
 const MAX_AUTO_RETRIES = 4;
+
+/**
+ * Tools automatic tool selection never filters out:
+ * - ask: the user-interaction round-trip — filtering it could strand a turn.
+ * - read: skills progressive disclosure requires reading r0/<name>/SKILL.md.
+ * - todo_write / remember: approval-exempt, tiny schemas, and invoked
+ *   spontaneously by the main prompt's standing instructions — filtering them
+ *   silently degrades behavior for near-zero token savings.
+ */
+const TOOL_SELECTION_FLOOR = new Set(["ask", "read", "todo_write", "remember"]);
+/** Hard cap on the tool-selector side call so it can't stall the turn. */
+const TOOL_SELECTION_TIMEOUT_MS = 10_000;
+/** Trailing conversational messages given to the selector as routing context. */
+const SELECTION_CONTEXT_MESSAGES = 6;
+/** Per-message clip so a huge paste can't blow up the cheap selector call. */
+const SELECTION_CONTEXT_CLIP = 500;
 const RETRY_BASE_DELAY_MS = 1000;
 
 /**
@@ -231,6 +250,22 @@ export class AgentService {
    */
   private compressAbort: AbortController | null = null;
   /**
+   * Accumulate-only union of every tool name the selector has ever enabled for
+   * this session (automatic tool selection). null = no selection yet — feature
+   * off, first turn pending, or the selector failed open. Never shrinks within
+   * a session: pi-ai places an Anthropic cache breakpoint on the last tool
+   * definition, so removing tools turn-over-turn would thrash the prefix cache.
+   */
+  private selectedToolNames: Set<string> | null = null;
+  /**
+   * Set when a selector call fails: stop selecting for the rest of the session
+   * and run with the full toolset (fail-open, cache-stable). Not persisted — a
+   * recreated service re-hydrates the saved union and tries again.
+   */
+  private toolSelectionBypassed = false;
+  /** Aborts the in-flight selector stream (user stop / dispose / timeout). */
+  private selectAbort: AbortController | null = null;
+  /**
    * Retries already made for the CURRENT user turn (reset on each fresh
    * prompt()). The subscribe handler reads it to decide whether an errored run
    * will be retried; the retry loop in {@link runTurnRetries} increments it.
@@ -319,6 +354,12 @@ export class AgentService {
       this.compressedSummary = compression.summary;
       this.compressedUpTo = compression.upTo;
     }
+
+    // Hydrate the accumulated tool selection BEFORE initialState.tools is built
+    // below, so a service recreated after idle eviction starts filtered — no
+    // window where the full toolset would be shipped (and cached) once.
+    const savedSelection = loadToolSelection(sessionId);
+    if (savedSelection?.length) this.selectedToolNames = new Set(savedSelection);
 
     const config = server.getConfig();
     if (!config || !config.llm.main) {
@@ -569,8 +610,38 @@ export class AgentService {
    * the web tools, and the live MCP tools. Used at all three injection points
    * (constructor, MCP tool-change rebuild, setCwd rebuild) so `ask` is always
    * present.
+   *
+   * Split into two layers for automatic tool selection: {@link buildAllTools}
+   * is the unfiltered catalog (what the session COULD have), and this method
+   * applies the accumulated selection on top. Every rebuild site (constructor,
+   * MCP change, config push, setCwd) calls this method, so the filter is
+   * re-applied automatically.
    */
   private buildTools(cwd: string): AgentTool<any>[] {
+    const all = this.buildAllTools(cwd);
+    if (!this.toolSelectionActive()) return all;
+    const sel = this.selectedToolNames!;
+    // Membership filter only — buildAllTools' stable ordering is preserved so
+    // pi-ai's automatic cache breakpoint on the last tool def sits on a prefix
+    // that only ever GROWS within a session (accumulate-only union).
+    return all.filter((t) => TOOL_SELECTION_FLOOR.has(t.name) || sel.has(t.name));
+  }
+
+  /**
+   * Whether the selection filter applies right now. Checking the server prompt
+   * HERE (not just at selection time) means an admin disabling the
+   * `tool_selection` prompt restores the full toolset at the very next rebuild
+   * (onConfig fires immediately on the push).
+   */
+  private toolSelectionActive(): boolean {
+    if (this.toolSelectionBypassed || !this.selectedToolNames) return false;
+    if (this.isChatSession()) return false;
+    const config = this.server.getConfig();
+    return !!config && !!findPromptBody(config, TOOL_SELECTION_PROMPT_NAME);
+  }
+
+  /** Unfiltered tool catalog — everything the session could have. */
+  private buildAllTools(cwd: string): AgentTool<any>[] {
     const chat = this.isChatSession();
     const tools: AgentTool<any>[] = [
       ...(chat ? [] : createTools(cwd)),
@@ -809,11 +880,21 @@ export class AgentService {
       // abort() during the compression await flips `running` off — the user
       // asked to stop, so don't start the turn compression was preparing.
       if (!this.running) return;
-      // With a text-only main model + an assigned `visual` model, extract a text
-      // description of the images first and ride it on the same user message
-      // (see maybeDescribeImages). Adds latency before the turn starts, but
-      // that's inherent: the description must exist before the main model runs.
-      const description = await this.maybeDescribeImages(attachments);
+      // Two independent pre-turn side calls, overlapped so the added latency is
+      // max() not sum():
+      // - maybeDescribeImages: with a text-only main model + an assigned
+      //   `visual` model, extract a text description of the images to ride on
+      //   the same user message. Inherent latency: the description must exist
+      //   before the main model runs.
+      // - maybeSelectTools: automatic tool selection — assigns the filtered
+      //   agent.state.tools itself before resolving, so the set is in place
+      //   when agent.prompt() snapshots state at run start. (A steer into a
+      //   running turn never re-selects: submit() routes it past prompt() and
+      //   the run's tool snapshot is already taken.)
+      const [description] = await Promise.all([
+        this.maybeDescribeImages(attachments),
+        this.maybeSelectTools(text),
+      ]);
       // Write attached images to the on-disk store and put only refs into the
       // message, so the transcript never holds their base64 (convertToLlm
       // rehydrates for the request; the visual model above got the originals).
@@ -986,6 +1067,156 @@ export class AgentService {
    * (falling back to `main`). Best-effort: any failure keeps the default title
    * and never surfaces a chat error. Runs in parallel with the agent turn.
    */
+  /**
+   * Automatic tool selection: before a fresh turn, ask the `tool`-role model
+   * (fallback `main`, same as title generation) which tools the turn needs and
+   * enable the UNION of every selection this session has made (accumulate-only
+   * — see {@link selectedToolNames} for the cache rationale). Strictly
+   * server-driven: no `tool_selection` prompt → no selector call, full toolset.
+   * Fail-open: any error/timeout/bad JSON bypasses selection for the rest of
+   * the session (full toolset, console.warn only, never a chat error).
+   */
+  private async maybeSelectTools(text: string): Promise<void> {
+    if (this.toolSelectionBypassed) return;
+    if (this.isChatSession()) return; // chat toolset is already minimal
+    const config = this.server.getConfig();
+    if (!config) return;
+    const sysPrompt = findPromptBody(config, TOOL_SELECTION_PROMPT_NAME);
+    if (!sysPrompt) return; // feature off → toolSelectionActive() stays false
+    const llm = config.llm.tool ?? config.llm.main;
+    if (!llm) return;
+
+    // Catalog from the UNFILTERED assembly — every tool participates, including
+    // MCP tools connected right now. Tools not yet connected can't be selected
+    // this turn; they become candidates on the next fresh prompt.
+    const catalog = this.buildAllTools(this.cwd);
+    const catalogNames = new Set(catalog.map((t) => t.name));
+    const lowerIndex = new Map(catalog.map((t) => [t.name.toLowerCase(), t.name]));
+
+    // Shimmer row on only AFTER all the early-return guards: a session where the
+    // feature is off must never flash the status row.
+    this.setSelectingTools(true);
+    this.selectAbort = new AbortController();
+    const timeout = setTimeout(
+      () => this.selectAbort?.abort(),
+      TOOL_SELECTION_TIMEOUT_MS,
+    );
+    try {
+      const stream = streamSimple(
+        buildModel(llm),
+        {
+          systemPrompt: sysPrompt,
+          messages: [
+            {
+              role: "user",
+              content: this.buildSelectionRequest(catalog, text),
+              timestamp: Date.now(),
+            },
+          ] as any,
+        },
+        // maxRetries re-enables the provider SDK's own backoff (pi defaults it
+        // to 0). 512 output tokens: a {"tools":[...]} over a large catalog
+        // would truncate at title-gen's 64.
+        {
+          apiKey: llm.provider.credential,
+          maxTokens: 512,
+          maxRetries: 2,
+          signal: this.selectAbort.signal,
+        },
+      );
+      const result = await stream.result();
+      // .result() resolves even on a SOFT stream error — treat both as failure.
+      if (result.stopReason === "error" || result.stopReason === "aborted")
+        throw new Error(`selector stream ${result.stopReason}`);
+      const raw = result.content
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("");
+      // Take the first {...} block, ignoring any prose around it.
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match)
+        throw new Error(`no JSON object in selector output: ${raw.slice(0, 200)}`);
+      const parsed = JSON.parse(match[0]) as { tools?: unknown };
+      if (!Array.isArray(parsed.tools))
+        throw new Error('selector output missing "tools" array');
+      // Validate against the catalog: exact name, then case-insensitive
+      // fallback; unknown names are dropped.
+      const picked: string[] = [];
+      for (const n of parsed.tools) {
+        if (typeof n !== "string") continue;
+        if (catalogNames.has(n)) picked.push(n);
+        else {
+          const ci = lowerIndex.get(n.toLowerCase());
+          if (ci) picked.push(ci);
+        }
+      }
+      // Accumulate-only union. An empty first selection is valid: the turn runs
+      // floor-only ({ask, read, todo_write, remember}); later turns only add.
+      const union = new Set(this.selectedToolNames ?? []);
+      for (const n of picked) union.add(n);
+      const grew =
+        !this.selectedToolNames || union.size > this.selectedToolNames.size;
+      this.selectedToolNames = union;
+      if (grew) saveToolSelection(this.sessionId, [...union]);
+      this.agent.state.tools = this.buildTools(this.cwd);
+      console.log(
+        `[ToolSelection] picked=[${picked.join(", ")}] union=${union.size} ` +
+          `enabled=${this.agent.state.tools.length}/${catalog.length}`,
+      );
+    } catch (err) {
+      // Fail-open FOR THE SESSION: never filter on a broken selector, and don't
+      // grow-then-shrink the tool list turn over turn (cache thrash). The
+      // persisted union is untouched; a recreated service re-hydrates it and
+      // tries selecting again.
+      this.toolSelectionBypassed = true;
+      this.agent.state.tools = this.buildTools(this.cwd); // active() now false → full set
+      console.warn("[ToolSelection] failed, running with full toolset:", err);
+    } finally {
+      clearTimeout(timeout);
+      this.selectAbort = null;
+      this.setSelectingTools(false);
+    }
+  }
+
+  /** Push the tool-selection flag to the renderer (drives the shimmer row). */
+  private setSelectingTools(active: boolean): void {
+    getMainWindow()?.webContents.send(IPC.AgentToolSelectionStatus, {
+      sessionId: this.sessionId,
+      active,
+    });
+  }
+
+  /** The selector's user message: tool catalog + recent context + the request. */
+  private buildSelectionRequest(catalog: AgentTool<any>[], text: string): string {
+    const toolLines = catalog
+      .map((t) => {
+        // First line of the description, clipped — enough signal to route on.
+        const desc = (t.description ?? "").split("\n")[0].slice(0, 150);
+        return `- ${t.name}: ${desc}`;
+      })
+      .join("\n");
+    // Recent context: trailing user/assistant text only. Tool results and
+    // images are noise for routing, and projectText already flattens parts.
+    const recent = (this.agent.state.messages as any[])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-SELECTION_CONTEXT_MESSAGES)
+      .map((m) => {
+        const t = projectText(m.content).replace(/\s+/g, " ").trim();
+        return t ? `${m.role}: ${t.slice(0, SELECTION_CONTEXT_CLIP)}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    return (
+      `<available_tools>\n${toolLines}\n</available_tools>\n\n` +
+      (recent ? `<recent_conversation>\n${recent}\n</recent_conversation>\n\n` : "") +
+      `<user_message>\n${text}\n</user_message>\n\n` +
+      'Select the tools needed for the assistant\'s next turn. Respond with ONLY ' +
+      'a JSON object of the form {"tools": ["tool_name", ...]} — no prose, no ' +
+      "code fences. Use exact tool names from <available_tools>. Return " +
+      '{"tools": []} if no tools are needed.'
+    );
+  }
+
   private async maybeGenerateTitle(firstMessage: string): Promise<void> {
     this.titleGenerated = true; // guard re-entry even if this throws
     const config = this.server.getConfig();
@@ -1393,6 +1624,8 @@ export class AgentService {
     // Cancel any in-flight compression side stream too; prompt() checks
     // `running` after its compression await, so the prepared turn never starts.
     this.compressAbort?.abort();
+    // Cancel an in-flight tool-selector side stream the same way.
+    this.selectAbort?.abort();
     // Cut a pending retry backoff short — the loop re-checks `running` and
     // gives up without re-issuing (and without an error row: deliberate stop).
     this.retryAbort?.abort();
@@ -1417,6 +1650,7 @@ export class AgentService {
     this.disposed = true;
     this.running = false;
     this.compressAbort?.abort();
+    this.selectAbort?.abort();
     this.retryAbort?.abort();
     this.agent.abort();
     // Settle any interaction still open for this session so its blocked Promise

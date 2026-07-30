@@ -8,6 +8,7 @@ import {
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
   type CompressStatusPayload,
+  type ToolSelectionStatusPayload,
   type LauncherShownPayload,
   type QuestionRequestPayload,
   type RedactedConfigSnapshot,
@@ -208,6 +209,11 @@ const api: FlairyApi = {
     const listener = (_e: unknown, payload: CompressStatusPayload): void => cb(payload)
     ipcRenderer.on(IPC.AgentCompressStatus, listener)
     return () => ipcRenderer.removeListener(IPC.AgentCompressStatus, listener)
+  },
+  onToolSelectionStatus: (cb) => {
+    const listener = (_e: unknown, payload: ToolSelectionStatusPayload): void => cb(payload)
+    ipcRenderer.on(IPC.AgentToolSelectionStatus, listener)
+    return () => ipcRenderer.removeListener(IPC.AgentToolSelectionStatus, listener)
   },
   onLauncherShown: (cb) => {
     const listener = (_e: unknown, payload: LauncherShownPayload): void => cb(payload)

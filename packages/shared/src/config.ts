@@ -532,6 +532,16 @@ export const IMAGE_DESCRIPTION_PROMPT_NAME = 'image_description'
 export const COMPRESSION_PROMPT_NAME = 'compression'
 
 /**
+ * Reserved {@link SystemPromptConfig.name} the client treats specially: its body
+ * is the system prompt given to the `tool`-role model (falling back to `main`)
+ * when it selects which tools to enable for the next agent turn (matched
+ * case-insensitively, trimmed). When this prompt is absent, automatic tool
+ * selection is disabled and the agent sees the full toolset — strictly
+ * server-driven, like `compression`.
+ */
+export const TOOL_SELECTION_PROMPT_NAME = 'tool_selection'
+
+/**
  * Minimal skill descriptor shipped to clients in `config:snapshot` /
  * `config:updated`. Skills can be large (body + up to 50 MB files), so the
  * snapshot stays small — the desktop fetches the full skill and its files via
