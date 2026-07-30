@@ -1034,8 +1034,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
         <MarkerContent className="flex items-center gap-2">
           <span
             className={cn(
-              "shrink-0 text-sm font-medium",
-              m.isError ? "text-destructive" : "text-muted-foreground",
+              "shrink-0 text-sm font-medium text-muted-foreground",
               // Shimmer the label while the call is in flight.
               m.running && "shimmer",
             )}
@@ -1103,7 +1102,6 @@ function summarizeTools(tools: UiMessage[], t: TFunction): string {
 function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
   const { t } = useTranslation();
   const anyRunning = tools.some((m) => m.running);
-  const anyError = tools.some((m) => m.isError);
   const doneCount = tools.filter((m) => !m.running).length;
 
   return (
@@ -1112,8 +1110,7 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
         <MarkerContent className="flex items-center gap-2">
           <span
             className={cn(
-              "text-sm font-medium",
-              anyError ? "text-destructive" : "text-muted-foreground",
+              "text-sm font-medium text-muted-foreground",
               // Shimmer the "working…" summary while the batch is still running.
               anyRunning && "shimmer",
             )}
@@ -1150,19 +1147,13 @@ function ToolGroup({ tools }: { tools: UiMessage[] }): React.JSX.Element {
 function TurnFold({ rows }: { rows: Row[] }): React.JSX.Element {
   const { t } = useTranslation();
   const tools = rows.flatMap(rowMessages).filter((m) => m.role === "tool");
-  const anyError = tools.some((m) => m.isError);
 
   return (
     <Collapsible>
       <div className="mx-auto w-full max-w-(--chat-width) px-6 py-0.5">
         <Marker render={<CollapsibleTrigger />} className="py-1">
           <MarkerContent className="flex items-center gap-2">
-            <span
-              className={cn(
-                "text-sm font-medium",
-                anyError ? "text-destructive" : "text-muted-foreground",
-              )}
-            >
+            <span className="text-sm font-medium text-muted-foreground">
               {summarizeTools(tools, t)}
             </span>
             <IconChevronRight className={DISCLOSURE_CHEVRON_CLS} strokeWidth={2} />

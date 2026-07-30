@@ -110,20 +110,9 @@ function splitNotice(text: string): { body: string; notice?: string } {
 
 /* ── shared surface ─────────────────────────────────────────────────────── */
 
-function Card({
-  error,
-  children,
-}: {
-  error?: boolean;
-  children: React.ReactNode;
-}): React.JSX.Element {
+function Card({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-[10px] border bg-card select-text",
-        error ? "border-destructive/30" : "border-border",
-      )}
-    >
+    <div className="overflow-hidden rounded-[10px] border border-border bg-card select-text">
       {children}
     </div>
   );
@@ -214,18 +203,15 @@ function Clamp({
 /** Monospace body text shared by outputs, file previews and listings. */
 function MonoBody({
   text,
-  error,
   className,
 }: {
   text: string;
-  error?: boolean;
   className?: string;
 }): React.JSX.Element {
   return (
     <pre
       className={cn(
-        "whitespace-pre-wrap break-all px-3 py-2 font-mono text-xs leading-relaxed",
-        error ? "text-destructive" : "text-muted-foreground",
+        "whitespace-pre-wrap break-all px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground",
         className,
       )}
     >
@@ -248,7 +234,7 @@ function BashDetail({
   const command = argStr(args, "command") ?? m.toolArg ?? "";
   const { body } = splitNotice(text);
   return (
-    <Card error={m.isError}>
+    <Card>
       {command && (
         <div className="flex min-w-0 gap-2 px-3 py-2 font-mono text-xs leading-relaxed">
           <span className="select-none text-muted-foreground/60">$</span>
@@ -260,7 +246,7 @@ function BashDetail({
       {body.trim() && (
         <div className={cn(command && "border-t border-border")}>
           <Clamp>
-            <MonoBody text={body} error={m.isError} />
+            <MonoBody text={body} />
           </Clamp>
         </div>
       )}
@@ -291,11 +277,11 @@ function ReadDetail({
       ? t("toolDetail.lineCount", { count: body.split("\n").length })
       : undefined;
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead icon={<IconFileText strokeWidth={2} />} primary={path} meta={meta} />
       {body.trim() && (
         <Clamp>
-          <MonoBody text={body} error={m.isError} />
+          <MonoBody text={body} />
         </Clamp>
       )}
     </Card>
@@ -319,7 +305,7 @@ function DiffDetail({
     else if (/^-(?!--)/.test(line)) del++;
   }
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead
         icon={<IconPencil strokeWidth={2} />}
         primary={path}
@@ -373,7 +359,7 @@ function GrepDetail({
       ].join(" · ")
     : undefined;
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead icon={<IconSearch strokeWidth={2} />} primary={pattern} meta={meta} />
       {body.trim() &&
         (parsed ? (
@@ -393,7 +379,7 @@ function GrepDetail({
           </Clamp>
         ) : (
           <Clamp>
-            <MonoBody text={body} error={m.isError} />
+            <MonoBody text={body} />
           </Clamp>
         ))}
     </Card>
@@ -425,7 +411,7 @@ function ListDetail({
       })
     : undefined;
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead
         icon={isFind ? <IconListSearch strokeWidth={2} /> : <IconFolder strokeWidth={2} />}
         primary={primary}
@@ -433,7 +419,7 @@ function ListDetail({
       />
       {body.trim() && (
         <Clamp>
-          <MonoBody text={body} error={m.isError} />
+          <MonoBody text={body} />
         </Clamp>
       )}
     </Card>
@@ -455,7 +441,7 @@ function SearchDetail({
   const query = argStr(args, "query") ?? m.toolArg ?? "";
   const ordered = [...sources].sort((a, b) => a.i - b.i);
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead
         icon={<IconWorld strokeWidth={2} />}
         primary={query}
@@ -515,7 +501,7 @@ function FetchDetail({
     body = lines.slice(lines[1]?.trim() === url ? 2 : 1).join("\n").trim();
   }
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead icon={<IconLink strokeWidth={2} />} primary={url} />
       {(title || body) && (
         <Clamp>
@@ -657,7 +643,7 @@ function GithubReadDetail({
   // List actions → clickable issue/PR rows, like the web-search source list.
   if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(isGithubItem)) {
     return (
-      <Card error={m.isError}>
+      <Card>
         <CardHead icon={<IconBrandGithub strokeWidth={2} />} primary={action} mono={false} />
         <Clamp collapsedClass="max-h-72">
           <div className="p-1.5">
@@ -673,7 +659,7 @@ function GithubReadDetail({
   // Single issue/PR → header row + its description body.
   if (isGithubItem(parsed)) {
     return (
-      <Card error={m.isError}>
+      <Card>
         <div className="p-1.5 pb-0">
           <GithubItemRow item={parsed} />
         </div>
@@ -691,7 +677,7 @@ function GithubReadDetail({
   // Repo info (or any flat object) → the quiet key · value grid.
   if (parsed && typeof parsed === "object") {
     return (
-      <Card error={m.isError}>
+      <Card>
         <CardHead icon={<IconBrandGithub strokeWidth={2} />} primary={action} mono={false} />
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-0.5 border-t border-border px-3 py-2 font-mono text-xs leading-relaxed">
           {Object.entries(parsed as Record<string, unknown>).map(([k, v]) => (
@@ -710,9 +696,9 @@ function GithubReadDetail({
   // "(no issues)" placeholders and error text.
   if (!text.trim()) return null;
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead icon={<IconBrandGithub strokeWidth={2} />} primary={action} mono={false} />
-      <MonoBody text={text} error={m.isError} />
+      <MonoBody text={text} />
     </Card>
   );
 }
@@ -762,7 +748,7 @@ function GithubActionDetail({
   const body = argStr(args, "body");
   if (!primary && !text.trim() && !body) return null;
   return (
-    <Card error={m.isError}>
+    <Card>
       {primary && (
         <CardHead
           icon={<IconBrandGithub strokeWidth={2} />}
@@ -788,7 +774,7 @@ function GithubActionDetail({
           className={cn(
             "px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap",
             (primary || body) && "border-t border-border",
-            m.isError ? "text-destructive" : "text-muted-foreground",
+            "text-muted-foreground",
           )}
         >
           <Linkified text={text.trim()} />
@@ -867,7 +853,7 @@ function ScheduleDetail({
     const rows = parseScheduleList(text);
     if (rows)
       return (
-        <Card error={m.isError}>
+        <Card>
           <div className="flex flex-col gap-0.5 px-1.5 py-1.5">
             {rows.map((r) => (
               <div key={r.id} className="flex min-w-0 items-center gap-2.5 rounded-[7px] px-2 py-1">
@@ -899,7 +885,7 @@ function ScheduleDetail({
     argStr(args, "prompt") ?? /^Instruction: ([\s\S]+)$/m.exec(text)?.[1];
   if (!title && !text.trim()) return null;
   return (
-    <Card error={m.isError}>
+    <Card>
       <CardHead
         icon={<IconClock strokeWidth={2} />}
         primary={title || t("toolDetail.scheduleTask")}
@@ -924,7 +910,7 @@ function ScheduleDetail({
         </Clamp>
       )}
       {m.isError && text.trim() && (
-        <div className="px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-destructive">
+        <div className="px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
           {text.trim()}
         </div>
       )}
@@ -948,7 +934,7 @@ function GenericDetail({
   const hasText = Boolean(text.trim());
   if (!hasArgs && !hasText) return null;
   return (
-    <Card error={m.isError}>
+    <Card>
       {entries.length > 0 ? (
         // Args flattened to a quiet key · value grid — never a raw JSON dump.
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-0.5 px-3 py-2 font-mono text-xs leading-relaxed">
@@ -971,7 +957,7 @@ function GenericDetail({
       {hasText && (
         <div className={cn(hasArgs && "border-t border-border")}>
           <Clamp>
-            <MonoBody text={text} error={m.isError} />
+            <MonoBody text={text} />
           </Clamp>
         </div>
       )}
