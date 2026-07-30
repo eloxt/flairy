@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChat, selectProjectWorkspace } from '@/store/chat-store'
 import { useUi } from '@/store/ui-store'
-import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ModelPanel } from './sidebar/ModelPanel'
 
 // @pierre/trees + @pierre/diffs load only when a project session's Files tab
@@ -50,42 +50,44 @@ export function RightSidebar(): React.JSX.Element {
   }, [requestedTab, workspacePath, clearRequestedTab])
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="h-full bg-transparent">
-      {/* The tab bar doubles as the panel's top bar: same height as the chat
-          header (h-12) so the two columns' dividers line up, and draggable so
-          the window can still be moved from the top-right. */}
-      <TabsList className="app-drag h-12 px-3">
-        <TabsTab value="model" className="app-no-drag">
-          {t('panel.model')}
-        </TabsTab>
-        {workspacePath && (
-          <TabsTab value="files" className="app-no-drag">
-            {t('panel.files')}
-          </TabsTab>
-        )}
-        {workspacePath && sessionId && (
-          <TabsTab value="runs" className="app-no-drag">
-            {t('panel.runs')}
-          </TabsTab>
-        )}
-      </TabsList>
-      <TabsPanel value="model">
+    <Tabs value={tab} onValueChange={setTab} className="h-full gap-0 bg-transparent">
+      {/* The bar keeps the chat header's height (h-12) so the two columns'
+          top rows line up, and stays draggable so the window can still be
+          moved from the top-right; the segmented control itself must not be. */}
+      <div className="app-drag flex h-12 shrink-0 items-center px-3">
+        <TabsList className="app-no-drag">
+          <TabsTrigger value="model" className="px-2.5">
+            {t('panel.model')}
+          </TabsTrigger>
+          {workspacePath && (
+            <TabsTrigger value="files" className="px-2.5">
+              {t('panel.files')}
+            </TabsTrigger>
+          )}
+          {workspacePath && sessionId && (
+            <TabsTrigger value="runs" className="px-2.5">
+              {t('panel.runs')}
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </div>
+      <TabsContent value="model" className="min-h-0">
         <ModelPanel messages={messages} />
-      </TabsPanel>
+      </TabsContent>
       {workspacePath && (
-        <TabsPanel value="files" className="min-w-0">
+        <TabsContent value="files" className="min-h-0 min-w-0">
           {/* Keyed so switching between two project sessions resets tree + preview. */}
           <Suspense fallback={null}>
             <FilesPanel key={workspacePath} workspacePath={workspacePath} />
           </Suspense>
-        </TabsPanel>
+        </TabsContent>
       )}
       {workspacePath && sessionId && (
-        <TabsPanel value="runs" className="min-w-0">
+        <TabsContent value="runs" className="min-h-0 min-w-0">
           <Suspense fallback={null}>
             <RunsPanel key={sessionId} sessionId={sessionId} />
           </Suspense>
-        </TabsPanel>
+        </TabsContent>
       )}
     </Tabs>
   )

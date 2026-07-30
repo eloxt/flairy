@@ -25,7 +25,6 @@ import {
     SidebarMenuItem,
     SidebarMenuSub,
 } from "@/components/ui/sidebar";
-import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
 import type { SessionMeta, SocketConnectionStatus } from "@shared/ipc";
@@ -253,23 +252,41 @@ export function AppSidebar(): React.JSX.Element {
           tab panel owns its scroll so the sliding track never drags the other
           panel's scroll position along. */}
       <SidebarContent className="overflow-hidden px-0">
-        <Tabs
-          value={tab}
-          onValueChange={(v) => setTab(v as SidebarTab)}
-          className="min-h-0 flex-1"
-        >
-          {/* md:px-0: the rail's gutter lives on Sidebar; keep the underline
-              flush with it. Below md the overlay sheet needs its own inset. */}
-          {/* Only two tabs, so each takes half the rail width; the sliding
-              underline spans the active half. */}
-          <TabsList className="px-2 md:px-0">
-            <TabsTab value="chats" className="app-no-drag flex-1 text-center">
-              {t('chat.chats')}
-            </TabsTab>
-            <TabsTab value="projects" className="app-no-drag flex-1 text-center">
-              {t('chat.projects')}
-            </TabsTab>
-          </TabsList>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* Segmented control (matches the rail's rounded frosted style — the
+              ui Tabs underline read too web-like here). The thumb is exactly
+              one cell wide, so translate-x-full lands it on the second cell.
+              mx-2/md:mx-0: the rail's gutter lives on Sidebar; below md the
+              overlay sheet needs its own inset. */}
+          <div
+            role="tablist"
+            className="app-no-drag relative mx-2 grid h-8 shrink-0 grid-cols-2 rounded-lg bg-sidebar-accent p-[3px] md:mx-0"
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-md border border-transparent bg-background shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] dark:border-input dark:bg-input/30",
+                tab === "projects" && "translate-x-full",
+              )}
+            />
+            {(["chats", "projects"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                className={cn(
+                  "relative cursor-default rounded-md text-[0.8125rem] font-medium transition-colors outline-none select-none",
+                  tab === value
+                    ? "text-foreground"
+                    : "text-foreground/60 hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground",
+                )}
+                onClick={() => setTab(value)}
+              >
+                {value === "chats" ? t('chat.chats') : t('chat.projects')}
+              </button>
+            ))}
+          </div>
 
           {selecting && (
             <div className="flex items-center justify-end gap-1.5 px-2 pt-1.5 md:px-0">
@@ -386,7 +403,7 @@ export function AppSidebar(): React.JSX.Element {
               </div>
             </div>
           </div>
-        </Tabs>
+        </div>
       </SidebarContent>
 
       <SidebarFooter className="p-2 md:p-0">
