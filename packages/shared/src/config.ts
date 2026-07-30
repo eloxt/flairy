@@ -85,6 +85,33 @@ export interface ModelCost {
 }
 
 /**
+ * Descriptive model facts sourced from models.dev (https://models.dev/api.json,
+ * one model entry, snake_case keys mapped to camelCase). Informational only —
+ * nothing here changes how the client calls the provider; the desktop uses it to
+ * render a details card in the user model picker. All fields optional: admins
+ * may create models by hand without any metadata. Mirrors `ModelMetadata` in
+ * `apps/server/src/models/llm.rs` (stored as one JSONB column).
+ */
+export interface ModelMetadata {
+  /** Knowledge cutoff, e.g. "2025-03". */
+  knowledge?: string
+  /** First public release date, e.g. "2025-05-22". */
+  releaseDate?: string
+  /** Date of the last model update. */
+  lastUpdated?: string
+  /** Supports extended reasoning / thinking. */
+  reasoning?: boolean
+  /** Supports tool / function calling. */
+  toolCall?: boolean
+  /** Accepts file attachments (models.dev `attachment`). */
+  attachment?: boolean
+  /** Exposes a temperature control. */
+  temperature?: boolean
+  /** Weights are openly available. */
+  openWeights?: boolean
+}
+
+/**
  * A model entry under a provider. The catalog holds many; which one is used for
  * which scenario is decided by role assignments (see {@link LlmRole}), not a flag
  * on the model itself.
@@ -124,6 +151,8 @@ export interface LlmModelConfig {
    * {@link ConfigSnapshot.modelOptions}; the pick is stored per device.
    */
   selectable?: boolean
+  /** Descriptive facts from models.dev, for the desktop model picker card. */
+  metadata?: ModelMetadata
 }
 
 /** Create/update payload for a model (no server-owned fields). */
@@ -137,6 +166,7 @@ export interface LlmModelInput {
   maxTokens?: number
   cost?: ModelCost
   selectable?: boolean
+  metadata?: ModelMetadata
 }
 
 /**

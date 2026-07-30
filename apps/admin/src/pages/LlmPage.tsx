@@ -8,10 +8,12 @@ import type {
   LlmRole,
   LlmUserRoleAssignment,
   Modality,
+  ModelMetadata,
   ProviderApi,
   ThinkingLevel,
   UserSummary,
 } from "@flairy/shared";
+import { parseModelsDevJson } from "@/lib/models-dev";
 import { useConfig } from "@/hooks/useConfig";
 import { useUsers } from "@/hooks/useUsers";
 import {
@@ -40,6 +42,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -186,6 +189,12 @@ interface ModelForm {
   costCacheWrite: string;
   /** Users may pick this model as their own main model on their devices. */
   selectable: boolean;
+  /**
+   * Descriptive facts from a pasted models.dev JSON (knowledge cutoff, release
+   * date, capability flags), shown as a details card in the desktop model
+   * picker. Null when nothing was imported; carried whole through edits.
+   */
+  metadata: ModelMetadata | null;
 }
 
 /** Number → input string, with `undefined` becoming "". */
@@ -214,6 +223,7 @@ function modelToForm(m: LlmModelConfig): ModelForm {
     costCacheRead: costToForm(m.cost?.cacheRead),
     costCacheWrite: costToForm(m.cost?.cacheWrite),
     selectable: m.selectable ?? false,
+    metadata: m.metadata ?? null,
   };
 }
 
@@ -234,6 +244,7 @@ function emptyModelForm(defaultProviderId: string): ModelForm {
     costCacheRead: "",
     costCacheWrite: "",
     selectable: false,
+    metadata: null,
   };
 }
 
@@ -279,6 +290,7 @@ function modelFormToInput(form: ModelForm): LlmModelInput {
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(cost ? { cost } : {}),
     selectable: form.selectable,
+    ...(form.metadata ? { metadata: form.metadata } : {}),
   };
 }
 
@@ -944,6 +956,32 @@ function ModelEditor({
     onChange({ ...form, ...next });
   }
 
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+
+  /** Parse the pasted models.dev JSON and prefill the form from it. */
+  function applyImport(): void {
+    try {
+      const parsed = parseModelsDevJson(importText);
+      patch({
+        name: parsed.name,
+        model: parsed.model,
+        input: parsed.input,
+        contextWindow: numStr(parsed.contextWindow),
+        maxTokens: numStr(parsed.maxTokens),
+        costInput: costToForm(parsed.cost?.input),
+        costOutput: costToForm(parsed.cost?.output),
+        costCacheRead: costToForm(parsed.cost?.cacheRead),
+        costCacheWrite: costToForm(parsed.cost?.cacheWrite),
+        metadata: Object.keys(parsed.metadata).length ? parsed.metadata : null,
+      });
+      setImportText("");
+      setImportError(null);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const valid =
     form.name.trim().length > 0 &&
     form.model.trim().length > 0 &&
@@ -954,6 +992,61 @@ function ModelEditor({
       title={form.id ? `Edit ${form.name}` : "New model"}
       onClose={onCancel}
     >
+      <div className="space-y-2 rounded-md border border-dashed border-border bg-muted/40 p-3">
+        <Label htmlFor="models-dev-json">Import from models.dev</Label>
+        <Textarea
+          id="models-dev-json"
+          rows={3}
+          placeholder="Paste a model's JSON from models.dev…"
+          value={importText}
+          onChange={(e) => {
+            setImportText(e.target.value);
+            setImportError(null);
+          }}
+          className="max-h-40 font-mono text-xs"
+        />
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Fills the name, model id, modalities, limits and prices below.
+            Extra facts (knowledge cutoff, release date, capabilities) are
+            shown to users in the desktop model picker.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!importText.trim()}
+            onClick={applyImport}
+          >
+            Fill form
+          </Button>
+        </div>
+        {importError && (
+          <p className="text-destructive text-xs">{importError}</p>
+        )}
+        {form.metadata && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              models.dev details attached
+              {form.metadata.knowledge
+                ? ` · knowledge ${form.metadata.knowledge}`
+                : ""}
+              {form.metadata.releaseDate
+                ? ` · released ${form.metadata.releaseDate}`
+                : ""}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => patch({ metadata: null })}
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="model-provider">Provider</Label>
         <Select

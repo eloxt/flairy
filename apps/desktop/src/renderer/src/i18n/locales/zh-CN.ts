@@ -260,7 +260,20 @@ const zhCN: typeof En = {
     steer: '发送（引导正在进行的任务）',
     model: '模型',
     modelDefault: '默认',
-    modelDefaultDescription: '由管理员推荐的模型。'
+    modelDefaultDescription: '由管理员推荐的模型。',
+    modelCard: {
+      context: '上下文窗口',
+      maxOutput: '最大输出',
+      priceInput: '输入价格',
+      priceOutput: '输出价格',
+      pricePerMillion: '${{price}} / 百万 token',
+      tokens: '{{value}} token',
+      knowledge: '知识截止',
+      released: '发布日期',
+      capImage: '识图',
+      capReasoning: '深度思考',
+      capTools: '使用工具'
+    }
   },
   settings: {
     title: '设置',

@@ -275,7 +275,20 @@ const en = {
     steer: 'Send (steer the running task)',
     model: 'Model',
     modelDefault: 'Default',
-    modelDefaultDescription: 'The model recommended by your administrator.'
+    modelDefaultDescription: 'The model recommended by your administrator.',
+    modelCard: {
+      context: 'Context window',
+      maxOutput: 'Max output',
+      priceInput: 'Input price',
+      priceOutput: 'Output price',
+      pricePerMillion: '${{price}} / 1M tokens',
+      tokens: '{{value}} tokens',
+      knowledge: 'Knowledge up to',
+      released: 'Released',
+      capImage: 'Understands images',
+      capReasoning: 'Deep thinking',
+      capTools: 'Uses tools'
+    }
   },
   settings: {
     title: 'Settings',

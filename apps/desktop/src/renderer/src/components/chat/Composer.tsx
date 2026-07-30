@@ -23,6 +23,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { ModelHoverCardBody } from "./ModelHoverCard";
 
 /** A picked image plus the metadata the composer shows in its preview card. */
 interface PendingAttachment {
@@ -525,18 +531,37 @@ export function Composer(): React.JSX.Element {
                       </DropdownMenuRadioItem>
                       <DropdownMenuSeparator />
                       {modelOptions.map((o) => (
-                        <DropdownMenuRadioItem
-                          key={o.model.id}
-                          closeOnClick
-                          value={o.model.id}
-                          className="items-start gap-2.5 py-2"
-                        >
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-medium text-foreground">
-                              {o.model.name}
-                            </span>
-                          </div>
-                        </DropdownMenuRadioItem>
+                        // Hovering a candidate opens a details card beside the
+                        // menu (context window, prices, models.dev facts).
+                        <HoverCard key={o.model.id}>
+                          {/* delay/closeDelay live on the Trigger in base-ui,
+                              same as the Menu hover props. */}
+                          <HoverCardTrigger
+                            delay={300}
+                            closeDelay={100}
+                            render={
+                              <DropdownMenuRadioItem
+                                closeOnClick
+                                value={o.model.id}
+                                className="items-start gap-2.5 py-2"
+                              >
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="font-medium text-foreground">
+                                    {o.model.name}
+                                  </span>
+                                </div>
+                              </DropdownMenuRadioItem>
+                            }
+                          />
+                          <HoverCardContent
+                            side="right"
+                            align="start"
+                            sideOffset={10}
+                            className="w-64"
+                          >
+                            <ModelHoverCardBody option={o} />
+                          </HoverCardContent>
+                        </HoverCard>
                       ))}
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>

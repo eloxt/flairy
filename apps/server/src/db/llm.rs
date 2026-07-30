@@ -2,6 +2,7 @@
 //! Every mutation bumps the global config version.
 
 use sqlx::postgres::PgRow;
+use sqlx::types::Json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -9,8 +10,8 @@ use super::{config::bump_version, parse_uuid};
 use crate::error::{AppError, AppResult};
 use crate::models::llm::{
     ActiveLlm, LlmModelConfig, LlmModelInput, LlmProviderConfig, LlmProviderInput, LlmRole,
-    LlmRoleAssignment, LlmUserRoleAssignment, Modality, ModelCost, ProviderApi, RoleModels,
-    ThinkingLevel,
+    LlmRoleAssignment, LlmUserRoleAssignment, Modality, ModelCost, ModelMetadata, ProviderApi,
+    RoleModels, ThinkingLevel,
 };
 
 /// Parse the nullable `thinking_level` TEXT column into the enum. An unknown
@@ -36,6 +37,13 @@ fn parse_modalities(raw: Vec<String>) -> Vec<Modality> {
 /// Serialize `Vec<Modality>` to the `&str` set bound into a TEXT[] column.
 fn modality_strs(modalities: &[Modality]) -> Vec<&'static str> {
     modalities.iter().map(|m| m.as_str()).collect()
+}
+
+/// Read the nullable `metadata` JSONB column into [`ModelMetadata`]. All its
+/// fields are optional strings/bools, so any historical blob deserializes; a
+/// NULL column is simply a model without models.dev facts.
+fn parse_metadata(raw: Option<Json<ModelMetadata>>) -> Option<ModelMetadata> {
+    raw.map(|j| j.0)
 }
 
 /// Assemble the four nullable `cost_*` columns into a [`ModelCost`]. Returns
@@ -186,18 +194,19 @@ fn map_model(row: &PgRow) -> LlmModelConfig {
             row.get("cost_cache_write"),
         ),
         selectable: row.get("selectable"),
+        metadata: parse_metadata(row.get("metadata")),
     }
 }
 
 const MODEL_SELECT: &str = "SELECT id, provider_id, name, model, input_modalities, thinking_level, \
      context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write, \
-     selectable \
+     selectable, metadata \
      FROM llm_models";
 
 /// The column list every model write returns, kept in sync with [`map_model`].
 const MODEL_RETURNING: &str = "id, provider_id, name, model, input_modalities, thinking_level, \
      context_window, max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write, \
-     selectable";
+     selectable, metadata";
 
 /// All models across every provider, oldest first.
 pub async fn list_models(pool: &PgPool) -> AppResult<Vec<LlmModelConfig>> {
@@ -233,8 +242,8 @@ pub async fn create_model(
         "INSERT INTO llm_models
             (id, provider_id, name, model, thinking_level, context_window,
              max_tokens, cost_input, cost_output, cost_cache_read, cost_cache_write,
-             input_modalities, selectable)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+             input_modalities, selectable, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING {MODEL_RETURNING}"
     ))
     .bind(id)
@@ -250,6 +259,7 @@ pub async fn create_model(
     .bind(input.cost.as_ref().map(|c| c.cache_write))
     .bind(modality_strs(&input.input))
     .bind(input.selectable)
+    .bind(input.metadata.as_ref().map(Json))
     .fetch_one(&mut *tx)
     .await?;
 
@@ -296,7 +306,7 @@ pub async fn update_model(
          SET provider_id = $2, name = $3, model = $4, thinking_level = $5,
              context_window = $6, max_tokens = $7, cost_input = $8, cost_output = $9,
              cost_cache_read = $10, cost_cache_write = $11, input_modalities = $12,
-             selectable = $13, updated_at = now()
+             selectable = $13, metadata = $14, updated_at = now()
          WHERE id = $1
          RETURNING {MODEL_RETURNING}"
     ))
@@ -313,6 +323,7 @@ pub async fn update_model(
     .bind(input.cost.as_ref().map(|c| c.cache_write))
     .bind(modality_strs(&input.input))
     .bind(input.selectable)
+    .bind(input.metadata.as_ref().map(Json))
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -381,6 +392,7 @@ fn map_active(row: &PgRow) -> AppResult<ActiveLlm> {
                 row.get("m_cost_cache_write"),
             ),
             selectable: row.get("m_selectable"),
+            metadata: parse_metadata(row.get("m_metadata")),
         },
     })
 }
@@ -405,6 +417,7 @@ pub async fn role_models_for_user(pool: &PgPool, user_id: &str) -> AppResult<Rol
             m.cost_cache_read  AS m_cost_cache_read,
             m.cost_cache_write AS m_cost_cache_write,
             m.selectable       AS m_selectable,
+            m.metadata         AS m_metadata,
             p.id          AS p_id,
             p.name        AS p_name,
             p.api         AS p_api,
@@ -461,6 +474,7 @@ pub async fn list_selectable_active(pool: &PgPool) -> AppResult<Vec<ActiveLlm>> 
             m.cost_cache_read  AS m_cost_cache_read,
             m.cost_cache_write AS m_cost_cache_write,
             m.selectable       AS m_selectable,
+            m.metadata         AS m_metadata,
             p.id          AS p_id,
             p.name        AS p_name,
             p.api         AS p_api,

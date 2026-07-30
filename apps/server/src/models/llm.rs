@@ -177,6 +177,41 @@ pub struct LlmProviderInput {
     pub base_url: Option<String>,
 }
 
+/// Descriptive model facts sourced from models.dev (one model entry of
+/// https://models.dev/api.json, snake_case keys mapped to camelCase).
+/// Informational only — the desktop renders them in the user model picker's
+/// details card; nothing here changes how the client calls the provider.
+/// Stored as one nullable JSONB column on `llm_models`. Mirrors `ModelMetadata`
+/// in `packages/shared/src/config.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelMetadata {
+    /// Knowledge cutoff, e.g. "2025-03".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub knowledge: Option<String>,
+    /// First public release date, e.g. "2025-05-22".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_date: Option<String>,
+    /// Date of the last model update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_updated: Option<String>,
+    /// Supports extended reasoning / thinking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<bool>,
+    /// Supports tool / function calling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call: Option<bool>,
+    /// Accepts file attachments (models.dev `attachment`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<bool>,
+    /// Exposes a temperature control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<bool>,
+    /// Weights are openly available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_weights: Option<bool>,
+}
+
 /// Price of a model in USD per 1M tokens. Informational only — the client uses
 /// it to estimate usage cost; it never gates a request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,6 +261,9 @@ pub struct LlmModelConfig {
     /// Selectable models are delivered as `ConfigSnapshot.modelOptions`.
     #[serde(default)]
     pub selectable: bool,
+    /// Descriptive facts from models.dev, for the desktop model picker card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ModelMetadata>,
 }
 
 /// Create/update payload for a model (no server-owned fields).
@@ -247,6 +285,8 @@ pub struct LlmModelInput {
     pub cost: Option<ModelCost>,
     #[serde(default)]
     pub selectable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ModelMetadata>,
 }
 
 /// The active LLM delivered to clients: the active model joined with its provider.
