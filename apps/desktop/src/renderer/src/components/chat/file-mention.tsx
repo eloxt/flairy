@@ -329,46 +329,47 @@ export function FileMentionPopup({
   const { items } = mention.state;
 
   return (
-    <div
-      role="listbox"
-      className="absolute inset-x-0 bottom-full z-50 mb-2 max-h-72 overflow-y-auto rounded-2xl [corner-shape:squircle] bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 animate-in fade-in-0 slide-in-from-bottom-1 duration-100"
-    >
-      {items.map((entry, i) => {
-        const slash = entry.path.lastIndexOf("/");
-        const dir = slash === -1 ? "" : entry.path.slice(0, slash);
-        return (
-          <button
-            key={(entry.isDir ? "d:" : "f:") + entry.path}
-            ref={i === active ? activeRef : undefined}
-            type="button"
-            role="option"
-            aria-selected={i === active}
-            // Keep focus in the textarea: select on mousedown, never focus.
-            onMouseDown={(e) => {
-              e.preventDefault();
-              mention.apply(entry);
-            }}
-            onMouseMove={() => mention.setActive(i)}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-xl [corner-shape:squircle] px-2.5 py-1.5 text-left text-sm",
-              i === active && "bg-accent text-accent-foreground",
-            )}
-          >
-            {entry.isDir ? (
-              <IconFolder className="size-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <IconFile className="size-4 shrink-0 text-muted-foreground" />
-            )}
-            <span className="shrink-0">
-              {entry.name}
-              {entry.isDir ? "/" : ""}
-            </span>
-            {dir && (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span>
-            )}
-          </button>
-        );
-      })}
+    <div className="absolute inset-x-0 bottom-full z-50 mb-2 rounded-2xl [corner-shape:squircle] bg-popover text-popover-foreground ring-1 ring-foreground/10 animate-in fade-in-0 slide-in-from-bottom-1 duration-100">
+      {/* The fade mask must live on a child: on the shell it would eat the
+          panel's own background and ring at the edges. */}
+      <div role="listbox" className="max-h-72 overflow-y-auto overscroll-contain scroll-fade-y p-1">
+        {items.map((entry, i) => {
+          const slash = entry.path.lastIndexOf("/");
+          const dir = slash === -1 ? "" : entry.path.slice(0, slash);
+          return (
+            <button
+              key={(entry.isDir ? "d:" : "f:") + entry.path}
+              ref={i === active ? activeRef : undefined}
+              type="button"
+              role="option"
+              aria-selected={i === active}
+              // Keep focus in the textarea: select on mousedown, never focus.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                mention.apply(entry);
+              }}
+              onMouseMove={() => mention.setActive(i)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-xl [corner-shape:squircle] px-2.5 py-1.5 text-left text-sm",
+                i === active && "bg-accent text-accent-foreground",
+              )}
+            >
+              {entry.isDir ? (
+                <IconFolder className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <IconFile className="size-4 shrink-0 text-muted-foreground" />
+              )}
+              <span className="shrink-0">
+                {entry.name}
+                {entry.isDir ? "/" : ""}
+              </span>
+              {dir && (
+                <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
