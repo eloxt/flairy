@@ -71,6 +71,8 @@ const zhCN: typeof En = {
     error: '出错了',
     copy: '复制',
     copied: '已复制',
+    showMore: '展开',
+    showLess: '收起',
     cardRecommended: '推荐',
     navLabel: '会话导航',
     navImageOnly: '图片消息',

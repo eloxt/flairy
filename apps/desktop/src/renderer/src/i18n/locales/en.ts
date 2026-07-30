@@ -74,6 +74,8 @@ const en = {
     error: 'Error',
     copy: 'Copy',
     copied: 'Copied',
+    showMore: 'Show more',
+    showLess: 'Show less',
     cardRecommended: 'Recommended',
     navLabel: 'Conversation navigation',
     navImageOnly: 'Image message',

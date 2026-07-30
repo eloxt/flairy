@@ -8,7 +8,11 @@ import {
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Streamdown } from "streamdown";
-import { IconAlertCircle, IconChevronRight } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconChevronDown,
+  IconChevronRight,
+} from "@tabler/icons-react";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +25,8 @@ import {
   useMessageScroller,
 } from "@/components/ui/message-scroller";
 import { Message, MessageContent } from "@/components/ui/message";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Button } from "@/components/ui/button";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
   Collapsible,
@@ -912,11 +918,7 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
           )}
           {/* Sent text is plain (not markdown), so keep the author's own line
               breaks instead of letting HTML collapse them. */}
-          {m.text && (
-            <div className="max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words text-secondary-foreground select-text">
-              {m.text}
-            </div>
-          )}
+          {m.text && <UserText text={m.text} />}
           {m.queued && (
             <span className="px-1 text-xs text-muted-foreground">
               {t("chat.queued")}
@@ -930,6 +932,45 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
         </MessageContent>
       </Message>
     </div>
+  );
+}
+
+/**
+ * A long sent prompt would bury the conversation, so past a preview length
+ * the bubble collapses. This is shadcn's bubble "show more" recipe verbatim
+ * (Bubble + Collapsible, character-sliced preview, link-button trigger);
+ * the preview length is scaled up from the demo's 180 for our wider bubble.
+ */
+const USER_TEXT_PREVIEW_LENGTH = 400;
+
+function UserText({ text }: { text: string }): React.JSX.Element {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const isLong = text.length > USER_TEXT_PREVIEW_LENGTH;
+
+  return (
+    <Bubble variant="secondary">
+      <BubbleContent className="px-4 py-2.5 whitespace-pre-wrap select-text">
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <div>
+            {open || !isLong ? text : `${text.slice(0, USER_TEXT_PREVIEW_LENGTH)}...`}
+          </div>
+          {isLong && (
+            <CollapsibleTrigger
+              render={
+                <Button variant="link" className="gap-1 p-0 text-muted-foreground" />
+              }
+            >
+              {open ? t("chat.showLess") : t("chat.showMore")}
+              <IconChevronDown
+                data-icon="inline-end"
+                className="transition-transform group-data-panel-open/button:rotate-180"
+              />
+            </CollapsibleTrigger>
+          )}
+        </Collapsible>
+      </BubbleContent>
+    </Bubble>
   );
 }
 
