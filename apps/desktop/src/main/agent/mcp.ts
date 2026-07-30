@@ -63,6 +63,15 @@ interface Connection {
 export class McpManager {
   /** Connected servers, keyed by McpServerConfig.id. */
   private connections = new Map<string, Connection>()
+  /**
+   * Server ids in config order, captured on every reconcile. rebuild() orders
+   * the flattened tool list by THIS, not by connections-Map insertion order —
+   * a server that failed its first connect (retried on a later tick) or that
+   * dropped and reconnected re-enters the Map at the END, and a tool-order
+   * change would invalidate every session's provider prompt cache (tool
+   * definitions sit at position 0 of the cached prefix).
+   */
+  private serverOrder: string[] = []
   /** Flattened, collision-resolved AgentTools — the live getTools() snapshot. */
   private flat: AgentTool<any>[] = []
   private listeners = new Set<Listener>()
@@ -108,7 +117,13 @@ export class McpManager {
   private async reconcile(servers: McpServerConfig[]): Promise<void> {
     const enabled = servers.filter((s) => s.enabled)
     const desired = new Map(enabled.map((s) => [s.id, s]))
-    let changed = false
+    // Capture config order for rebuild(). If only the ORDER changed (no
+    // fingerprint delta), `changed` stays false below, so rebuild with the new
+    // order explicitly — admins reordering servers should see it take effect.
+    const nextOrder = enabled.map((s) => s.id)
+    const orderChanged = nextOrder.join('\n') !== this.serverOrder.join('\n')
+    this.serverOrder = nextOrder
+    let changed = orderChanged
 
     // Tear down connections that vanished, were disabled, or whose config changed.
     for (const [id, conn] of [...this.connections]) {
@@ -155,7 +170,20 @@ export class McpManager {
   private rebuild(): void {
     const used = new Set<string>()
     const out: AgentTool<any>[] = []
-    for (const conn of this.connections.values()) {
+    // Deterministic order: config order (serverOrder), NOT Map insertion order,
+    // which shifts when a server reconnects or a failed connect is retried —
+    // see serverOrder's doc comment. Collision-resolved names stay stable too,
+    // since "first claim wins" now always resolves in the same order.
+    const ordered = [
+      ...this.serverOrder
+        .map((id) => this.connections.get(id))
+        .filter((c): c is Connection => !!c),
+      // Defensive: connections whose id somehow isn't in serverOrder go last.
+      ...[...this.connections.values()].filter(
+        (c) => !this.serverOrder.includes(c.server.id)
+      ),
+    ]
+    for (const conn of ordered) {
       for (const rt of conn.tools) {
         let name = rt.remoteName
         if (used.has(name)) name = `${slug(conn.server.name)}_${rt.remoteName}`
