@@ -18,9 +18,6 @@ import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
-    SidebarGroup,
-    SidebarGroupContent,
-    SidebarGroupLabel,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuAction,
@@ -28,11 +25,12 @@ import {
     SidebarMenuItem,
     SidebarMenuSub,
 } from "@/components/ui/sidebar";
+import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import { useChat } from "@/store/chat-store";
 import { cn } from "@/lib/utils";
 import type { SessionMeta, SocketConnectionStatus } from "@shared/ipc";
 import { IconFolder, IconLoader2, IconPlus, IconSearch, IconSend, IconSettings, IconEdit, IconTrash, IconX } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
 
@@ -83,6 +81,12 @@ function groupSessions(sessions: SessionMeta[]): {
 const rowHoverAction =
   "group-focus-within/row:opacity-100 group-hover/row:opacity-100 aria-expanded:opacity-100 md:opacity-0";
 
+type SidebarTab = "projects" | "chats";
+
+// Each tab's list scrolls on its own; the shared track only slides.
+const panelClass =
+  "h-full w-full shrink-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-y px-2 py-1.5 md:px-0";
+
 /**
  * Left navigation: New Chat, Search (its own page at /search), then the session
  * history. Selecting a chat navigates back to the chat route.
@@ -95,6 +99,7 @@ export function AppSidebar(): React.JSX.Element {
   const sessions = useChat((s) => s.sessions);
   const sessionId = useChat((s) => s.sessionId);
   const newChat = useChat((s) => s.newChat);
+  const openSession = useChat((s) => s.openSession);
   const deleteSession = useChat((s) => s.deleteSession);
   const loadRecentDirs = useChat((s) => s.loadRecentDirs);
   const navigate = useNavigate();
@@ -105,8 +110,28 @@ export function AppSidebar(): React.JSX.Element {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>("disconnected");
+  const [tab, setTab] = useState<SidebarTab>("chats");
+  const pendingCwd = useChat((s) => s.pendingCwd);
   const hasSelection = selectedIds.size > 0;
   const grouped = groupSessions(sessions);
+
+  // "Current project" for the header button on the Projects tab: the active
+  // session's folder, else a just-picked pending folder, else the most
+  // recently used project (grouped.projects is sorted by activity).
+  const activeWorkspace = sessions.find((s) => s.id === sessionId)?.workspacePath ?? null;
+  const currentProject = activeWorkspace ?? pendingCwd ?? grouped.projects[0]?.path ?? null;
+
+  // Follow the active session onto its own tab so the highlighted row is never
+  // stranded on the hidden panel. Keyed off sessionId transitions only —
+  // `sessions` churns during streaming (updatedAt bumps) and must not snap the
+  // tab back while the user is browsing the other panel.
+  const prevSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sessionId || prevSessionRef.current === sessionId) return;
+    prevSessionRef.current = sessionId;
+    const current = sessions.find((s) => s.id === sessionId);
+    if (current) setTab(current.workspacePath ? "projects" : "chats");
+  }, [sessionId, sessions]);
 
   useEffect(() => {
     void window.api.getSocketStatus().then(setSocketStatus);
@@ -146,14 +171,18 @@ export function AppSidebar(): React.JSX.Element {
     });
   };
 
-  // "+" beside the Projects header: pick a folder, then land on the home screen
-  // with that folder pending — the first message turns it into a project session.
-  // This is now the ONLY way to start a project: the composer no longer offers a
-  // folder picker for plain chats.
+  // "Add project": pick a folder and create its first session EAGERLY (unlike
+  // plain chats, which stay lazy until the first message) so the folder shows
+  // up in the sidebar immediately instead of only after the first conversation.
+  // Adding a project is a deliberate act, so one empty starter session is fine.
+  // This is still the ONLY way to start a project: the composer no longer
+  // offers a folder picker for plain chats.
   const addProject = async (): Promise<void> => {
     const dir = await window.api.pickDirectory();
     if (!dir) return; // user cancelled
-    await newChat(dir);
+    setTab("projects");
+    const meta = await window.api.createSession({ cwd: dir, workspacePath: dir });
+    await openSession(meta);
     void loadRecentDirs(); // main recorded the pick
     navigate("/");
   };
@@ -182,16 +211,29 @@ export function AppSidebar(): React.JSX.Element {
     <Sidebar variant="inset" className="pl-2 pr-0">
       <SidebarHeader className={cn("app-drag gap-2 px-2 pb-2 md:px-0", isMac ? "pt-11" : "pt-2")}>
         <SidebarMenu className="gap-0.5">
+          {/* New chat follows the active tab: a plain chat on Chats, a chat
+              in the current project on Projects. With no project to target it
+              falls back to picking a project folder. */}
           <SidebarMenuItem>
             <SidebarMenuButton
               className="app-no-drag h-9 rounded-lg border border-border bg-card/50 font-medium hover:bg-accent"
               onClick={() => {
-                void newChat();
+                if (tab === "projects" && !currentProject) {
+                  void addProject();
+                  return;
+                }
+                void newChat(tab === "projects" ? currentProject ?? undefined : undefined);
                 navigate("/");
               }}
             >
-              <IconEdit className="size-4" />
-              <span>{t('chat.newChat')}</span>
+              {tab === "projects" && !currentProject
+                ? <IconPlus className="size-4" />
+                : <IconEdit className="size-4" />}
+              <span>
+                {tab === "projects" && !currentProject
+                  ? t('chat.addProject')
+                  : t('chat.newChat')}
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -207,63 +249,95 @@ export function AppSidebar(): React.JSX.Element {
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* scroll-fade-y: the history list fades at whichever edge has more to
-          scroll (scroll-driven, so no fade when it all fits). */}
-      <SidebarContent className="px-0 scroll-fade-y">
-        {/* md:px-0: the rail's gutter lives on Sidebar; the group's default p-2
-            would stack another 8px on top of it. */}
-        <SidebarGroup className="px-2 md:px-0">
+      {/* overflow-hidden: the content column no longer scrolls itself — each
+          tab panel owns its scroll so the sliding track never drags the other
+          panel's scroll position along. */}
+      <SidebarContent className="overflow-hidden px-0">
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as SidebarTab)}
+          className="min-h-0 flex-1"
+        >
+          {/* md:px-0: the rail's gutter lives on Sidebar; keep the underline
+              flush with it. Below md the overlay sheet needs its own inset. */}
+          {/* Only two tabs, so each takes half the rail width; the sliding
+              underline spans the active half. */}
+          <TabsList className="px-2 md:px-0">
+            <TabsTab value="chats" className="app-no-drag flex-1 text-center">
+              {t('chat.chats')}
+            </TabsTab>
+            <TabsTab value="projects" className="app-no-drag flex-1 text-center">
+              {t('chat.projects')}
+            </TabsTab>
+          </TabsList>
+
           {selecting && (
-            <SidebarGroupLabel className="eyebrow px-2">
-              <div className="flex w-full min-w-0 items-center justify-end gap-1.5">
-                <button
-                  type="button"
-                  className="app-no-drag inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-                  aria-label={t('chat.deleteSelected')}
-                  disabled={!hasSelection}
-                  onClick={() => setConfirmBulkDelete(true)}
-                >
-                  <IconTrash className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="app-no-drag inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  aria-label={t('chat.cancel')}
-                  onClick={exitSelectionMode}
-                >
-                  <IconX className="size-3.5" />
-                </button>
-              </div>
-            </SidebarGroupLabel>
-          )}
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {/* Projects always renders (even empty): its "+" is the only way
-                  to start one — the composer's folder picker is gone. */}
-              <Section
-                label={t('chat.projects')}
-                triggerClassName="font-semibold text-sidebar-foreground"
-                action={
-                  <SidebarMenuAction
-                    className={rowHoverAction}
-                    title={t('chat.addProject')}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void addProject();
-                    }}
-                  >
-                    <IconPlus className="text-sidebar-foreground" />
-                  </SidebarMenuAction>
-                }
+            <div className="flex items-center justify-end gap-1.5 px-2 pt-1.5 md:px-0">
+              <button
+                type="button"
+                className="app-no-drag inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+                aria-label={t('chat.deleteSelected')}
+                disabled={!hasSelection}
+                onClick={() => setConfirmBulkDelete(true)}
               >
-                {grouped.projects.length === 0 ? (
+                <IconTrash className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                className="app-no-drag inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label={t('chat.cancel')}
+                onClick={exitSelectionMode}
+              >
+                <IconX className="size-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Both panels stay mounted side by side; the track slides one panel
+              width per tab. `inert` keeps the off-screen panel out of focus
+              order and hit testing. */}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <div
+              className={cn(
+                "flex h-full transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                tab === "projects" && "-translate-x-full",
+              )}
+            >
+              <div className={panelClass} inert={tab !== "chats"}>
+                {grouped.chats.length === 0 ? (
                   <p className="px-2 py-2 text-xs text-muted-foreground">
-                    {t('chat.noProjects')}
+                    {t('chat.chatsWillAppearHere')}
                   </p>
                 ) : (
                   <SidebarMenu className="gap-0.5">
-                    {grouped.projects.map((group) => (
+                    {grouped.chats.map((s) => (
+                      <SessionRow
+                        key={s.id}
+                        s={s}
+                        active={s.id === sessionId}
+                        selecting={selecting}
+                        selected={selectedIds.has(s.id)}
+                        onEnterSelectionMode={enterSelectionMode}
+                        onToggleSelected={toggleSelected}
+                      />
+                    ))}
+                  </SidebarMenu>
+                )}
+              </div>
+              <div className={panelClass} inert={tab !== "projects"}>
+                <SidebarMenu className="gap-0.5">
+                  {/* The only way to add a project folder (the header button
+                      targets the current project once one exists). */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      className="app-no-drag h-8 rounded-lg text-muted-foreground hover:text-foreground"
+                      onClick={() => void addProject()}
+                    >
+                      <IconPlus className="size-4" />
+                      <span>{t('chat.addProject')}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {grouped.projects.map((group) => (
                       <Section
                         key={group.path}
                         label={group.label}
@@ -302,39 +376,17 @@ export function AppSidebar(): React.JSX.Element {
                           ))}
                         </SidebarMenuSub>
                       </Section>
-                    ))}
-                  </SidebarMenu>
-                )}
-              </Section>
-              {/* Chats mirrors Projects: the section header always renders,
-                  with the same quiet hint inside while the list is empty. */}
-              <Section
-                label={t('chat.chats')}
-                triggerClassName="font-semibold text-sidebar-foreground"
-              >
-                {grouped.chats.length === 0 ? (
+                  ))}
+                </SidebarMenu>
+                {grouped.projects.length === 0 && (
                   <p className="px-2 py-2 text-xs text-muted-foreground">
-                    {t('chat.chatsWillAppearHere')}
+                    {t('chat.noProjects')}
                   </p>
-                ) : (
-                  <SidebarMenuSub className="mr-0 pr-0">
-                    {grouped.chats.map((s) => (
-                      <SessionRow
-                        key={s.id}
-                        s={s}
-                        active={s.id === sessionId}
-                        selecting={selecting}
-                        selected={selectedIds.has(s.id)}
-                        onEnterSelectionMode={enterSelectionMode}
-                        onToggleSelected={toggleSelected}
-                      />
-                    ))}
-                  </SidebarMenuSub>
                 )}
-              </Section>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+              </div>
+            </div>
+          </div>
+        </Tabs>
       </SidebarContent>
 
       <SidebarFooter className="p-2 md:p-0">
