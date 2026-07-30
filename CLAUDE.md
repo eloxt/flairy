@@ -128,6 +128,18 @@ Based on hands-on testing with 0.81.1; the README examples diverge from the actu
 - A sandboxed preload cannot be ESM → `sandbox: false` + `contextIsolation: true` (the real boundary) + `nodeIntegration: false`.
 - pnpm 11: build scripts for native modules (better-sqlite3 / electron) must be explicitly allowed in `pnpm-workspace.yaml`'s `allowBuilds`.
 
+## Release Process
+
+Run these steps in order when the user asks to cut a release:
+
+1. **Check for an officecli update first.** The bundled binaries live at `apps/desktop/resources/bin/{darwin-arm64/officecli, win32-x64/officecli.exe}`; upstream is `iOfficeAI/OfficeCLI` on GitHub (mirror: `https://d.officecli.ai`).
+   - Current bundled version: `apps/desktop/resources/bin/darwin-arm64/officecli --version`
+   - Latest upstream: `gh release view --repo iOfficeAI/OfficeCLI --json tagName -q .tagName`
+   - If newer, download from the **immutable versioned path** (not `/releases/latest/download/`, which is CDN-cached up to 4h): assets `officecli-mac-arm64` and `officecli-win-x64.exe` from `https://github.com/iOfficeAI/OfficeCLI/releases/download/v<X.Y.Z>/`. Replace both bundled binaries, `chmod +x` the darwin one (the exec bit has been lost before), commit (`chore(desktop): update bundled officecli binaries`), and **tell the user** the officecli version was bumped.
+2. **`pnpm release <patch|minor|major|x.y.z>`** (requires a clean tree). The script bumps root + desktop `package.json` in lockstep, commits, tags `v<version>`, and pushes — the tag triggers `.github/workflows/release.yml` ("Release"), which builds mac + windows and creates a **draft** GitHub release.
+3. **Write bilingual release notes** while CI builds, following the format of previous releases (`gh release view <prev-tag> --json body`): two `<details>` blocks — `<summary><strong>English</strong></summary>` then `<summary><strong>简体中文</strong></summary>` — each with `### ✨ New Features / ### ✨ 新功能` and `### 🔧 Fixes & Improvements / ### 🔧 修复与改进` sections, ending with a `**Full Changelog**: .../compare/v<prev>...v<new>` line. Copy is end-user-facing: no jargon (MCP/skill/schema), describe benefits, not implementation. Update the draft with `gh release edit v<version> --draft --notes-file <file>`.
+4. **Watch CI to completion** (`gh run watch` / `gh run list --workflow=Release`), then notify the user that the build is done. **Do NOT publish the release** — the user publishes the draft themselves.
+
 ## Development Commands
 
 ```bash

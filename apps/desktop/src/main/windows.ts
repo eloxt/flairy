@@ -1,7 +1,6 @@
 import { shell, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
-import liquidGlass from "electron-liquid-glass";
 import { IPC } from "@shared/ipc";
 import { getCloseToTrayPref } from "./store/db";
 
@@ -244,7 +243,7 @@ export function openImageViewerWindow(id: string): BrowserWindow {
  */
 let launcherWindow: BrowserWindow | null = null;
 
-/** Native Liquid Glass mode (the library safely no-ops off-mac). */
+/** Native Liquid Glass mode (mac-only; the library must not even be imported elsewhere). */
 const LAUNCHER_GLASS = process.platform === "darwin";
 
 const LAUNCHER_WIDTH = 640;
@@ -314,8 +313,11 @@ function createLauncherWindow(): BrowserWindow {
     // Attach the native glass view once the page is up (the library wants the
     // content view to exist). 32px radius = a perfect capsule at the 64px
     // collapsed height, and reads Tahoe-native on the expanded panel.
-    win.webContents.once("did-finish-load", () => {
+    // Imported lazily: electron-liquid-glass ships mac-only native bindings,
+    // and a top-level import crashes the whole main process on Windows.
+    win.webContents.once("did-finish-load", async () => {
       try {
+        const { default: liquidGlass } = await import("electron-liquid-glass");
         liquidGlass.addView(win.getNativeWindowHandle(), { cornerRadius: 32 });
       } catch (err) {
         console.error("[launcher] failed to attach glass view:", err);
