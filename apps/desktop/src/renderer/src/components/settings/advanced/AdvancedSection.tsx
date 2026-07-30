@@ -67,6 +67,10 @@ function parseImportedConfig(
   const raw = JSON.parse(text) as unknown
   if (!isObj(raw)) throw new ImportShapeError('$')
   const obj = raw
+  let idSeq = 0
+  // Editors key rows by `id`; hand-authored imports may omit it, so synthesize one.
+  const idOr = (v: unknown, prefix: string): string =>
+    typeof v === 'string' && v ? v : `import-${prefix}-${++idSeq}`
   const arr = (v: unknown, path: string): Record<string, unknown>[] | undefined => {
     if (v === undefined) return undefined
     if (!Array.isArray(v)) throw new ImportShapeError(path)
@@ -90,7 +94,6 @@ function parseImportedConfig(
   if (mcp) {
     draft.mcpServers = mcp.map((srv, i) => {
       const path = `mcpServers[${i}]`
-      reqStr(srv, 'id', path)
       reqStr(srv, 'name', path)
       if (!isObj(srv.transport)) throw new ImportShapeError(`${path}.transport`)
       const transport = srv.transport
@@ -98,10 +101,13 @@ function parseImportedConfig(
       else if (transport.kind === 'sse' || transport.kind === 'http')
         reqStr(transport, 'url', `${path}.transport`)
       else throw new ImportShapeError(`${path}.transport.kind`)
+      if (srv.allowedTools !== undefined && !Array.isArray(srv.allowedTools))
+        throw new ImportShapeError(`${path}.allowedTools`)
       return {
         allowedTools: [],
         enabled: true,
-        ...srv
+        ...srv,
+        id: idOr(srv.id, 'mcp')
       } as unknown as LocalConfigDraft['mcpServers'][number]
     })
   }
@@ -109,15 +115,29 @@ function parseImportedConfig(
   if (prompts) {
     draft.systemPrompts = prompts.map((p, i) => {
       reqStr(p, 'name', `systemPrompts[${i}]`)
-      reqStr(p, 'content', `systemPrompts[${i}]`)
-      return p as unknown as LocalConfigDraft['systemPrompts'][number]
+      reqStr(p, 'body', `systemPrompts[${i}]`)
+      return {
+        enabled: true,
+        ...p,
+        id: idOr(p.id, 'prompt')
+      } as unknown as LocalConfigDraft['systemPrompts'][number]
     })
   }
   const services = arr(obj.services, 'services')
   if (services) {
     draft.services = services.map((s, i) => {
-      reqStr(s, 'id', `services[${i}]`)
-      return { secret: '', enabled: true, ...s } as unknown as LocalConfigDraft['services'][number]
+      // ServicesEditor dereferences `settings.*` unconditionally.
+      if (s.settings !== undefined && !isObj(s.settings))
+        throw new ImportShapeError(`services[${i}].settings`)
+      return {
+        kind: 'exa',
+        name: '',
+        secret: '',
+        enabled: true,
+        settings: {},
+        ...s,
+        id: idOr(s.id, 'service')
+      } as unknown as LocalConfigDraft['services'][number]
     })
   }
 
@@ -127,11 +147,21 @@ function parseImportedConfig(
     const full = skills.filter((s) => Array.isArray(s.files))
     skippedSkills = skills.length - full.length
     draft.skills = full.map((s, i) => {
-      reqStr(s, 'name', `skills[${i}]`)
+      const path = `skills[${i}]`
+      reqStr(s, 'name', path)
+      const files = (s.files as unknown[]).map((f, j) => {
+        if (!isObj(f)) throw new ImportShapeError(`${path}.files[${j}]`)
+        return { path: '', sourceType: 'text', ...f, id: idOr(f.id, 'file') }
+      })
       return {
         description: '',
+        metadata: {},
+        extraFrontmatter: {},
+        skillMdBody: '',
         enabled: true,
-        ...s
+        ...s,
+        id: idOr(s.id, 'skill'),
+        files
       } as unknown as LocalConfigDraft['skills'][number]
     })
   }

@@ -1586,8 +1586,8 @@ function findPromptBody(
   name: string,
 ): string | undefined {
   const body = config.systemPrompts
-    .find((p) => p.enabled && p.name.trim().toLowerCase() === name)
-    ?.body.trim();
+    .find((p) => p.enabled && p.name?.trim().toLowerCase() === name)
+    ?.body?.trim();
   return body || undefined;
 }
 
