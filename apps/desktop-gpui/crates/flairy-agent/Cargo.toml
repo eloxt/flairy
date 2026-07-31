@@ -1,0 +1,11 @@
+[package]
+name = "flairy-agent"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+flairy-ai = { path = "../flairy-ai" }
+anyhow = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
