@@ -9,7 +9,6 @@ import {
   type QuestionResponseArgs,
   type PermissionMode,
   type CreateSessionArgs,
-  type SetCwdArgs,
   type ChooseDirArgs,
   type RenameSessionArgs,
   type DeleteSessionArgs,
@@ -49,7 +48,6 @@ import {
   getSession,
   getTelegramThreadBySession,
   loadMessages,
-  updateSessionCwd,
   updateSessionTitle,
   deleteSession,
   tasksForSession,
@@ -397,21 +395,6 @@ export function registerIpcHandlers(
     return meta
   })
 
-  // Pick a directory and set it as the session's cwd: persist it and rebind the
-  // live agent's local tools. Returns the updated meta, or null if cancelled.
-  ipcMain.handle(IPC.SessionSetCwd, async (_e, args: SetCwdArgs) => {
-    const before = getSession(args.sessionId)
-    // A session's workspace is fixed once set — refuse before showing the dialog.
-    if (before?.kind === 'project') return null
-    const dir = await pickDirectory()
-    if (!dir) return null
-    addRecentDirectory(dir)
-    const meta = updateSessionCwd(args.sessionId, dir)
-    agents.get(args.sessionId)?.setCwd(dir)
-    if (before?.kind === 'chat') server.sendSessionDelete({ sessionId: args.sessionId })
-    return meta ?? null
-  })
-
   // Previously-used working directories for the composer's directory menu.
   ipcMain.handle(IPC.SessionListRecentDirs, () => listRecentDirectories())
 
@@ -440,20 +423,12 @@ export function registerIpcHandlers(
     })
   })
 
-  // Set an already-known path as the working directory (recents click — no
-  // native dialog). Always bump recents; persist + rebind only when there's a
-  // session, otherwise return null and let the renderer stash it as pendingCwd.
+  // Record an already-known path in recents (home-screen recents click — no
+  // native dialog). The renderer stashes it as pendingCwd for the project
+  // session lazily created on the first message; a workspace is fixed at
+  // session creation, so there is nothing to persist or rebind here.
   ipcMain.handle(IPC.SessionChooseDir, (_e, args: ChooseDirArgs) => {
     addRecentDirectory(args.path)
-    if (!args.sessionId) return null
-    const before = getSession(args.sessionId)
-    // A session's workspace is fixed once set — return the unchanged meta so any
-    // optimistic renderer update reconciles back to the real value.
-    if (before?.kind === 'project') return before
-    const meta = updateSessionCwd(args.sessionId, args.path)
-    agents.get(args.sessionId)?.setCwd(args.path)
-    if (before?.kind === 'chat') server.sendSessionDelete({ sessionId: args.sessionId })
-    return meta ?? null
   })
 
   // Rename a session. Title-gen only fires while the title is still the default

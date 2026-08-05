@@ -661,23 +661,14 @@ export const useChat = create<ChatState>((set, get) => ({
     void window.api.setPermissionMode(mode)
   },
 
+  // Home screen only (a session's workspace is fixed at creation, so the picker
+  // UI never shows once a session exists): pick a directory and stash it for
+  // the session that gets lazily created on the first message.
   setWorkingDirectory: async () => {
-    const sessionId = get().sessionId
-    // No session yet (home screen): pick a directory and stash it for the
-    // session that gets lazily created on the first message.
-    if (!sessionId) {
-      const dir = await window.api.pickDirectory()
-      if (!dir) return // user cancelled
-      set({ pendingCwd: dir })
-      await get().loadRecentDirs() // main recorded the pick
-      return
-    }
-    // A session's workspace is fixed once set (the picker UI is hidden for
-    // projects; this guards any other path).
-    if (selectProjectWorkspace(get())) return
-    const updated = await window.api.setWorkingDirectory({ sessionId })
-    if (!updated) return // user cancelled
-    set((s) => ({ sessions: s.sessions.map((m) => (m.id === updated.id ? updated : m)) }))
+    if (get().sessionId) return
+    const dir = await window.api.pickDirectory()
+    if (!dir) return // user cancelled
+    set({ pendingCwd: dir })
     await get().loadRecentDirs() // main recorded the pick
   },
 
@@ -686,33 +677,16 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ recentDirs: dirs })
   },
 
-  // Pick an already-known directory from the recents menu (no native dialog).
-  // Apply the cwd optimistically and SYNCHRONOUSLY (before any await) so the
-  // store update batches into the same commit as the menu's close — exactly how
-  // the synchronous permission menu behaves. Letting the IPC round-trip land the
-  // update instead would re-render mid close-animation and flash the menu.
+  // Pick an already-known directory from the recents menu (home screen only,
+  // like setWorkingDirectory — no native dialog). Set pendingCwd SYNCHRONOUSLY
+  // (before any await) so the store update batches into the same commit as the
+  // menu's close — exactly how the synchronous permission menu behaves. Letting
+  // the IPC round-trip land the update instead would re-render mid
+  // close-animation and flash the menu.
   chooseWorkingDirectory: async (path) => {
-    const sessionId = get().sessionId
-    // A session's workspace is fixed once set — skip the optimistic flip too.
-    if (sessionId && selectProjectWorkspace(get())) return
-    if (sessionId) {
-      set((s) => ({
-        sessions: s.sessions.map((m) =>
-          m.id === sessionId
-            ? { ...m, cwd: path, workspacePath: path, kind: 'project' as const }
-            : m
-        )
-      }))
-    } else {
-      set({ pendingCwd: path })
-    }
-    // Persist + rebind the agent in the background. The returned meta carries the
-    // canonical (normalized) cwd; reconciling it is a visual no-op since we
-    // already show this path, so it can't reintroduce the flash.
-    const updated = await window.api.chooseDirectory({ sessionId, path })
-    if (sessionId && updated) {
-      set((s) => ({ sessions: s.sessions.map((m) => (m.id === updated.id ? updated : m)) }))
-    }
+    if (get().sessionId) return
+    set({ pendingCwd: path })
+    await window.api.chooseDirectory({ path }) // main bumps recents
   },
 
   // Forget a recent directory (composer menu right-click). Local convenience

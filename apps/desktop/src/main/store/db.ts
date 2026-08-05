@@ -460,20 +460,6 @@ export function getSession(id: string): SessionMeta | undefined {
   return row ? mapSessionRow(row) : undefined
 }
 
-/**
- * Update a session's working directory. Intentionally does NOT touch
- * `updatedAt`: the session list is ordered by `updatedAt DESC`, and a pure cwd
- * change shouldn't reorder the sidebar.
- */
-export function updateSessionCwd(id: string, cwd: string): SessionMeta | undefined {
-  db.prepare('UPDATE sessions SET cwd = ?, workspacePath = ? WHERE id = ?').run(
-    cwd,
-    workspaceFromCwd(cwd),
-    id
-  )
-  return getSession(id)
-}
-
 /** How many recent directories the composer menu keeps. */
 const RECENT_DIR_LIMIT = 10
 
@@ -532,9 +518,9 @@ export function listRecentDirectories(): string[] {
 }
 
 /**
- * Set a session's title (used by automatic title generation). Like
- * {@link updateSessionCwd}, it intentionally does NOT touch `updatedAt` so a
- * title change doesn't reorder the sidebar.
+ * Set a session's title (used by automatic title generation). Intentionally
+ * does NOT touch `updatedAt` (the session list is ordered by `updatedAt DESC`)
+ * so a title change doesn't reorder the sidebar.
  */
 export function updateSessionTitle(id: string, title: string): SessionMeta | undefined {
   db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(title, id)

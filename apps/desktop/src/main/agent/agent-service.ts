@@ -121,6 +121,21 @@ const TOOL_SELECTION_FLOOR = new Set([
   "remember",
   "search_tool",
 ]);
+/**
+ * The default toolset of a `chat` session. Chat exposes the full catalog minus
+ * the file/shell tools (see buildAllTools), but nothing beyond this floor is
+ * enabled by default — `search_tool` is the only expansion path (there is no
+ * automatic selector call in chat; see maybeSelectTools). Unlike the project
+ * floor, `todo_write`/`remember` are NOT here: they exist in the chat catalog
+ * but stay off until searched for (`read` is a file tool, absent from chat).
+ */
+const CHAT_TOOL_FLOOR = new Set([
+  "ask",
+  "schedule",
+  "web_search",
+  "web_fetch",
+  "search_tool",
+]);
 /** Hard cap on the tool-selector side call so it can't stall the turn. */
 const TOOL_SELECTION_TIMEOUT_MS = 10_000;
 /** Trailing conversational messages given to the selector as routing context. */
@@ -284,6 +299,8 @@ export class AgentService {
    * definition, so removing tools turn-over-turn would thrash the prefix cache.
    */
   private selectedToolNames: Set<string> | null = null;
+  /** Session kind, read once at construction — see {@link isChatSession}. */
+  private readonly chatSession: boolean;
   /**
    * Set when a selector call fails: stop selecting for the rest of the session
    * and run with the full toolset (fail-open, cache-stable). Not persisted — a
@@ -368,6 +385,7 @@ export class AgentService {
     this.server = server;
     this.mcp = mcp;
     this.cwd = cwd;
+    this.chatSession = getSession(sessionId)?.kind === "chat";
     this.onRejectInteractions =
       opts.onRejectInteractions ?? ((id) => questions.rejectSession(id));
     this.emitEvent =
@@ -651,73 +669,67 @@ export class AgentService {
   }
 
   /**
-   * Whether this session is a `chat` (no workspace chosen). Resolved fresh from
-   * SQLite rather than cached: a chat session becomes a `project` the moment the
-   * user picks a directory (updateSessionCwd persists BEFORE setCwd rebuilds),
-   * and the rebuild must see the new kind. Chat sessions run a minimal toolset
-   * (ask + web tools only) and use the `chat` system prompt instead of `main`.
+   * Whether this session is a `chat` (no workspace). Kind is fixed at session
+   * creation — a project's workspace is chosen before the session exists and
+   * never changes — so it's read from SQLite once in the constructor. Chat
+   * sessions run a floor-only default toolset (see CHAT_TOOL_FLOOR) over a
+   * catalog that excludes the file/shell tools, and use the `chat` system
+   * prompt instead of `main`.
    */
   private isChatSession(): boolean {
-    return getSession(this.sessionId)?.kind === "chat";
+    return this.chatSession;
   }
 
   /**
-   * Assemble the agent's tool set. A `chat` session (no workspace chosen) gets a
-   * deliberately minimal set — `ask` plus the web tools — nothing that touches
-   * local state (no file/shell tools, no remember/todo, no MCP). A project
-   * session gets the full set: the local coding tools, `ask` (which needs
-   * `win` + `sessionId` to round-trip a question to the renderer), remember/todo,
-   * the web tools, and the live MCP tools. Used at all three injection points
-   * (constructor, MCP tool-change rebuild, setCwd rebuild) so `ask` is always
-   * present.
-   *
-   * Split into two layers for automatic tool selection: {@link buildAllTools}
-   * is the unfiltered catalog (what the session COULD have), and this method
-   * applies the accumulated selection on top. Every rebuild site (constructor,
-   * MCP change, config push, setCwd) calls this method, so the filter is
-   * re-applied automatically.
+   * Assemble the agent's tool set: the unfiltered catalog ({@link
+   * buildAllTools}) with the enabled-name filter ({@link enabledToolNames})
+   * applied. Every rebuild site (constructor, MCP change, config push) calls
+   * this method, so the filter is re-applied automatically.
    */
   private buildTools(cwd: string): AgentTool<any>[] {
     const all = this.buildAllTools(cwd);
-    if (!this.toolSelectionActive()) return all;
-    const sel = this.selectedToolNames!;
+    const enabled = this.enabledToolNames();
+    if (!enabled) return all;
     // Membership filter only — buildAllTools' stable ordering is preserved so
     // pi-ai's automatic cache breakpoint on the last tool def sits on a prefix
     // that only ever GROWS within a session (accumulate-only union).
-    return all.filter((t) => TOOL_SELECTION_FLOOR.has(t.name) || sel.has(t.name));
+    return all.filter((t) => enabled.has(t.name));
   }
 
   /**
-   * Whether the selection filter applies right now. Checking the server prompt
-   * HERE (not just at selection time) means an admin disabling the
-   * `tool_selection` prompt restores the full toolset at the very next rebuild
-   * (onConfig fires immediately on the push).
+   * The tool names currently enabled — always floor ∪ accumulated union — or
+   * null when no filter applies (full catalog):
+   * - chat: always filtered. CHAT_TOOL_FLOOR by default, grown only by
+   *   `search_tool` — independent of the server-driven selector feature.
+   * - project: filtered only while automatic selection is live — the selector
+   *   has seeded the union, hasn't failed open, and the server still delivers
+   *   the `tool_selection` prompt. Checking the prompt HERE (not just at
+   *   selection time) means an admin disabling it restores the full toolset at
+   *   the very next rebuild (onConfig fires immediately on the push).
    */
-  private toolSelectionActive(): boolean {
-    if (this.toolSelectionBypassed || !this.selectedToolNames) return false;
-    if (this.isChatSession()) return false;
+  private enabledToolNames(): Set<string> | null {
+    if (this.isChatSession())
+      return new Set([...CHAT_TOOL_FLOOR, ...(this.selectedToolNames ?? [])]);
+    if (this.toolSelectionBypassed || !this.selectedToolNames) return null;
     const config = this.server.getConfig();
-    return !!config && !!findPromptBody(config, TOOL_SELECTION_PROMPT_NAME);
+    if (!config || !findPromptBody(config, TOOL_SELECTION_PROMPT_NAME)) return null;
+    return new Set([...TOOL_SELECTION_FLOOR, ...this.selectedToolNames]);
   }
 
   /**
    * Grow the selection union with catalog tool names (search_tool's enable
-   * path) and return the names actually newly enabled. No-op while selection
-   * is inactive: the full catalog is already available then, and seeding the
-   * union from null would ACTIVATE filtering and shrink the toolset — the
-   * opposite of what the caller wants. Accumulate-only, like the selector.
+   * path) and return the names actually newly enabled. No-op while nothing is
+   * filtered: the full catalog is already available then, and seeding the
+   * union would ACTIVATE filtering and shrink the toolset — the opposite of
+   * what the caller wants. Accumulate-only, like the selector.
    */
   private enableSelectedTools(names: string[]): string[] {
-    if (!this.toolSelectionActive()) return [];
+    const enabled = this.enabledToolNames();
+    if (!enabled) return [];
     const valid = new Set(this.buildAllTools(this.cwd).map((t) => t.name));
-    const union = new Set(this.selectedToolNames!);
-    const added: string[] = [];
-    for (const n of names) {
-      if (!valid.has(n) || union.has(n) || TOOL_SELECTION_FLOOR.has(n)) continue;
-      union.add(n);
-      added.push(n);
-    }
+    const added = names.filter((n) => valid.has(n) && !enabled.has(n));
     if (added.length === 0) return [];
+    const union = new Set([...(this.selectedToolNames ?? []), ...added]);
     this.selectedToolNames = union;
     saveToolSelection(this.sessionId, [...union]);
     // Reaches the NEXT run immediately; the in-flight run is refreshed via the
@@ -730,7 +742,12 @@ export class AgentService {
     return added;
   }
 
-  /** Unfiltered tool catalog — everything the session could have. */
+  /**
+   * Unfiltered tool catalog — everything the session could have. Identical for
+   * chat and project sessions except the file/shell tools (createTools), which
+   * a chat (no workspace chosen) never gets; what a chat actually STARTS with
+   * is the much smaller CHAT_TOOL_FLOOR (see enabledToolNames).
+   */
   private buildAllTools(cwd: string): AgentTool<any>[] {
     const chat = this.isChatSession();
     const tools: AgentTool<any>[] = [
@@ -746,34 +763,33 @@ export class AgentService {
       // (local metadata only) — see beforeToolCall.
       createScheduleTool(this.sessionId),
     ];
-    if (!chat) {
+    tools.push(
+      createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
+      createTodoTool(),
+    );
+    // The selection escape hatch — registered whenever filtering can be active:
+    // always in chat (the ONLY way a chat grows its toolset), and in a project
+    // only while the server-driven `tool_selection` feature exists (without it
+    // the full catalog is always enabled and the tool would be dead weight).
+    // Floor member in both kinds, so never filtered out.
+    const config = this.server.getConfig();
+    if (chat || (config && findPromptBody(config, TOOL_SELECTION_PROMPT_NAME))) {
       tools.push(
-        createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
-        createTodoTool(),
+        createSearchToolTool({
+          getCatalog: () => this.buildAllTools(this.cwd),
+          getEnabledNames: () =>
+            new Set(this.buildTools(this.cwd).map((t) => t.name)),
+          enable: (names) => this.enableSelectedTools(names),
+        }),
       );
-      // The selection escape hatch. Registered only while the server-driven
-      // `tool_selection` feature exists — without it the full catalog is always
-      // enabled and the tool would be dead weight (same "never see a tool you
-      // can't use" rule as web_search). Floor member, so never filtered out.
-      const config = this.server.getConfig();
-      if (config && findPromptBody(config, TOOL_SELECTION_PROMPT_NAME)) {
-        tools.push(
-          createSearchToolTool({
-            getCatalog: () => this.buildAllTools(this.cwd),
-            getEnabledNames: () =>
-              new Set(this.buildTools(this.cwd).map((t) => t.name)),
-            enable: (names) => this.enableSelectedTools(names),
-          }),
-        );
-      }
-      // GitHub tools are a generic project-session capability (the orchestrator
-      // skill builds on them). Always registered so the model can surface a
-      // clear "connect GitHub in Settings" error instead of the tools silently
-      // not existing; only github_read is read-only-allowlisted.
-      tools.push(...createGithubTools(cwd));
-      tools.push(createDispatchTaskTool(this.sessionId, cwd));
-      tools.push(createDispatchReviewTool(this.sessionId, cwd));
     }
+    // GitHub tools are a generic capability (the orchestrator skill builds on
+    // them). Always registered so the model can surface a clear "connect GitHub
+    // in Settings" error instead of the tools silently not existing; only
+    // github_read is read-only-allowlisted.
+    tools.push(...createGithubTools(cwd));
+    tools.push(createDispatchTaskTool(this.sessionId, cwd));
+    tools.push(createDispatchReviewTool(this.sessionId, cwd));
     // Offer web_search only when an Exa service is configured + enabled, so the
     // model never sees a tool it can't actually use. Resolved fresh at execute
     // time from the latest server config (key never captured here).
@@ -813,7 +829,7 @@ export class AgentService {
         )
       );
     }
-    if (!chat) tools.push(...this.mcp.getTools());
+    tools.push(...this.mcp.getTools());
     return tools;
   }
 
@@ -1186,11 +1202,13 @@ export class AgentService {
    */
   private async maybeSelectTools(text: string): Promise<void> {
     if (this.toolSelectionBypassed) return;
-    if (this.isChatSession()) return; // chat toolset is already minimal
+    // Chat never runs the selector: its default is the fixed CHAT_TOOL_FLOOR
+    // and search_tool is the only expansion path (no per-turn side call).
+    if (this.isChatSession()) return;
     const config = this.server.getConfig();
     if (!config) return;
     const sysPrompt = findPromptBody(config, TOOL_SELECTION_PROMPT_NAME);
-    if (!sysPrompt) return; // feature off → toolSelectionActive() stays false
+    if (!sysPrompt) return; // feature off → enabledToolNames() stays null
     const llm = config.llm.tool ?? config.llm.main;
     if (!llm) return;
 
@@ -1277,7 +1295,7 @@ export class AgentService {
       // persisted union is untouched; a recreated service re-hydrates it and
       // tries selecting again.
       this.toolSelectionBypassed = true;
-      this.agent.state.tools = this.buildTools(this.cwd); // active() now false → full set
+      this.agent.state.tools = this.buildTools(this.cwd); // filter now off → full set
       console.warn("[ToolSelection] failed, running with full toolset:", err);
     } finally {
       clearTimeout(timeout);
@@ -1704,27 +1722,6 @@ export class AgentService {
       sessionId: this.sessionId,
       active,
     });
-  }
-
-  /**
-   * Rebind the working directory: rebuild the local tools against `cwd` and swap
-   * them onto the live agent, preserving the MCP tools. Assigning `state.tools`
-   * is the sanctioned pi-agent-core injection point (copy-on-assign semantics).
-   * Also refresh the system prompt so its injected `{{cwd}}` stays accurate.
-   */
-  setCwd(cwd: string): void {
-    this.cwd = cwd;
-    // The session kind is re-read here: picking a directory flips a chat into a
-    // project (persisted before this call), so the rebuild injects the local
-    // file/shell tools and swaps the `chat` prompt for `main`.
-    this.agent.state.tools = this.buildTools(cwd);
-    const config = this.server.getConfig();
-    if (config)
-      this.agent.state.systemPrompt = buildSystemPrompt(
-        config,
-        cwd,
-        this.isChatSession(),
-      );
   }
 
   abort(): void {

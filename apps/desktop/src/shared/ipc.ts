@@ -56,7 +56,6 @@ export const IPC = {
   SessionLoadLive: 'session:load-live',
   SearchMessages: 'search:messages',
   SessionCreate: 'session:create',
-  SessionSetCwd: 'session:set-cwd',
   SessionListRecentDirs: 'session:list-recent-dirs',
   SessionRemoveRecentDir: 'session:remove-recent-dir',
   RecentDirContextMenu: 'recent-dir:context-menu',
@@ -300,13 +299,7 @@ export interface ApprovalResponseArgs {
  */
 export type PermissionMode = 'ask' | 'full'
 
-export interface SetCwdArgs {
-  sessionId: string
-}
-
 export interface ChooseDirArgs {
-  /** null on the home screen (no session yet). */
-  sessionId: string | null
   path: string
 }
 
@@ -912,11 +905,6 @@ export interface FlairyApi {
   /** Full-text search over message content + session titles. */
   searchMessages(args: SearchMessagesArgs): Promise<SearchHit[]>
   createSession(args: CreateSessionArgs): Promise<SessionMeta>
-  /**
-   * Open a native directory picker and set it as the session's working
-   * directory (persisted). Returns the updated meta, or null if cancelled.
-   */
-  setWorkingDirectory(args: SetCwdArgs): Promise<SessionMeta | null>
   /** Previously-used working directories, newest first (max 10). */
   listRecentDirectories(): Promise<string[]>
   /** Forget a recent directory. Returns the updated recents list, newest first. */
@@ -928,11 +916,11 @@ export interface FlairyApi {
    */
   showRecentDirMenu(): Promise<RecentDirMenuAction | null>
   /**
-   * Set an already-known path as the working directory (recents click — no
-   * native dialog). Bumps recents. Returns the updated meta when `sessionId` is
-   * given, else null (home screen: the caller sets pendingCwd from the path).
+   * Record an already-known path in recents (home-screen recents click — no
+   * native dialog). The caller sets pendingCwd from the path; a workspace is
+   * fixed at session creation.
    */
-  chooseDirectory(args: ChooseDirArgs): Promise<SessionMeta | null>
+  chooseDirectory(args: ChooseDirArgs): Promise<void>
   /** Rename a session. Returns the updated meta, or null if it no longer exists. */
   renameSession(args: RenameSessionArgs): Promise<SessionMeta | null>
   /** Delete a session and its messages locally. Returns true if a row was removed. */
