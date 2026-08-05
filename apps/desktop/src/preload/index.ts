@@ -21,6 +21,7 @@ import {
   type UpdateState,
   type WorkerRun
 } from '@shared/ipc'
+import { supportsWindowMaterial } from '@shared/native-material'
 
 /**
  * The ONLY bridge between renderer and main. We expose a typed, whitelisted API
@@ -89,6 +90,7 @@ const api: FlairyApi = {
   downloadUpdate: () => ipcRenderer.invoke(IPC.UpdateDownload),
   installUpdate: () => ipcRenderer.invoke(IPC.UpdateInstall),
   platform: process.platform,
+  translucent: supportsWindowMaterial(),
   getInitialLanguage: () => ipcRenderer.sendSync(IPC.SettingsGetLanguage) as AppLanguage,
   setLanguage: (lng) => ipcRenderer.invoke(IPC.SettingsSetLanguage, lng),
   getCloseToTray: () => ipcRenderer.invoke(IPC.SettingsGetCloseToTray),

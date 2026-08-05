@@ -136,9 +136,10 @@
    Pure neutral (chroma 0): true black/white/gray, no warm cast. Hierarchy is
    carried by weight + grayscale and hairline borders, not color. The only
    non-neutral is the functional `destructive` red.
-   The side rails (left nav + right details) are a frosted macOS material; their
-   translucency is switched on only under `.vibrancy` (the main window on macOS),
-   so non-vibrant windows fall back to the opaque `--sidebar` below.            */
+   The side rails (left nav + right details) are frosted over the native window
+   backing; their translucency is switched on only under `.vibrancy` (translucent
+   windows — macOS, Windows 11 acrylic), so non-vibrant windows fall back to the
+   opaque `--sidebar` below.                                                    */
 :root {
     --radius: 0.625rem;
 
@@ -243,12 +244,13 @@
     --rail-shadow: rgba(0, 0, 0, 0.5);
 }
 
-/* ── Frosted rails (macOS vibrancy) ──────────────────────────────────────────
-   The main window tags <html> with `.vibrancy` on macOS, where the window
-   background is a native NSVisualEffectView ('sidebar' material). We make the
-   body transparent so that material shows through, and tint the rails so the
-   desktop blurs through them just like a native sidebar. The chat surface stays
-   opaque (painted in the layout), so only the rails are translucent.          */
+/* ── Frosted rails (translucent windows) ─────────────────────────────────────
+   The window tags <html> with `.vibrancy` when it sits on a translucent native
+   backing (window.api.translucent): a transparent window on macOS, the acrylic
+   system backdrop on Windows 11 22H2+. We make the body transparent so that
+   backing shows through, and tint the rails so the desktop shows through them
+   like a native sidebar. The chat surface stays opaque (painted in the
+   layout), so only the rails are translucent.                                 */
 :root.vibrancy {
     /* Slightly more see-through than before so the inset panel's gutter reads
        as a distinct frosted band instead of merging into the white panel. */

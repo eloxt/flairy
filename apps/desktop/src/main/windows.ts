@@ -2,6 +2,7 @@ import { shell, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
 import { IPC } from "@shared/ipc";
+import { supportsWindowMaterial } from "@shared/native-material";
 import { getCloseToTrayPref } from "./store/db";
 
 /**
@@ -53,6 +54,37 @@ export function showMainWindow(): void {
   }
 }
 
+/**
+ * Translucent window backing for the frosted rails, per platform. The renderer
+ * mirrors this via `window.api.translucent` (same `supportsWindowMaterial`
+ * check in the preload) and tags <html> with `.vibrancy` so the rails go
+ * transparent over it.
+ *
+ * - macOS: a genuinely transparent window — on macOS 26 + Electron 34 the
+ *   NSVisualEffectView materials rendered flat opaque gray, so the rails show
+ *   the real desktop through their low-alpha tint instead (no blur).
+ * - Windows 11 22H2+: the DWM `acrylic` system backdrop — a live blur of
+ *   whatever is behind the window, the closest match to the macOS treatment
+ *   (`mica` only shows a near-opaque wallpaper tint). Since Electron 27 a
+ *   `backgroundMaterial` window gets a transparent background automatically
+ *   and composes with `titleBarStyle: "hidden*"`.
+ * - Older Windows / Linux: no material — `{}` keeps the default opaque window
+ *   and the renderer keeps opaque rails (no `.vibrancy` tag).
+ */
+function windowMaterialOptions():
+  | { vibrancy: "popover"; visualEffectState: "active"; backgroundColor: string }
+  | { backgroundMaterial: "acrylic" }
+  | Record<string, never> {
+  if (process.platform === "darwin") {
+    return {
+      vibrancy: "popover",
+      visualEffectState: "active",
+      backgroundColor: "#00000000",
+    };
+  }
+  return supportsWindowMaterial() ? { backgroundMaterial: "acrylic" } : {};
+}
+
 // contextIsolation is the real renderer<->main boundary. sandbox is false
 // because with "type": "module" the preload is ESM, and Electron's sandbox
 // requires a CommonJS preload. nodeIntegration stays off.
@@ -99,7 +131,6 @@ function openLinksExternally(win: BrowserWindow): void {
 }
 
 export function createMainWindow(): BrowserWindow {
-  const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -110,23 +141,10 @@ export function createMainWindow(): BrowserWindow {
     // now sits 8px lower (the inset panel's top gutter): ~14px cluster →
     // y = 8 + (48 - 14) / 2 ≈ 25.
     trafficLightPosition: { x: 20, y: 25 },
-    // Transparent rails on macOS: the renderer paints the chat surface opaque and
-    // leaves the side rails translucent (the `.vibrancy` class), so the desktop
-    // shows through the sidebar/details panel. We use a genuinely transparent
-    // window rather than the native `vibrancy` material: on macOS 26 (Tahoe) with
-    // Electron 34 the NSVisualEffectView materials render as a flat opaque gray
-    // and never reveal the desktop, so the frosted-glass approach is dead. A
-    // `transparent` window lets the rail's low-alpha `--sidebar` tint show the
-    // real desktop behind it (no blur, but actually see-through).
-    ...(isMac
-      ? {
-          vibrancy: "popover" as const,
-          visualEffectState: "active" as const,
-          backgroundColor: "#00000000",
-        }
-      : {
-          backgroundMaterial: "mica" as const,
-        }),
+    // Translucent rails: the renderer paints the chat surface opaque and leaves
+    // the side rails see-through (the `.vibrancy` class) over the platform
+    // backing chosen in windowMaterialOptions().
+    ...windowMaterialOptions(),
     webPreferences,
   });
 
@@ -163,7 +181,6 @@ export function openSettingsWindow(tab?: string): void {
     return;
   }
 
-  const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
     width: 780,
     height: 600,
@@ -176,15 +193,7 @@ export function openSettingsWindow(tab?: string): void {
     trafficLightPosition: { x: 16, y: 15 },
     // Same frosted treatment as the main window: the settings sidebar is a
     // translucent rail (`.vibrancy` on <html>), the content pane paints opaque.
-    ...(isMac
-      ? {
-          vibrancy: "popover" as const,
-          visualEffectState: "active" as const,
-          backgroundColor: "#00000000",
-        }
-      : {
-          backgroundMaterial: "mica" as const,
-        }),
+    ...windowMaterialOptions(),
     webPreferences,
   });
 

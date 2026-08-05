@@ -1087,6 +1087,13 @@ export interface FlairyApi {
   /** The OS platform, so the renderer can adapt chrome (e.g. macOS traffic lights). */
   platform: Platform
   /**
+   * Whether the window sits on a translucent native backing (macOS transparent
+   * window / Windows 11 acrylic; see main's windowMaterialOptions). When true
+   * the renderer tags <html> with `.vibrancy` so the side rails go see-through;
+   * when false everything paints the opaque fallback.
+   */
+  translucent: boolean
+  /**
    * The language to render with on first paint, resolved synchronously by main
    * (saved setting, else system locale). Sync so i18n initializes before paint.
    */

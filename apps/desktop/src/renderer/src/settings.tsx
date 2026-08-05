@@ -8,8 +8,9 @@ import './assets/globals.css'
 followSystemTheme()
 
 // Same as the main window: tag <html> so the sidebar rail goes translucent over
-// the native vibrancy material. macOS only — other platforms keep opaque rails.
-if (window.api.platform === 'darwin') {
+// the native backing (macOS transparent window / Windows 11 acrylic);
+// unsupported platforms keep opaque rails.
+if (window.api.translucent) {
   document.documentElement.classList.add('vibrancy')
 }
 

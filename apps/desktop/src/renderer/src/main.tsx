@@ -7,10 +7,11 @@ import './assets/globals.css'
 
 followSystemTheme()
 
-// The main window uses a native macOS vibrancy material behind the side rails
-// (set in createMainWindow). Tag <html> so the rails go translucent and the body
-// turns transparent to reveal it. macOS only — other platforms keep opaque rails.
-if (window.api.platform === 'darwin') {
+// The main window sits on a translucent native backing behind the side rails
+// (macOS transparent window / Windows 11 acrylic — see main's
+// windowMaterialOptions). Tag <html> so the rails go translucent and the body
+// turns transparent to reveal it; unsupported platforms keep opaque rails.
+if (window.api.translucent) {
   document.documentElement.classList.add('vibrancy')
 }
 
