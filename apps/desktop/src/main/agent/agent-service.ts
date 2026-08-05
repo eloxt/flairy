@@ -132,16 +132,32 @@ const RETRY_BASE_DELAY_MS = 1000;
 /**
  * Permanent failures that a retry can never fix: auth/credential problems,
  * billing, a missing model, an over-long prompt, malformed requests, and user
- * aborts. pi-ai flattens provider errors to a plain `errorMessage` string (no
- * structured status), so classification is by substring. Anything NOT matched
- * here — 429/5xx/overloaded/timeouts/socket resets/unknown network junk — is
- * treated as transient and retried.
+ * aborts. pi-ai flattens HTTP-level provider errors to a plain `errorMessage`
+ * string (no structured status), so those are classified by substring. Anything
+ * NOT matched here — 429/5xx/overloaded/timeouts/socket resets/unknown network
+ * junk — is treated as transient and retried. Content-level terminal stops are
+ * classified structurally via `rawStopReason` before this regex is consulted
+ * (see {@link isRetryableModelError}).
  */
 const NON_RETRYABLE_ERROR =
   /\b40[0134]\b|invalid[ _]*(api[ _]*)?key|api key|unauthorized|authentication|permission|forbidden|billing|credit|payment|model not found|does not exist|not_found_error|invalid_request_error|context (length|window)|too many tokens|prompt is too long|maximum context|abort/i;
 
+/** The failure signals retry classification reads off an errored message. */
+interface ModelFailure {
+  errorMessage?: string;
+  rawStopReason?: string;
+}
+
 /** Whether an errored model request is worth retrying (transient by default). */
-function isRetryableModelError(errorMessage: string | undefined): boolean {
+function isRetryableModelError({ errorMessage, rawStopReason }: ModelFailure): boolean {
+  // A raw provider stop reason on a FAILED message (pi-ai 0.83+) means the
+  // provider returned a well-formed terminal response — a refusal, a safety
+  // filter, or a stop reason pi can't map (surfaced as errors instead of fake
+  // successful stops). The request itself succeeded, so re-sending the same
+  // prompt would just terminate the same way: never retry these. HTTP/network
+  // failures never carry a raw stop reason and fall through to the substring
+  // classification below.
+  if (rawStopReason) return false;
   if (!errorMessage) return true;
   return !NON_RETRYABLE_ERROR.test(errorMessage);
 }
@@ -553,7 +569,13 @@ export class AgentService {
         // A retryable failure opens a retry window instead of surfacing: the
         // run is about to end with an errored message that runTurnRetries (in
         // prompt(), which is still awaiting this run) will pop and re-issue.
-        if (inner.reason !== "aborted" && this.willAutoRetry(msg)) {
+        if (
+          inner.reason !== "aborted" &&
+          this.willAutoRetry({
+            errorMessage: msg,
+            rawStopReason: inner.error?.rawStopReason,
+          })
+        ) {
           this.beginRetryWindow();
           return;
         }
@@ -577,7 +599,12 @@ export class AgentService {
         // Same retry window as the mid-stream branch (which may already have
         // opened it — beginRetryWindow is idempotent per failure). Swallow the
         // errored message_end: the failed message never reaches the renderer.
-        if (this.willAutoRetry(endMsg.errorMessage)) {
+        if (
+          this.willAutoRetry({
+            errorMessage: endMsg.errorMessage,
+            rawStopReason: endMsg.rawStopReason,
+          })
+        ) {
           this.beginRetryWindow();
           return;
         }
@@ -1011,12 +1038,12 @@ export class AgentService {
    * the handler decides at message_end time, the loop re-checks once the run
    * resolves — same state, same predicate.
    */
-  private willAutoRetry(errorMessage: string | undefined): boolean {
+  private willAutoRetry(failure: ModelFailure): boolean {
     return (
       this.running &&
       !this.disposed &&
       this.retryAttempt < MAX_AUTO_RETRIES &&
-      isRetryableModelError(errorMessage)
+      isRetryableModelError(failure)
     );
   }
 
@@ -1082,7 +1109,10 @@ export class AgentService {
         !this.running ||
         this.disposed ||
         this.retryAttempt >= MAX_AUTO_RETRIES ||
-        !isRetryableModelError(last.errorMessage)
+        !isRetryableModelError({
+          errorMessage: last.errorMessage,
+          rawStopReason: last.rawStopReason,
+        })
       ) {
         // Give up. If the handler swallowed the terminal error expecting a
         // retry that won't happen, surface it now — unless the user stopped
