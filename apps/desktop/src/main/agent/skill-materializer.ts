@@ -66,27 +66,32 @@ function writeManifest(entries: ManifestEntry[]): void {
 }
 
 /**
- * Materialize the enabled subset of `summaries`. Defensive by design: a single
- * skill's fetch/write failure is logged and skipped so the rest still land.
- * Returns once all enabled skills have been processed.
+ * Materialize the EFFECTIVE skill set — server-pushed summaries (fetched over
+ * REST) plus locally-authored full skills (written inline) — in one manifest
+ * pass, so both sources coexist on disk and stale entries from either are
+ * removed. A local skill wins a name collision (one directory per name): the
+ * colliding server skill is skipped.
+ *
+ * Defensive by design: a single skill's fetch/write failure is logged and
+ * skipped so the rest still land. Without a token the server entries can't be
+ * (re)fetched — the ones already on disk are left as-is so a cached config
+ * keeps working offline; local skills are processed regardless.
  */
-export async function materializeSkills(
-  summaries: SkillSummary[],
+export async function materializeSkillSet(
+  remote: SkillSummary[],
+  local: SkillConfig[],
   token: string | undefined,
   baseUrl: string
 ): Promise<void> {
-  if (!token) {
-    // Without a token we can't fetch details; leave the existing on-disk cache
-    // untouched so we stay usable offline.
-    return
-  }
+  const enabledLocal = local.filter((s) => s.enabled)
+  const localNames = new Set(enabledLocal.map((s) => s.name))
+  const enabledRemote = remote.filter((s) => s.enabled && !localNames.has(s.name))
 
-  const enabled = summaries.filter((s) => s.enabled)
   // The manifest mirrors disk; we mutate this map through the run and persist once.
   const manifest = new Map(readManifest().map((e) => [e.id, e]))
 
   // Remove skills that are gone or no longer enabled (disk + manifest).
-  const keepIds = new Set(enabled.map((s) => s.id))
+  const keepIds = new Set([...enabledLocal, ...enabledRemote].map((s) => s.id))
   for (const entry of [...manifest.values()]) {
     if (!keepIds.has(entry.id)) {
       await rmDir(skillDir(entry.name))
@@ -94,7 +99,28 @@ export async function materializeSkills(
     }
   }
 
-  for (const summary of enabled) {
+  for (const skill of enabledLocal) {
+    const prev = manifest.get(skill.id)
+    // Re-materialize on any change (locally edited skills always bump updatedAt).
+    if (prev && prev.updatedAt === skill.updatedAt && prev.enabled && prev.name === skill.name) {
+      continue
+    }
+    try {
+      if (prev && prev.name !== skill.name) await rmDir(skillDir(prev.name))
+      await writeLocalSkill(skill)
+      manifest.set(skill.id, {
+        id: skill.id,
+        name: skill.name,
+        enabled: skill.enabled,
+        updatedAt: skill.updatedAt
+      })
+    } catch (err) {
+      console.error(`[skill-materializer] failed to materialize local "${skill.name}":`, err)
+    }
+  }
+
+  for (const summary of enabledRemote) {
+    if (!token) continue
     const prev = manifest.get(summary.id)
     // Skip unchanged skills (same updatedAt) — already materialized on disk.
     if (prev && prev.updatedAt === summary.updatedAt && prev.enabled) continue
@@ -115,49 +141,6 @@ export async function materializeSkills(
     } catch (err) {
       // Per-item isolation: one failure must not abort the others.
       console.error(`[skill-materializer] failed to materialize "${summary.name}":`, err)
-    }
-  }
-
-  writeManifest([...manifest.values()])
-}
-
-/**
- * Materialize FULL skills authored locally ("detached" mode) — no server, no
- * REST. Bodies and file bytes come straight from the passed {@link SkillConfig}
- * rows (inline `text`/`dataurl` sources only; `url`/`upload` need a server and
- * are skipped with a warning). Reconciles disk + manifest the same way as the
- * server path so switching modes cleanly replaces the other mode's skills.
- */
-export async function materializeLocalSkills(skills: SkillConfig[]): Promise<void> {
-  const enabled = skills.filter((s) => s.enabled)
-  const manifest = new Map(readManifest().map((e) => [e.id, e]))
-
-  // Remove skills that are gone or no longer enabled (disk + manifest).
-  const keepIds = new Set(enabled.map((s) => s.id))
-  for (const entry of [...manifest.values()]) {
-    if (!keepIds.has(entry.id)) {
-      await rmDir(skillDir(entry.name))
-      manifest.delete(entry.id)
-    }
-  }
-
-  for (const skill of enabled) {
-    const prev = manifest.get(skill.id)
-    // Re-materialize on any change (locally edited skills always bump updatedAt).
-    if (prev && prev.updatedAt === skill.updatedAt && prev.enabled && prev.name === skill.name) {
-      continue
-    }
-    try {
-      if (prev && prev.name !== skill.name) await rmDir(skillDir(prev.name))
-      await writeLocalSkill(skill)
-      manifest.set(skill.id, {
-        id: skill.id,
-        name: skill.name,
-        enabled: skill.enabled,
-        updatedAt: skill.updatedAt
-      })
-    } catch (err) {
-      console.error(`[skill-materializer] failed to materialize local "${skill.name}":`, err)
     }
   }
 

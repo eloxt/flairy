@@ -3,13 +3,13 @@ import type { ConfigSnapshot, SkillConfig } from '@flairy/shared'
 import { saveLocalConfigBlob, loadLocalConfigBlob, clearLocalConfigBlob } from './db'
 
 /**
- * Encrypted-at-rest store for the user-authored LOCAL config ("detached" mode).
- *
- * When the user detaches from the server (Advanced settings), the client stops
- * receiving pushed config and runs off this instead. The bundle holds a full
+ * Encrypted-at-rest store for the user-authored LOCAL config (the Settings
+ * config tabs). In server mode it merges per-category with the pushed config;
+ * in account-less local mode it is the entire config. The bundle holds a full
  * {@link ConfigSnapshot} (its `skills` are lightweight summaries, like the
- * server's) PLUS the full {@link SkillConfig} rows, since there is no server to
- * fetch skill bodies/files from — they must be materialized straight from here.
+ * server's) PLUS the full {@link SkillConfig} rows, since local skill
+ * bodies/files aren't fetchable from any server — they must be materialized
+ * straight from here.
  *
  * The config carries LLM/MCP/service secrets, so the JSON is encrypted with the
  * OS keychain (safeStorage) before it touches SQLite; plaintext never hits disk.

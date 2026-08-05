@@ -25,28 +25,28 @@ export function PromptsEditor({
 
   return (
     <div className="space-y-4">
-      <p className="text-[11px] text-muted-foreground">{t('settings.advanced.promptReservedHint')}</p>
+      <p className="text-[11px] text-muted-foreground">{t('settings.config.promptReservedHint')}</p>
       {value.length === 0 && (
-        <p className="text-[12px] text-muted-foreground">{t('settings.advanced.promptsEmpty')}</p>
+        <p className="text-[12px] text-muted-foreground">{t('settings.config.promptsEmpty')}</p>
       )}
       {value.map((prompt, i) => (
         <ItemCard
           key={prompt.id}
-          title={prompt.name || t('settings.advanced.promptsAdd')}
+          title={prompt.name || t('settings.config.promptsAdd')}
           onRemove={() => onChange(value.filter((_, idx) => idx !== i))}
         >
           <SwitchRow
-            label={t('settings.advanced.enabled')}
+            label={t('settings.config.enabled')}
             checked={prompt.enabled}
             onChange={(enabled) => update(i, { enabled })}
           />
           <TextField
-            label={t('settings.advanced.promptName')}
+            label={t('settings.config.promptName')}
             value={prompt.name}
             onChange={(name) => update(i, { name })}
           />
           <TextAreaField
-            label={t('settings.advanced.promptBody')}
+            label={t('settings.config.promptBody')}
             value={prompt.body}
             rows={8}
             mono
@@ -54,7 +54,7 @@ export function PromptsEditor({
           />
         </ItemCard>
       ))}
-      <AddButton label={t('settings.advanced.promptsAdd')} onClick={() => onChange([...value, blankPrompt()])} />
+      <AddButton label={t('settings.config.promptsAdd')} onClick={() => onChange([...value, blankPrompt()])} />
     </div>
   )
 }

@@ -1115,7 +1115,7 @@ function ToolEntry({ m }: { m: UiMessage }): React.JSX.Element {
       <CollapsibleContent className={DISCLOSURE_PANEL_CLS}>
         {/* Hairline rail hangs the detail card off its row, mirroring the
             expanded ToolGroup's member rail. */}
-        <div className="mb-1 ml-2 mt-1 border-l border-border pl-3">
+        <div className="my-1">
           <ToolDetail m={m} />
         </div>
       </CollapsibleContent>

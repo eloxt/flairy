@@ -42,26 +42,26 @@ export function McpEditor({
   return (
     <div className="space-y-4">
       {value.length === 0 && (
-        <p className="text-[12px] text-muted-foreground">{t('settings.advanced.mcpEmpty')}</p>
+        <p className="text-[12px] text-muted-foreground">{t('settings.config.mcpEmpty')}</p>
       )}
       {value.map((server, i) => (
         <ItemCard
           key={server.id}
-          title={server.name || t('settings.advanced.mcpAddServer')}
+          title={server.name || t('settings.config.mcpAddServer')}
           onRemove={() => onChange(value.filter((_, idx) => idx !== i))}
         >
           <SwitchRow
-            label={t('settings.advanced.enabled')}
+            label={t('settings.config.enabled')}
             checked={server.enabled}
             onChange={(enabled) => update(i, { enabled })}
           />
           <TextField
-            label={t('settings.advanced.name')}
+            label={t('settings.config.name')}
             value={server.name}
             onChange={(name) => update(i, { name })}
           />
           <SelectField
-            label={t('settings.advanced.transportKind')}
+            label={t('settings.config.transportKind')}
             value={server.transport.kind}
             options={[
               { value: 'stdio', label: 'stdio' },
@@ -72,7 +72,7 @@ export function McpEditor({
           />
           <TransportFields transport={server.transport} onChange={(transport) => update(i, { transport })} />
           <TextAreaField
-            label={t('settings.advanced.allowedTools')}
+            label={t('settings.config.allowedTools')}
             value={server.allowedTools.join('\n')}
             rows={2}
             onChange={(text) =>
@@ -81,7 +81,7 @@ export function McpEditor({
           />
         </ItemCard>
       ))}
-      <AddButton label={t('settings.advanced.mcpAddServer')} onClick={() => onChange([...value, blankServer()])} />
+      <AddButton label={t('settings.config.mcpAddServer')} onClick={() => onChange([...value, blankServer()])} />
     </div>
   )
 }
@@ -106,12 +106,12 @@ function TransportFields({
     return (
       <>
         <TextField
-          label={t('settings.advanced.command')}
+          label={t('settings.config.command')}
           value={transport.command}
           onChange={(command) => onChange({ ...transport, command })}
         />
         <TextAreaField
-          label={t('settings.advanced.args')}
+          label={t('settings.config.args')}
           value={(transport.args ?? []).join('\n')}
           rows={2}
           onChange={(text) =>
@@ -119,12 +119,12 @@ function TransportFields({
           }
         />
         <KeyValueEditor
-          label={t('settings.advanced.env')}
+          label={t('settings.config.env')}
           entries={transport.env ?? {}}
           onChange={(env) => onChange({ ...transport, env })}
-          addLabel={t('settings.advanced.addPair')}
-          keyLabel={t('settings.advanced.key')}
-          valueLabel={t('settings.advanced.value')}
+          addLabel={t('settings.config.addPair')}
+          keyLabel={t('settings.config.key')}
+          valueLabel={t('settings.config.value')}
           secretValues
         />
       </>
@@ -133,17 +133,17 @@ function TransportFields({
   return (
     <>
       <TextField
-        label={t('settings.advanced.url')}
+        label={t('settings.config.url')}
         value={transport.url}
         onChange={(url) => onChange({ ...transport, url })}
       />
       <KeyValueEditor
-        label={t('settings.advanced.headers')}
+        label={t('settings.config.headers')}
         entries={transport.headers ?? {}}
         onChange={(headers) => onChange({ ...transport, headers })}
-        addLabel={t('settings.advanced.addPair')}
-        keyLabel={t('settings.advanced.key')}
-        valueLabel={t('settings.advanced.value')}
+        addLabel={t('settings.config.addPair')}
+        keyLabel={t('settings.config.key')}
+        valueLabel={t('settings.config.value')}
         secretValues
       />
     </>

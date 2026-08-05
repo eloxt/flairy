@@ -35,7 +35,7 @@ export function ServicesEditor({
   return (
     <div className="space-y-4">
       {value.length === 0 && (
-        <p className="text-[12px] text-muted-foreground">{t('settings.advanced.servicesEmpty')}</p>
+        <p className="text-[12px] text-muted-foreground">{t('settings.config.servicesEmpty')}</p>
       )}
       {value.map((service, i) => (
         <ItemCard
@@ -44,36 +44,36 @@ export function ServicesEditor({
           onRemove={() => onChange(value.filter((_, idx) => idx !== i))}
         >
           <SwitchRow
-            label={t('settings.advanced.enabled')}
+            label={t('settings.config.enabled')}
             checked={service.enabled}
             onChange={(enabled) => update(i, { enabled })}
           />
           <TextField
-            label={t('settings.advanced.name')}
+            label={t('settings.config.name')}
             value={service.name}
             onChange={(name) => update(i, { name })}
           />
           <SecretField
-            label={t('settings.advanced.credential')}
-            hint={t('settings.advanced.secretKeepHint')}
+            label={t('settings.config.credential')}
+            hint={t('settings.config.secretKeepHint')}
             value={service.secret}
             onChange={(secret) => update(i, { secret })}
           />
           <div className="grid grid-cols-2 gap-3">
             <NumberField
-              label={t('settings.advanced.numResults')}
+              label={t('settings.config.numResults')}
               value={typeof service.settings.numResults === 'number' ? service.settings.numResults : undefined}
               onChange={(n) => setSetting(i, 'numResults', n)}
             />
             <TextField
-              label={t('settings.advanced.baseUrl')}
+              label={t('settings.config.baseUrl')}
               value={typeof service.settings.baseUrl === 'string' ? service.settings.baseUrl : ''}
               onChange={(v) => setSetting(i, 'baseUrl', v)}
             />
           </div>
         </ItemCard>
       ))}
-      <AddButton label={t('settings.advanced.servicesAdd')} onClick={() => onChange([...value, blankService()])} />
+      <AddButton label={t('settings.config.servicesAdd')} onClick={() => onChange([...value, blankService()])} />
     </div>
   )
 }

@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 
 /**
- * Small form primitives shared by the Advanced-settings local-config editors.
+ * Small form primitives shared by the Settings local-config editors.
  * Deliberately plain (label + control stacked) — this is a power-user surface,
  * denser than the macOS-style rows used elsewhere in Settings.
  */

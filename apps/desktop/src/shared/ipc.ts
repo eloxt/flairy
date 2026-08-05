@@ -121,13 +121,14 @@ export const IPC = {
   SettingsSetChatWidth: 'settings:set-chat-width',
   SettingsGetPreferredModel: 'settings:get-preferred-model',
   SettingsSetPreferredModel: 'settings:set-preferred-model',
-  // Advanced settings (hidden behind the version-tap gate) + local config mode.
-  AdvancedGetUnlocked: 'advanced:get-unlocked',
-  AdvancedSetUnlocked: 'advanced:set-unlocked',
+  // User-editable local config (Settings tabs) + account-less local mode.
   ConfigGetMode: 'config:get-mode',
   ConfigSetMode: 'config:set-mode',
+  ConfigGetSources: 'config:get-sources',
+  ConfigSetSources: 'config:set-sources',
   LocalConfigGet: 'local-config:get',
   LocalConfigSave: 'local-config:save',
+  LocalConfigSeed: 'local-config:seed',
   ScheduleList: 'schedule:list',
   ScheduleUpdate: 'schedule:update',
   ScheduleDelete: 'schedule:delete',
@@ -149,8 +150,8 @@ export const IPC = {
   LanguageChanged: 'settings:language-changed',
   ChatWidthChanged: 'settings:chat-width-changed',
   PreferredModelChanged: 'settings:preferred-model-changed',
-  AdvancedUnlockedChanged: 'advanced:unlocked-changed',
   ConfigModeChanged: 'config:mode-changed',
+  ConfigSourcesChanged: 'config:sources-changed',
   AgentCompressStatus: 'agent:compress-status',
   AgentToolSelectionStatus: 'agent:tool-selection-status',
   LauncherShown: 'launcher:shown',
@@ -458,20 +459,39 @@ export interface RedactedConfigSnapshot {
 
 /**
  * Where the client's active configuration comes from.
- * - `server` — the normal path: the admin server pushes config over socket.io.
- * - `local`  — "detached" mode: the socket is closed and the client runs fully
- *   offline off a config the user entered by hand in Advanced settings.
+ * - `server` — the normal path: the admin server pushes config over socket.io,
+ *   composed per-category with the user's local entries (see {@link ConfigSources}).
+ * - `local`  — account-less use (the "skip login" path): the socket stays closed
+ *   and the client runs entirely off the user-entered local config.
  *
- * Persisted in the main process (SQLite `settings` KV). Toggled from the hidden
- * Advanced settings tab. See {@link LocalConfigDraft}.
+ * Persisted in the main process (SQLite `settings` KV, per profile). Set
+ * programmatically by the skip-login flow — there is no UI switch.
  */
 export type ConfigMode = 'server' | 'local'
 
 /**
- * The full, user-editable local configuration behind the Advanced settings tab.
- * Structurally the pieces of a `ConfigSnapshot` that a detached client needs,
- * plus FULL skills (bodies + files) rather than summaries, since there is no
- * server to fetch them from.
+ * Where one configuration category draws its entries from (server mode only;
+ * account-less local mode always runs purely off the local config).
+ * - `server` — the server-pushed entries alone; local entries are ignored.
+ * - `local`  — the user's own entries alone; server entries are ignored.
+ * - `merge`  — both combined, the local entry winning an id/name collision.
+ */
+export type ConfigSourceMode = 'server' | 'local' | 'merge'
+
+/** Per-category source choice. Defaults to `server` for every category. */
+export interface ConfigSources {
+  llm: ConfigSourceMode
+  mcpServers: ConfigSourceMode
+  systemPrompts: ConfigSourceMode
+  services: ConfigSourceMode
+  skills: ConfigSourceMode
+}
+
+/**
+ * The full, user-editable local configuration behind the Settings config tabs
+ * (Models / Tools / Web search / Prompts / Skills). Structurally the pieces of
+ * a `ConfigSnapshot` a client needs, plus FULL skills (bodies + files) rather
+ * than summaries, since local skills are materialized without a server.
  *
  * SECURITY: on READ (`local-config:get`) every secret is masked exactly like
  * {@link RedactedConfigSnapshot} — `llm.*.provider.credential`, MCP transport
@@ -1085,18 +1105,20 @@ export interface FlairyApi {
   getPreferredMainModel(): Promise<string | null>
   /** Persist a main-model pick (null = follow the admin); applies live and broadcasts. */
   setPreferredMainModel(id: string | null): Promise<void>
-  /** Whether the hidden Advanced settings tab has been unlocked (tap version 10×). */
-  getAdvancedUnlocked(): Promise<boolean>
-  /** Persist the Advanced-settings unlock flag; main broadcasts to all windows. */
-  setAdvancedUnlocked(value: boolean): Promise<void>
-  /** Whether config comes from the server or a local (detached) config. */
+  /** Whether config comes from the server or a local (account-less) config. */
   getConfigMode(): Promise<ConfigMode>
   /** Switch config source. `local` closes the socket; `server` reconnects. */
   setConfigMode(mode: ConfigMode): Promise<void>
+  /** Per-category source choice (server / local / merge). */
+  getConfigSources(): Promise<ConfigSources>
+  /** Persist the per-category source choices; applies live and broadcasts to all windows. */
+  setConfigSources(sources: ConfigSources): Promise<void>
   /** The saved local config with secrets masked, or null if none saved yet. */
   getLocalConfig(): Promise<LocalConfigDraft | null>
-  /** Persist an edited local config (masked secrets are kept); applies it live in local mode. */
+  /** Persist an edited local config (masked secrets are kept); applies live. */
   saveLocalConfig(draft: LocalConfigDraft): Promise<void>
+  /** A draft copied from the current server config (secrets masked), or null when none delivered. */
+  seedLocalConfigFromServer(): Promise<LocalConfigDraft | null>
   onAgentEvent(cb: (env: AgentEventEnvelope) => void): () => void
   onApprovalRequest(cb: (req: ApprovalRequestPayload) => void): () => void
   /** Fires when the agent asks the user one or more multiple-choice questions. */
@@ -1119,10 +1141,10 @@ export interface FlairyApi {
   onChatWidthChanged(cb: (width: ChatWidth) => void): () => void
   /** Fires when the main-model pick changes (from any window). */
   onPreferredMainModelChanged(cb: (id: string | null) => void): () => void
-  /** Fires when the Advanced-settings unlock flag changes (from any window). */
-  onAdvancedUnlockedChanged(cb: (unlocked: boolean) => void): () => void
   /** Fires when the config source (server ↔ local) changes (from any window). */
   onConfigModeChanged(cb: (mode: ConfigMode) => void): () => void
+  /** Fires when the per-category source choices change (from any window). */
+  onConfigSourcesChanged(cb: (sources: ConfigSources) => void): () => void
   /** Fires whenever the update lifecycle advances (found / progress / ready / failed). */
   onUpdateState(cb: (state: UpdateState) => void): () => void
   /** Fires when a session's context-compression run starts/ends (drives the message-list shimmer). */

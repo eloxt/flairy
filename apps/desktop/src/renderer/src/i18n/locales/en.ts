@@ -305,6 +305,9 @@ const en = {
     title: 'Settings',
     // Sidebar nav
     navGeneral: 'General',
+    navGroupAssistant: 'Assistant',
+    navGroupConfig: 'Configuration',
+    navGroupConnections: 'Connections',
     tabMemory: 'Memory',
     tabSchedule: 'Scheduled tasks',
     scheduleDescription:
@@ -434,30 +437,35 @@ const en = {
     showConfig: 'Configuration details',
     loadingConfig: 'Loading…',
     noConfig: 'No configuration received from the server yet.',
-    // Advanced (hidden behind tapping the version 10×)
-    tabAdvanced: 'Advanced',
-    advancedUnlockedToast: 'Advanced settings unlocked',
-    advanced: {
-      intro:
-        'These settings are for advanced users. In local mode Flairy stops talking to the server and runs entirely from the configuration you enter below.',
-      localModeLabel: 'Local mode (run without the server)',
-      localModeDescription:
-        'Disconnect from the server and use the configuration below instead. Conversations and memory stay on this device and stop syncing.',
-      localModeOffHint: 'Turn on local mode to edit and use the configuration below.',
-      importLabel: 'Import configuration JSON',
-      importDescription:
-        'Paste a server-delivered configuration (or a local config export). Imported values fill the editor below — review them, then save.',
-      importButton: 'Import JSON',
-      importCancel: 'Cancel',
-      importApply: 'Parse & fill',
-      importPlaceholder: '{ "llm": { … }, "mcpServers": [ … ], "systemPrompts": [ … ], … }',
-      importError: 'Could not parse that JSON — expecting a configuration object.',
-      importErrorShape: 'The JSON parses, but its structure is not a valid configuration (at {{path}}).',
-      importedHint: 'Imported into the editor. Review the sections below, then save.',
-      importedSkippedSkills_one:
-        'Imported. {{count}} skill was skipped (no file contents in the JSON) — review and save.',
-      importedSkippedSkills_other:
-        'Imported. {{count}} skills were skipped (no file contents in the JSON) — review and save.',
+    // User configuration tabs (Models / Tools / Web search / Prompts / Skills)
+    config: {
+      tabModels: 'Models',
+      tabTools: 'Tools',
+      tabWebSearch: 'Web search',
+      tabPrompts: 'Prompts',
+      tabSkills: 'Skills',
+      ledeModels: 'Set up the AI models the assistant uses.',
+      ledeTools: 'Set up the tool servers the assistant can connect to.',
+      ledeWebSearch: 'Set up web search.',
+      ledePrompts: 'Set up the system prompts that shape how the assistant behaves.',
+      ledeSkills: 'Set up skills — reusable instruction packs the assistant can follow.',
+      sourceLabel: 'Configuration source',
+      source: {
+        server: 'Use server configuration',
+        local: 'Use your own configuration',
+        merge: 'Merge both'
+      },
+      sourceDescription: {
+        server: 'Only the configuration delivered by your server applies; your entries below are kept but not used.',
+        local: 'Only your own entries below apply; the server-delivered configuration is ignored.',
+        merge: 'Both apply together; when they clash, your entry wins over the server-delivered one.'
+      },
+      sourceServerHint:
+        'Your entries are not in use right now — switch the source above to "Use your own configuration" or "Merge both" to apply them.',
+      ownEntries: 'Your entries',
+      copyFromServer: 'Copy from server',
+      copyFromServerDone: 'Copied the server configuration into the editor — review, then save.',
+      copyFromServerEmpty: 'No server configuration received to copy yet.',
       save: 'Save',
       saving: 'Saving…',
       saved: 'Saved',
@@ -466,15 +474,6 @@ const en = {
       enabled: 'Enabled',
       name: 'Name',
       secretKeepHint: 'Saved — leave blank to keep unchanged',
-      rehideLabel: 'Hide advanced settings',
-      rehideDescription: 'Hide this tab again. Tap the version number 10 times to bring it back.',
-      rehideButton: 'Hide',
-      // sub-sections
-      sectionLlm: 'Models',
-      sectionMcp: 'Tools',
-      sectionServices: 'Web search',
-      sectionPrompts: 'Prompts',
-      sectionSkills: 'Skills',
       // LLM
       roleMain: 'Main model',
       roleMainDescription: 'The primary model that runs the assistant. Required.',

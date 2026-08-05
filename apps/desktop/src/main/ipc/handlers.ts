@@ -24,6 +24,7 @@ import {
   type ViewerImage,
   type ChatWidth,
   type ConfigMode,
+  type ConfigSources,
   type LocalConfigDraft
 } from '@shared/ipc'
 import { t } from '../locale'
@@ -63,9 +64,7 @@ import {
   getCloseToTrayPref,
   setCloseToTrayPref,
   getChatWidthPref,
-  setChatWidthPref,
-  getAdvancedUnlockedPref,
-  setAdvancedUnlockedPref
+  setChatWidthPref
 } from '../store/db'
 import { scheduleImageSweep } from '../store/image-gc'
 import { login, register } from '../auth'
@@ -283,11 +282,15 @@ export function registerIpcHandlers(
     broadcast(IPC.SocketStatusChanged, status)
   })
 
-  // If we already have a stored token from a previous run, connect immediately —
-  // unless the user detached to local mode, in which case we stay fully offline
-  // and apply the saved local config instead.
+  // If we already have a stored token from a previous run, connect immediately.
+  // `local` mode is the account-less (skip-login) path — no token, no socket,
+  // just the saved local config. A profile that somehow carries BOTH a token
+  // and local mode (left over from the removed Advanced-settings detach switch)
+  // is migrated back to server mode: there is no UI to leave local mode anymore.
   const existingToken = getAuthToken()
-  if (server.getConfigMode() === 'local') {
+  if (server.getConfigMode() === 'local' && existingToken) {
+    server.setConfigMode('server')
+  } else if (server.getConfigMode() === 'local') {
     server.activateLocalMode()
   } else if (existingToken) {
     server.connect(existingToken)
@@ -636,14 +639,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.SocketStatusGet, () => server.getSocketStatus())
 
-  // ── Advanced settings (hidden version-tap gate) + local config mode ──
-  ipcMain.handle(IPC.AdvancedGetUnlocked, () => getAdvancedUnlockedPref())
-
-  ipcMain.handle(IPC.AdvancedSetUnlocked, (_e, value: boolean) => {
-    setAdvancedUnlockedPref(value)
-    broadcast(IPC.AdvancedUnlockedChanged, value)
-  })
-
+  // ── User-editable local config (Settings config tabs) + account-less mode ──
   ipcMain.handle(IPC.ConfigGetMode, (): ConfigMode => server.getConfigMode())
 
   ipcMain.handle(IPC.ConfigSetMode, (_e, mode: ConfigMode) => {
@@ -651,11 +647,20 @@ export function registerIpcHandlers(
     broadcast(IPC.ConfigModeChanged, mode)
   })
 
-  // Local config for the editor (secrets masked). If the user hasn't saved a
-  // local config yet, seed the editor from the latest server config so it opens
-  // pre-filled instead of blank.
-  ipcMain.handle(IPC.LocalConfigGet, async (): Promise<LocalConfigDraft | null> => {
-    return readLocalConfigDraft() ?? (await seedDraftFromServer(server.getServerConfig(), server.getToken()))
+  ipcMain.handle(IPC.ConfigGetSources, (): ConfigSources => server.getConfigSources())
+
+  ipcMain.handle(IPC.ConfigSetSources, (_e, sources: ConfigSources) => {
+    server.setConfigSources(sources)
+    broadcast(IPC.ConfigSourcesChanged, server.getConfigSources())
+  })
+
+  // Local config for the editors (secrets masked). Null until the user saves —
+  // the editors show the user's OWN entries, not a copy of the server's.
+  ipcMain.handle(IPC.LocalConfigGet, (): LocalConfigDraft | null => readLocalConfigDraft())
+
+  // On-demand "copy from server" seeding for the editors (secrets masked).
+  ipcMain.handle(IPC.LocalConfigSeed, async (): Promise<LocalConfigDraft | null> => {
+    return seedDraftFromServer(server.getServerConfig(), server.getToken())
   })
 
   // Save an edited local config: merge masked secrets against the stored local

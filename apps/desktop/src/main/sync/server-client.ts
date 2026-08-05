@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 import {
   SocketEvent,
+  type ActiveLlm,
   type ClientToServerEvents,
   type ConfigSnapshot,
   type ConfigUpdate,
@@ -17,20 +18,21 @@ import {
   type SessionUpsertPayload,
   type SessionWithMessages,
   type SkillConfig,
-  type SkillSummary,
   type SocketAuth
 } from '@flairy/shared'
 import { getAuthToken } from '../store/secrets'
 import { saveCachedConfig, loadCachedConfig } from '../store/config-cache'
 import {
   getConfigModePref,
+  getConfigSourcesPref,
   getPreferredMainModelPref,
   setConfigModePref,
+  setConfigSourcesPref,
   setPreferredMainModelPref
 } from '../store/db'
 import { loadLocalConfig, type LocalConfigBundle } from '../store/local-config'
-import { materializeSkills, materializeLocalSkills } from '../agent/skill-materializer'
-import type { ConfigMode, SocketConnectionStatus } from '@shared/ipc'
+import { materializeSkillSet } from '../agent/skill-materializer'
+import type { ConfigMode, ConfigSourceMode, ConfigSources, SocketConnectionStatus } from '@shared/ipc'
 
 /**
  * Where to reach the Flairy server.
@@ -99,14 +101,17 @@ export class ServerClient {
   private sessionPayloadProvider: ((sessionId: string) => SessionUpsertPayload | null) | null =
     null
   /**
-   * Config source. In `local` mode the socket stays closed and getConfig()
-   * returns the user-authored `localConfig` instead of the server snapshot.
+   * Config source. In `local` mode (account-less use) the socket stays closed
+   * and getConfig() returns the user-authored `localConfig`; in `server` mode
+   * each category follows its `sources` choice (server / local / merge).
    */
   private configMode: ConfigMode = 'server'
-  /** User-authored local config (detached mode); its skills are summaries. */
+  /** User-authored local config; its skills are summaries. */
   private localConfig: ConfigSnapshot | null = null
-  /** Full local skills, materialized to disk when local mode is active. */
+  /** Full local skills, materialized to disk alongside the server-pushed ones. */
   private localSkills: SkillConfig[] = []
+  /** Per-category source choice (server / local / merge). */
+  private sources: ConfigSources = getConfigSourcesPref()
   /**
    * The user's own main-model pick (a model id from `modelOptions`), per
    * device. Applied over the snapshot in effectiveConfig(); null = admin main.
@@ -149,7 +154,7 @@ export class ServerClient {
       this.config = payload
       saveCachedConfig(payload)
       this.emitConfig()
-      this.materialize(payload.skills)
+      this.materializeEffectiveSkills()
     })
 
     socket.on(SocketEvent.ConfigUpdated, (payload: ConfigUpdate) => {
@@ -157,7 +162,7 @@ export class ServerClient {
       if (this.config) {
         saveCachedConfig(this.config)
         this.emitConfig()
-        this.materialize(this.config.skills)
+        this.materializeEffectiveSkills()
       }
     })
 
@@ -259,10 +264,96 @@ export class ServerClient {
    * carries no candidates) silently falls back to the admin-assigned main.
    */
   private effectiveConfig(): ConfigSnapshot | null {
-    const base = this.configMode === 'local' ? this.localConfig : this.config
+    const base = this.configMode === 'local' ? this.localConfig : this.mergedConfig()
     if (!base || !this.preferredMainModelId) return base
     const match = base.modelOptions?.find((o) => o.model.id === this.preferredMainModelId)
     return match ? { ...base, llm: { ...base.llm, main: match } } : base
+  }
+
+  /**
+   * Server-mode composition: each category follows its source choice —
+   * `server` uses the pushed entries alone, `local` the user's entries alone
+   * (even when that leaves the category empty), and `merge` combines both with
+   * the local entries FIRST, so first-match lookups (prompts by name, services)
+   * resolve to the user's entry and a server item colliding with a local one
+   * (same id; same trimmed name for prompts; same name for skills) is dropped.
+   */
+  private mergedConfig(): ConfigSnapshot | null {
+    const server = this.config
+    const local = this.localConfig
+    if (!server && !local) return null
+    const s = this.sources
+    // The default everything-from-server case stays the fast path.
+    if (server && Object.values(s).every((v) => v === 'server')) return server
+
+    const pickList = <T>(
+      choice: ConfigSourceMode,
+      localList: T[],
+      serverList: T[],
+      collides: (serverItem: T) => boolean
+    ): T[] => {
+      if (choice === 'server') return serverList
+      if (choice === 'local') return localList
+      return [...localList, ...serverList.filter((item) => !collides(item))]
+    }
+
+    const pickRole = (role: 'main' | 'tool' | 'visual'): ActiveLlm | null => {
+      const localRole = local?.llm[role] ?? null
+      const serverRole = server?.llm[role] ?? null
+      if (s.llm === 'server') return serverRole
+      if (s.llm === 'local') return localRole
+      return localRole ?? serverRole
+    }
+
+    const promptKey = (name: string): string => name.trim().toLowerCase()
+    const localMcpIds = new Set((local?.mcpServers ?? []).map((m) => m.id))
+    const localPromptKeys = new Set((local?.systemPrompts ?? []).map((p) => promptKey(p.name)))
+    const localServiceIds = new Set((local?.services ?? []).map((svc) => svc.id))
+    const localSkillNames = new Set((local?.skills ?? []).map((sk) => sk.name))
+
+    return {
+      llm: { main: pickRole('main'), tool: pickRole('tool'), visual: pickRole('visual') },
+      // Model candidates for the user picker only exist server-side.
+      modelOptions: s.llm === 'local' ? undefined : server?.modelOptions,
+      mcpServers: pickList(
+        s.mcpServers,
+        local?.mcpServers ?? [],
+        server?.mcpServers ?? [],
+        (m) => localMcpIds.has(m.id)
+      ),
+      skills: pickList(s.skills, local?.skills ?? [], server?.skills ?? [], (sk) =>
+        localSkillNames.has(sk.name)
+      ),
+      systemPrompts: pickList(
+        s.systemPrompts,
+        local?.systemPrompts ?? [],
+        server?.systemPrompts ?? [],
+        (p) => localPromptKeys.has(promptKey(p.name))
+      ),
+      announcements: server?.announcements ?? [],
+      services: pickList(s.services, local?.services ?? [], server?.services ?? [], (svc) =>
+        localServiceIds.has(svc.id)
+      ),
+      version: server?.version ?? local?.version ?? 0
+    }
+  }
+
+  /** Current per-category source choices. */
+  getConfigSources(): ConfigSources {
+    return { ...this.sources }
+  }
+
+  /**
+   * Persist + apply new source choices: re-emits the effective config so every
+   * consumer re-applies, and reconciles the on-disk skill set (a skills choice
+   * flip adds/removes the server-pushed or local skills).
+   */
+  setConfigSources(sources: ConfigSources): void {
+    if (JSON.stringify(sources) === JSON.stringify(this.sources)) return
+    this.sources = { ...sources }
+    setConfigSourcesPref(this.sources)
+    this.emitConfig()
+    this.materializeEffectiveSkills()
   }
 
   /** The user's main-model pick (a model id), or null when following the admin. */
@@ -330,30 +421,26 @@ export class ServerClient {
     if (mode === 'local') {
       this.disconnect()
       this.emitConfig()
-      void materializeLocalSkills(this.localSkills).catch((err) =>
-        console.error('[server-client] local skill materialization failed:', err)
-      )
+      this.materializeEffectiveSkills()
     } else {
       this.emitConfig()
+      this.materializeEffectiveSkills()
       const token = this.token ?? getAuthToken()
       if (token) this.connect(token)
     }
   }
 
   /**
-   * Replace the user-authored local config and, if local mode is active, apply
-   * it live (re-emit + re-materialize skills). Called after the user saves edits
-   * in Advanced settings. The bundle is persisted by the caller.
+   * Replace the user-authored local config and apply it live (re-emit + skill
+   * reconcile) — local entries are part of the effective config in BOTH modes.
+   * Called after the user saves edits in the Settings config tabs. The bundle is
+   * persisted by the caller.
    */
   updateLocalConfig(bundle: LocalConfigBundle): void {
     this.localConfig = bundle.config
     this.localSkills = bundle.skills
-    if (this.configMode === 'local') {
-      this.emitConfig()
-      void materializeLocalSkills(this.localSkills).catch((err) =>
-        console.error('[server-client] local skill materialization failed:', err)
-      )
-    }
+    this.emitConfig()
+    this.materializeEffectiveSkills()
   }
 
   /**
@@ -364,9 +451,7 @@ export class ServerClient {
   activateLocalMode(): void {
     if (this.configMode !== 'local') return
     this.emitConfig()
-    void materializeLocalSkills(this.localSkills).catch((err) =>
-      console.error('[server-client] local skill materialization failed:', err)
-    )
+    this.materializeEffectiveSkills()
   }
 
   /** Current socket.io connection status for renderer indicators. */
@@ -529,14 +614,20 @@ export class ServerClient {
   }
 
   /**
-   * Materialize the pushed skill summaries to disk. Fire-and-forget: the agent
-   * reads materialized bodies straight from the on-disk SKILL.md files, so we
-   * don't block the socket handler. Uses the socket's JWT, falling back to the
-   * stored token.
+   * Reconcile the on-disk skill set with the EFFECTIVE config, honoring the
+   * skills source choice: server-pushed summaries unless the choice is `local`,
+   * the local full skills unless the choice is `server` (account-less local
+   * mode is always local-only). Fire-and-forget: the agent reads materialized
+   * bodies straight from the on-disk SKILL.md files, so callers never block on
+   * this. Uses the socket's JWT, falling back to the stored token.
    */
-  private materialize(skills: SkillSummary[]): void {
+  private materializeEffectiveSkills(): void {
+    const serverMode = this.configMode === 'server'
+    const remote =
+      serverMode && this.sources.skills !== 'local' ? (this.config?.skills ?? []) : []
+    const local = serverMode && this.sources.skills === 'server' ? [] : this.localSkills
     const token = this.token ?? getAuthToken()
-    void materializeSkills(skills, token, SERVER_URL).catch((err) => {
+    void materializeSkillSet(remote, local, token, SERVER_URL).catch((err) => {
       console.error('[server-client] skill materialization failed:', err)
     })
   }

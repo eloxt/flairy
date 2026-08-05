@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconBrandGithub, IconChevronDown, IconChevronRight, IconClock, IconInfoCircle, IconRefresh, IconRobot, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconTool } from '@tabler/icons-react'
+import { IconBook2, IconBrandGithub, IconChevronDown, IconChevronRight, IconClock, IconCpu, IconFileText, IconInfoCircle, IconPlug, IconRefresh, IconRobot, IconSend, IconAdjustmentsHorizontal, IconSparkles, IconWorldSearch } from '@tabler/icons-react'
 import { BrandMark } from '@/components/BrandMark'
 import type {
   AcpBackendView,
@@ -25,10 +25,35 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 
-import { AdvancedSection } from './advanced/AdvancedSection'
+import { ConfigCategoryTab } from './config/ConfigCategoryTab'
+import {
+  Caption,
+  EmptyRow,
+  Group,
+  GroupLabel,
+  Lede,
+  Row,
+  RowButton,
+  RowValue,
+  Segmented,
+  StatusDot
+} from './rows'
 import { CopyButton } from '@/components/chat/MessageActions'
 
-type Tab = 'general' | 'account' | 'memory' | 'schedule' | 'telegram' | 'github' | 'acp' | 'about' | 'advanced'
+type Tab =
+  | 'general'
+  | 'account'
+  | 'memory'
+  | 'schedule'
+  | 'models'
+  | 'tools'
+  | 'websearch'
+  | 'prompts'
+  | 'skills'
+  | 'telegram'
+  | 'github'
+  | 'acp'
+  | 'about'
 
 /**
  * End-user settings, macOS System Settings style: a frosted sidebar on the left
@@ -37,11 +62,11 @@ type Tab = 'general' | 'account' | 'memory' | 'schedule' | 'telegram' | 'github'
  * label + plain-language description on the left, the control in place on the
  * right (switch / segmented / popup), instead of form-like sections.
  */
-const TABS: Tab[] = ['general', 'account', 'memory', 'schedule', 'telegram', 'github', 'acp', 'about', 'advanced']
+const TABS: Tab[] = ['general', 'account', 'memory', 'schedule', 'models', 'tools', 'websearch', 'prompts', 'skills', 'telegram', 'github', 'acp', 'about']
 
 /**
- * One-shot deep link: the Settings window can be opened with `?tab=advanced`
- * in its URL (openSettingsWindow's query; used by skip-login) to preselect a tab.
+ * One-shot deep link: the Settings window can be opened with `?tab=models`
+ * (etc.) in its URL (openSettingsWindow's query) to preselect a tab.
  */
 function initialTab(): Tab {
   const requested = new URLSearchParams(window.location.search).get('tab')
@@ -52,47 +77,59 @@ export function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>(initialTab)
   const user = useAuth((s) => s.user)
-  // null = not yet known; distinct from false so the fallback effect below
-  // doesn't kick a deep-linked 'advanced' tab back to General before the
-  // async read lands.
-  const [advancedUnlocked, setAdvancedUnlocked] = useState<boolean | null>(null)
 
-  // The Advanced tab is hidden until the user taps the version number 10× (in
-  // AboutSection). The flag lives in main; follow it live across windows.
-  useEffect(() => {
-    void window.api.getAdvancedUnlocked().then(setAdvancedUnlocked)
-    return window.api.onAdvancedUnlockedChanged(setAdvancedUnlocked)
-  }, [])
-
-  // If the tab is hidden again while it's open, fall back to General.
-  useEffect(() => {
-    if (advancedUnlocked === false && tab === 'advanced') setTab('general')
-  }, [advancedUnlocked, tab])
-
-  const navItems: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] =
-    [
-      { id: 'general', label: t('settings.navGeneral'), icon: IconAdjustmentsHorizontal },
-      { id: 'memory', label: t('settings.tabMemory'), icon: IconSparkles },
-      { id: 'schedule', label: t('settings.tabSchedule'), icon: IconClock },
-      { id: 'telegram', label: t('settings.tabTelegram'), icon: IconSend },
-      { id: 'github', label: t('settings.tabGithub'), icon: IconBrandGithub },
-      { id: 'acp', label: t('settings.tabAcp'), icon: IconRobot },
-      { id: 'about', label: t('settings.tabAbout'), icon: IconInfoCircle },
-      ...(advancedUnlocked
-        ? [{ id: 'advanced' as const, label: t('settings.tabAdvanced'), icon: IconTool }]
-        : [])
-    ]
+  type NavItem = { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }
+  // Grouped like macOS System Settings: an unlabeled top group, then titled
+  // clusters — assistant data, user configuration, external connections — and
+  // About alone at the bottom.
+  const navGroups: { label?: string; items: NavItem[] }[] = [
+    {
+      items: [{ id: 'general', label: t('settings.navGeneral'), icon: IconAdjustmentsHorizontal }]
+    },
+    {
+      label: t('settings.navGroupAssistant'),
+      items: [
+        { id: 'memory', label: t('settings.tabMemory'), icon: IconSparkles },
+        { id: 'schedule', label: t('settings.tabSchedule'), icon: IconClock }
+      ]
+    },
+    {
+      label: t('settings.navGroupConfig'),
+      items: [
+        { id: 'models', label: t('settings.config.tabModels'), icon: IconCpu },
+        { id: 'tools', label: t('settings.config.tabTools'), icon: IconPlug },
+        { id: 'websearch', label: t('settings.config.tabWebSearch'), icon: IconWorldSearch },
+        { id: 'prompts', label: t('settings.config.tabPrompts'), icon: IconFileText },
+        { id: 'skills', label: t('settings.config.tabSkills'), icon: IconBook2 }
+      ]
+    },
+    {
+      label: t('settings.navGroupConnections'),
+      items: [
+        { id: 'telegram', label: t('settings.tabTelegram'), icon: IconSend },
+        { id: 'github', label: t('settings.tabGithub'), icon: IconBrandGithub },
+        { id: 'acp', label: t('settings.tabAcp'), icon: IconRobot }
+      ]
+    },
+    {
+      items: [{ id: 'about', label: t('settings.tabAbout'), icon: IconInfoCircle }]
+    }
+  ]
 
   const titles: Record<Tab, string> = {
     general: t('settings.navGeneral'),
     account: t('settings.account'),
     memory: t('settings.tabMemory'),
     schedule: t('settings.tabSchedule'),
+    models: t('settings.config.tabModels'),
+    tools: t('settings.config.tabTools'),
+    websearch: t('settings.config.tabWebSearch'),
+    prompts: t('settings.config.tabPrompts'),
+    skills: t('settings.config.tabSkills'),
     telegram: t('settings.tabTelegram'),
     github: t('settings.tabGithub'),
     acp: t('settings.tabAcp'),
-    about: t('settings.tabAbout'),
-    advanced: t('settings.tabAdvanced')
+    about: t('settings.tabAbout')
   }
 
   const displayName = user?.displayName || t('settings.signedIn')
@@ -127,23 +164,35 @@ export function SettingsPage(): React.JSX.Element {
           </span>
         </button>
 
-        <nav className="flex flex-col gap-px" aria-label={t('settings.title')}>
-          {navItems.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              aria-current={tab === id}
-              className={cn(
-                'app-no-drag flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-[5px] text-left text-[13px] transition-colors',
-                tab === id ? 'bg-sidebar-accent font-medium' : 'hover:bg-sidebar-accent/60'
+        <nav
+          className="app-no-drag min-h-0 flex-1 overflow-y-auto"
+          aria-label={t('settings.title')}
+        >
+          {navGroups.map((group, gi) => (
+            <div key={group.label ?? gi} className={cn('flex flex-col gap-px', gi > 0 && 'mt-3')}>
+              {group.label && (
+                <div className="px-2.5 pb-1 text-[10.5px] font-semibold tracking-wide text-muted-foreground/80 uppercase select-none">
+                  {group.label}
+                </div>
               )}
-            >
-              <span className="grid size-6 shrink-0 place-items-center rounded-md bg-foreground/[0.06] dark:bg-foreground/10">
-                <Icon className="size-3.5 opacity-85" />
-              </span>
-              {label}
-            </button>
+              {group.items.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  aria-current={tab === id}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-[5px] text-left text-[13px] transition-colors',
+                    tab === id ? 'bg-sidebar-accent font-medium' : 'hover:bg-sidebar-accent/60'
+                  )}
+                >
+                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-foreground/[0.06] dark:bg-foreground/10">
+                    <Icon className="size-3.5 opacity-85" />
+                  </span>
+                  {label}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
       </aside>
@@ -158,11 +207,15 @@ export function SettingsPage(): React.JSX.Element {
           {tab === 'account' && <AccountSection />}
           {tab === 'memory' && <MemorySection />}
           {tab === 'schedule' && <ScheduleSection />}
+          {tab === 'models' && <ConfigCategoryTab category="llm" />}
+          {tab === 'tools' && <ConfigCategoryTab category="mcpServers" />}
+          {tab === 'websearch' && <ConfigCategoryTab category="services" />}
+          {tab === 'prompts' && <ConfigCategoryTab category="systemPrompts" />}
+          {tab === 'skills' && <ConfigCategoryTab category="skills" />}
           {tab === 'telegram' && <TelegramSection />}
           {tab === 'github' && <GithubSection />}
           {tab === 'acp' && <AcpSection />}
           {tab === 'about' && <AboutSection />}
-          {tab === 'advanced' && <AdvancedSection />}
         </div>
       </main>
     </div>
@@ -1140,9 +1193,6 @@ function AboutSection(): React.JSX.Element {
   const [config, setConfig] = useState<RedactedConfigSnapshot | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [version] = useState(() => window.api.getAppVersion())
-  // Hidden gate: 10 taps on the version reveals the Advanced tab (Android-style).
-  const [, setTaps] = useState(0)
-  const [justUnlocked, setJustUnlocked] = useState(false)
 
   useEffect(() => {
     void window.api.getConfig().then((c) => {
@@ -1154,22 +1204,6 @@ function AboutSection(): React.JSX.Element {
       setLoaded(true)
     })
   }, [])
-
-  const onVersionTap = (): void => {
-    setTaps((n) => {
-      const next = n + 1
-      if (next >= 10) {
-        void window.api.getAdvancedUnlocked().then((already) => {
-          if (!already) {
-            void window.api.setAdvancedUnlocked(true)
-            setJustUnlocked(true)
-          }
-        })
-        return 0
-      }
-      return next
-    })
-  }
 
   return (
     <>
@@ -1185,23 +1219,8 @@ function AboutSection(): React.JSX.Element {
 
       <Group>
         <Row label={t('settings.version')}>
-          <RowValue>
-            <span
-              onClick={onVersionTap}
-              className="cursor-default select-none"
-              title={justUnlocked ? t('settings.advancedUnlockedToast') : undefined}
-            >
-              {version}
-            </span>
-          </RowValue>
+          <RowValue>{version}</RowValue>
         </Row>
-        {justUnlocked && (
-          <Row label={t('settings.advancedUnlockedToast')}>
-            <RowValue>
-              <IconTool className="size-3.5 text-muted-foreground" />
-            </RowValue>
-          </Row>
-        )}
         <details className="group/cfg">
           <summary className="flex min-h-[46px] cursor-pointer list-none items-center gap-4 px-3.5 py-2 select-none [&::-webkit-details-marker]:hidden">
             <div className="min-w-0 flex-1">
@@ -1232,160 +1251,5 @@ function AboutSection(): React.JSX.Element {
   )
 }
 
-/* ── Native-settings primitives ────────────────────────────────────────────── */
-
-/** Inset list box: rounded hairline card, rows separated by hairlines. */
-function Group({
-  className,
-  children
-}: {
-  className?: string
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <div
-      className={cn(
-        // Hairline edge + faint lift in one box-shadow (the `.hairline` utility
-        // and a Tailwind shadow-* would overwrite each other).
-        'divide-y divide-border/60 overflow-hidden rounded-[10px] bg-card shadow-[inset_0_0_0_0.5px_var(--border),0_1px_2px_rgb(0_0_0/0.04)]',
-        className
-      )}
-    >
-      {children}
-    </div>
-  )
-}
-
-/** Tiny uppercase label above a group. */
-function GroupLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <div className="eyebrow mx-0.5 mt-6 mb-2 first:mt-0">{children}</div>
-}
-
-/** One setting: label + optional description left, the control in place right. */
-function Row({
-  label,
-  description,
-  children
-}: {
-  label: React.ReactNode
-  description?: React.ReactNode
-  children?: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <div className="flex min-h-[46px] items-center gap-4 px-3.5 py-2">
-      <div className="min-w-0 flex-1 py-0.5">
-        <div className="text-[13px] leading-tight">{label}</div>
-        {description && (
-          <div className="mt-0.5 max-w-[46ch] text-[11.5px] leading-snug text-muted-foreground">
-            {description}
-          </div>
-        )}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-/** Right-aligned read-only value in a Row. */
-function RowValue({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <span className="text-[13px] break-all text-muted-foreground">{children}</span>
-}
-
-/** Full-width tappable row (sign out, clear all). */
-function RowButton({
-  danger,
-  onClick,
-  children
-}: {
-  danger?: boolean
-  onClick: () => void
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex min-h-11 w-full items-center px-3.5 py-2 text-left text-[13px] transition-colors hover:bg-accent',
-        danger && 'text-destructive'
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
-/** Centered muted placeholder inside a Group (loading / empty states). */
-function EmptyRow({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <div className="px-3.5 py-6 text-center text-[12.5px] text-muted-foreground">{children}</div>
-  )
-}
-
-/** Introductory paragraph above a group. */
-function Lede({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <p className="mb-3 max-w-[52ch] text-[12.5px] leading-relaxed text-muted-foreground">
-      {children}
-    </p>
-  )
-}
-
-/** Footnote below a group. */
-function Caption({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <p className="mx-0.5 mt-2 max-w-[56ch] text-[11.5px] leading-relaxed text-muted-foreground">
-      {children}
-    </p>
-  )
-}
-
-/** Connection state dot: green = live, gray = off/paused. */
-function StatusDot({ ok }: { ok: boolean }): React.JSX.Element {
-  return (
-    <span
-      className={cn(
-        'size-2 shrink-0 rounded-full',
-        ok ? 'bg-emerald-500 ring-[3px] ring-emerald-500/20' : 'bg-muted-foreground/50'
-      )}
-    />
-  )
-}
-
-/** macOS-style segmented control (muted track, raised thumb). */
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  ariaLabel
-}: {
-  value: T
-  options: { value: T; label: string }[]
-  onChange: (value: T) => void
-  ariaLabel?: string
-}): React.JSX.Element {
-  return (
-    <div
-      role="group"
-      aria-label={ariaLabel}
-      className="flex shrink-0 gap-px rounded-[7px] bg-muted p-0.5"
-    >
-      {options.map(({ value: v, label }) => (
-        <button
-          key={v}
-          type="button"
-          aria-pressed={v === value}
-          onClick={() => onChange(v)}
-          className={cn(
-            'rounded-[5.5px] px-3 py-1 text-xs transition-colors',
-            v === value
-              ? 'bg-background font-medium text-foreground shadow-sm dark:bg-[oklch(0.32_0_0)]'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
+/* Native-settings primitives (Group / Row / …) live in ./rows and are shared
+   with the config tabs. */

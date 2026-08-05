@@ -55,36 +55,36 @@ export function SkillsEditor({
   return (
     <div className="space-y-4">
       {value.length === 0 && (
-        <p className="text-[12px] text-muted-foreground">{t('settings.advanced.skillsEmpty')}</p>
+        <p className="text-[12px] text-muted-foreground">{t('settings.config.skillsEmpty')}</p>
       )}
       {value.map((skill, i) => (
         <ItemCard
           key={skill.id}
-          title={skill.name || t('settings.advanced.skillsAdd')}
+          title={skill.name || t('settings.config.skillsAdd')}
           onRemove={() => onChange(value.filter((_, idx) => idx !== i))}
         >
           <SwitchRow
-            label={t('settings.advanced.enabled')}
+            label={t('settings.config.enabled')}
             checked={skill.enabled}
             onChange={(enabled) => update(i, { enabled })}
           />
           <TextField
-            label={t('settings.advanced.name')}
+            label={t('settings.config.name')}
             value={skill.name}
             onChange={(name) => update(i, { name })}
           />
           <TextField
-            label={t('settings.advanced.skillDescription')}
+            label={t('settings.config.skillDescription')}
             value={skill.description}
             onChange={(description) => update(i, { description })}
           />
           <TextField
-            label={t('settings.advanced.allowedTools')}
+            label={t('settings.config.allowedTools')}
             value={skill.allowedTools ?? ''}
             onChange={(allowedTools) => update(i, { allowedTools })}
           />
           <TextAreaField
-            label={t('settings.advanced.skillBody')}
+            label={t('settings.config.skillBody')}
             value={skill.skillMdBody}
             rows={8}
             mono
@@ -93,7 +93,7 @@ export function SkillsEditor({
           <FilesEditor files={skill.files} onChange={(files) => update(i, { files })} />
         </ItemCard>
       ))}
-      <AddButton label={t('settings.advanced.skillsAdd')} onClick={() => onChange([...value, blankSkill()])} />
+      <AddButton label={t('settings.config.skillsAdd')} onClick={() => onChange([...value, blankSkill()])} />
     </div>
   )
 }
@@ -110,13 +110,13 @@ function FilesEditor({
     onChange(files.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
 
   return (
-    <Field label={t('settings.advanced.skillFiles')}>
+    <Field label={t('settings.config.skillFiles')}>
       <div className="space-y-2">
         {files.map((file, i) => (
           <div key={file.id} className="space-y-2 rounded-md border border-border/50 p-2">
             <div className="flex items-center gap-2">
               <TextField
-                label={t('settings.advanced.skillFilePath')}
+                label={t('settings.config.skillFilePath')}
                 value={file.path}
                 onChange={(path) => update(i, { path })}
               />
@@ -131,7 +131,7 @@ function FilesEditor({
               </Button>
             </div>
             <TextAreaField
-              label={t('settings.advanced.skillFileContent')}
+              label={t('settings.config.skillFileContent')}
               value={file.content ?? ''}
               rows={3}
               mono
@@ -139,7 +139,7 @@ function FilesEditor({
             />
           </div>
         ))}
-        <AddButton label={t('settings.advanced.skillAddFile')} onClick={() => onChange([...files, blankFile()])} />
+        <AddButton label={t('settings.config.skillAddFile')} onClick={() => onChange([...files, blankFile()])} />
       </div>
     </Field>
   )

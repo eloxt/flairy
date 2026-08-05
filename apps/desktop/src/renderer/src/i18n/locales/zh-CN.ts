@@ -290,6 +290,9 @@ const zhCN: typeof En = {
     title: '设置',
     // 侧栏导航
     navGeneral: '通用',
+    navGroupAssistant: '助手',
+    navGroupConfig: '配置',
+    navGroupConnections: '连接',
     tabMemory: '记忆',
     tabSchedule: '定时任务',
     scheduleDescription:
@@ -408,27 +411,34 @@ const zhCN: typeof En = {
     showConfig: '配置详情',
     loadingConfig: '加载中…',
     noConfig: '尚未从服务器收到任何配置。',
-    // 高级设置（连点版本号 10 次解锁）
-    tabAdvanced: '高级',
-    advancedUnlockedToast: '已解锁高级设置',
-    advanced: {
-      intro:
-        '以下设置面向高级用户。开启本地模式后，Flairy 将不再连接服务器，完全使用你在下方填写的配置运行。',
-      localModeLabel: '本地模式（脱离服务端运行）',
-      localModeDescription:
-        '断开与服务器的连接，改用下方的配置。会话与记忆仅保存在本机，且停止同步。',
-      localModeOffHint: '开启本地模式后即可编辑并使用下方配置。',
-      importLabel: '导入配置 JSON',
-      importDescription: '粘贴服务端下发的配置（或本地配置导出）。导入内容会填入下方编辑器——检查无误后保存。',
-      importButton: '导入 JSON',
-      importCancel: '取消',
-      importApply: '解析并填入',
-      importPlaceholder: '{ "llm": { … }, "mcpServers": [ … ], "systemPrompts": [ … ], … }',
-      importError: '无法解析该 JSON——需要一个配置对象。',
-      importErrorShape: 'JSON 可解析，但结构不是有效配置（位置：{{path}}）。',
-      importedHint: '已导入编辑器。请检查下方各项后保存。',
-      importedSkippedSkills_one: '已导入。{{count}} 个技能因缺少文件内容被跳过——请检查后保存。',
-      importedSkippedSkills_other: '已导入。{{count}} 个技能因缺少文件内容被跳过——请检查后保存。',
+    // 用户配置标签页（模型 / 工具 / 联网搜索 / 提示词 / 技能）
+    config: {
+      tabModels: '模型',
+      tabTools: '工具',
+      tabWebSearch: '联网搜索',
+      tabPrompts: '提示词',
+      tabSkills: '技能',
+      ledeModels: '配置助手使用的 AI 模型。',
+      ledeTools: '配置助手可连接的工具服务器。',
+      ledeWebSearch: '配置联网搜索服务。',
+      ledePrompts: '配置决定助手行为的系统提示词。',
+      ledeSkills: '配置技能——助手可以遵循的成套指令。',
+      sourceLabel: '配置来源',
+      source: {
+        server: '使用服务器配置',
+        local: '使用自己的配置',
+        merge: '合并两者'
+      },
+      sourceDescription: {
+        server: '仅使用服务器下发的配置；下方条目会保留但不生效。',
+        local: '仅使用下方你自己的条目；忽略服务器下发的配置。',
+        merge: '两者一并生效；冲突时你的条目覆盖服务器下发的条目。'
+      },
+      sourceServerHint: '当前你的条目未启用——把上方配置来源改为「使用自己的配置」或「合并两者」后生效。',
+      ownEntries: '我的条目',
+      copyFromServer: '从服务器复制',
+      copyFromServerDone: '已把服务器配置复制到编辑器——检查后保存。',
+      copyFromServerEmpty: '尚未收到可复制的服务器配置。',
       save: '保存',
       saving: '保存中…',
       saved: '已保存',
@@ -437,15 +447,6 @@ const zhCN: typeof En = {
       enabled: '启用',
       name: '名称',
       secretKeepHint: '已保存 — 留空则保持不变',
-      rehideLabel: '隐藏高级设置',
-      rehideDescription: '重新隐藏此标签页。再次连点版本号 10 次可重新显示。',
-      rehideButton: '隐藏',
-      // 子分区
-      sectionLlm: '模型',
-      sectionMcp: '工具',
-      sectionServices: '联网搜索',
-      sectionPrompts: '提示词',
-      sectionSkills: '技能',
       // 模型
       roleMain: '主模型',
       roleMainDescription: '运行助手的主要模型。必填。',

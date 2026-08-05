@@ -49,22 +49,25 @@ function blankLlm(role: LlmRole): ActiveLlm {
 
 export function LlmEditor({
   value,
-  onChange
+  onChange,
+  warnMissingMain
 }: {
   value: RoleModels
   onChange: (next: RoleModels) => void
+  /** Warn when no main model is set — only when the server's can't fill in. */
+  warnMissingMain?: boolean
 }): React.JSX.Element {
   const { t } = useTranslation()
   const roles: { role: LlmRole; title: string; description: string }[] = [
-    { role: 'main', title: t('settings.advanced.roleMain'), description: t('settings.advanced.roleMainDescription') },
-    { role: 'tool', title: t('settings.advanced.roleTool'), description: t('settings.advanced.roleToolDescription') },
-    { role: 'visual', title: t('settings.advanced.roleVisual'), description: t('settings.advanced.roleVisualDescription') }
+    { role: 'main', title: t('settings.config.roleMain'), description: t('settings.config.roleMainDescription') },
+    { role: 'tool', title: t('settings.config.roleTool'), description: t('settings.config.roleToolDescription') },
+    { role: 'visual', title: t('settings.config.roleVisual'), description: t('settings.config.roleVisualDescription') }
   ]
 
   return (
     <div className="space-y-4">
-      {!value.main && (
-        <p className="text-[12px] text-destructive">{t('settings.advanced.llmMainMissing')}</p>
+      {warnMissingMain && !value.main && (
+        <p className="text-[12px] text-destructive">{t('settings.config.llmMainMissing')}</p>
       )}
       {roles.map(({ role, title, description }) => (
         <RoleEditor
@@ -100,7 +103,7 @@ function RoleEditor({
       <ItemCard title={title}>
         <p className="text-[12px] text-muted-foreground">{description}</p>
         <Button type="button" variant="outline" size="sm" onClick={() => onChange(blankLlm(role))}>
-          {t('settings.advanced.roleEnable')}
+          {t('settings.config.roleEnable')}
         </Button>
       </ItemCard>
     )
@@ -116,7 +119,7 @@ function RoleEditor({
       <p className="text-[12px] text-muted-foreground">{description}</p>
       <div className="grid grid-cols-2 gap-3">
         <SelectField
-          label={t('settings.advanced.providerApi')}
+          label={t('settings.config.providerApi')}
           value={value.provider.api}
           options={API_OPTIONS.map((a) => ({ value: a, label: a }))}
           onChange={(api) => {
@@ -128,38 +131,38 @@ function RoleEditor({
           }}
         />
         <TextField
-          label={t('settings.advanced.baseUrl')}
+          label={t('settings.config.baseUrl')}
           value={value.provider.baseUrl ?? ''}
           onChange={(baseUrl) => setProvider({ baseUrl })}
         />
       </div>
       <SecretField
-        label={t('settings.advanced.credential')}
-        hint={t('settings.advanced.secretKeepHint')}
+        label={t('settings.config.credential')}
+        hint={t('settings.config.secretKeepHint')}
         value={value.provider.credential}
         onChange={(credential) => setProvider({ credential })}
       />
       <div className="grid grid-cols-2 gap-3">
         <TextField
-          label={t('settings.advanced.modelId')}
+          label={t('settings.config.modelId')}
           value={value.model.model}
           placeholder="claude-sonnet-4-20250514"
           onChange={(model) => setModel({ model })}
         />
         <TextField
-          label={t('settings.advanced.modelName')}
+          label={t('settings.config.modelName')}
           value={value.model.name}
           onChange={(name) => setModel({ name })}
         />
       </div>
       <SwitchRow
-        label={t('settings.advanced.acceptsImages')}
+        label={t('settings.config.acceptsImages')}
         checked={value.model.input.includes('image')}
         onChange={(on) => setModel({ input: on ? ['text', 'image'] : ['text'] })}
       />
       <div className="grid grid-cols-3 gap-3">
         <SelectField
-          label={t('settings.advanced.thinkingLevel')}
+          label={t('settings.config.thinkingLevel')}
           value={value.model.thinkingLevel ?? 'off'}
           options={THINKING_OPTIONS.map((l) => ({ value: l, label: l }))}
           onChange={(thinkingLevel) =>
@@ -167,12 +170,12 @@ function RoleEditor({
           }
         />
         <NumberField
-          label={t('settings.advanced.contextWindow')}
+          label={t('settings.config.contextWindow')}
           value={value.model.contextWindow}
           onChange={(contextWindow) => setModel({ contextWindow })}
         />
         <NumberField
-          label={t('settings.advanced.maxTokens')}
+          label={t('settings.config.maxTokens')}
           value={value.model.maxTokens}
           onChange={(maxTokens) => setModel({ maxTokens })}
         />

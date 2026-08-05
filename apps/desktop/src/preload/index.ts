@@ -4,6 +4,7 @@ import {
   type AppLanguage,
   type ChatWidth,
   type ConfigMode,
+  type ConfigSources,
   type FlairyApi,
   type AgentEventEnvelope,
   type ApprovalRequestPayload,
@@ -96,12 +97,13 @@ const api: FlairyApi = {
   setChatWidth: (w) => ipcRenderer.invoke(IPC.SettingsSetChatWidth, w),
   getPreferredMainModel: () => ipcRenderer.invoke(IPC.SettingsGetPreferredModel),
   setPreferredMainModel: (id) => ipcRenderer.invoke(IPC.SettingsSetPreferredModel, id),
-  getAdvancedUnlocked: () => ipcRenderer.invoke(IPC.AdvancedGetUnlocked),
-  setAdvancedUnlocked: (v) => ipcRenderer.invoke(IPC.AdvancedSetUnlocked, v),
   getConfigMode: () => ipcRenderer.invoke(IPC.ConfigGetMode),
   setConfigMode: (mode) => ipcRenderer.invoke(IPC.ConfigSetMode, mode),
+  getConfigSources: () => ipcRenderer.invoke(IPC.ConfigGetSources),
+  setConfigSources: (sources) => ipcRenderer.invoke(IPC.ConfigSetSources, sources),
   getLocalConfig: () => ipcRenderer.invoke(IPC.LocalConfigGet),
   saveLocalConfig: (draft) => ipcRenderer.invoke(IPC.LocalConfigSave, draft),
+  seedLocalConfigFromServer: () => ipcRenderer.invoke(IPC.LocalConfigSeed),
 
   onAgentEvent: (cb) => {
     const listener = (_e: unknown, env: AgentEventEnvelope): void => cb(env)
@@ -163,15 +165,15 @@ const api: FlairyApi = {
     ipcRenderer.on(IPC.PreferredModelChanged, listener)
     return () => ipcRenderer.removeListener(IPC.PreferredModelChanged, listener)
   },
-  onAdvancedUnlockedChanged: (cb) => {
-    const listener = (_e: unknown, unlocked: boolean): void => cb(unlocked)
-    ipcRenderer.on(IPC.AdvancedUnlockedChanged, listener)
-    return () => ipcRenderer.removeListener(IPC.AdvancedUnlockedChanged, listener)
-  },
   onConfigModeChanged: (cb) => {
     const listener = (_e: unknown, mode: ConfigMode): void => cb(mode)
     ipcRenderer.on(IPC.ConfigModeChanged, listener)
     return () => ipcRenderer.removeListener(IPC.ConfigModeChanged, listener)
+  },
+  onConfigSourcesChanged: (cb) => {
+    const listener = (_e: unknown, sources: ConfigSources): void => cb(sources)
+    ipcRenderer.on(IPC.ConfigSourcesChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.ConfigSourcesChanged, listener)
   },
   onUpdateState: (cb) => {
     const listener = (_e: unknown, state: UpdateState): void => cb(state)

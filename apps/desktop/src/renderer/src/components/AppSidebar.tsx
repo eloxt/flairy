@@ -215,7 +215,7 @@ export function AppSidebar(): React.JSX.Element {
               falls back to picking a project folder. */}
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="app-no-drag h-9 rounded-lg border border-border bg-card/50 font-medium hover:bg-accent"
+              className="app-no-drag h-9 rounded-lg hover:bg-accent"
               onClick={() => {
                 if (tab === "projects" && !currentProject) {
                   void addProject();

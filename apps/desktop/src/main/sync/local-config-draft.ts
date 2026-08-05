@@ -16,8 +16,8 @@ import { fetchFullSkills } from '../agent/skill-materializer'
 import { loadLocalConfig, saveLocalConfig, type LocalConfigBundle } from '../store/local-config'
 
 /**
- * Bridges the renderer's {@link LocalConfigDraft} (Advanced settings editor) and
- * the encrypted {@link LocalConfigBundle} on disk.
+ * Bridges the renderer's {@link LocalConfigDraft} (the Settings config tabs)
+ * and the encrypted {@link LocalConfigBundle} on disk.
  *
  * READ: redacts every secret (via {@link redactConfig}) so the renderer never
  * sees a plaintext key — same discipline as the server config.

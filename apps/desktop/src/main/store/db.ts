@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { profileDir } from './profile'
 import { randomUUID } from 'node:crypto'
 import type { Memory, SessionRemotePayload } from '@flairy/shared'
-import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode, WorkerRun, WorkerRunStatus, ScheduledTask, ScheduledTaskStatus } from '@shared/ipc'
+import type { SessionMeta, CreateSessionArgs, SearchHit, ChatWidth, ConfigMode, ConfigSources, WorkerRun, WorkerRunStatus, ScheduledTask, ScheduledTaskStatus } from '@shared/ipc'
 import { dehydrateImages, IMAGE_REF_SCAN_RE } from './image-store'
 import { t } from '../locale'
 
@@ -77,10 +77,10 @@ export function initDb(): void {
       version   INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
-    -- User-authored LOCAL config for "detached" mode (Advanced settings). Single
-    -- row (id = 0). The blob is the local config bundle JSON ENCRYPTED via
-    -- safeStorage (it carries LLM/MCP/service secrets) — never plaintext. Kept
-    -- separate from config_cache so switching modes never clobbers the other.
+    -- User-authored LOCAL config (Settings config tabs). Single row (id = 0).
+    -- The blob is the local config bundle JSON ENCRYPTED via safeStorage (it
+    -- carries LLM/MCP/service secrets) — never plaintext. Kept separate from
+    -- config_cache so neither source ever clobbers the other.
     CREATE TABLE IF NOT EXISTS local_config (
       id        INTEGER PRIMARY KEY CHECK (id = 0),
       blob      BLOB NOT NULL,
@@ -365,19 +365,6 @@ export function setChatWidthPref(value: ChatWidth): void {
 }
 
 /**
- * Advanced-settings unlock flag. Hidden by default: the tab only appears after
- * the user taps the version number 10× (persisted so it stays revealed). Only an
- * explicit '1' unlocks it.
- */
-export function getAdvancedUnlockedPref(): boolean {
-  return getSetting('advancedUnlocked') === '1'
-}
-
-export function setAdvancedUnlockedPref(value: boolean): void {
-  setSetting('advancedUnlocked', value ? '1' : '0')
-}
-
-/**
  * The user's own main-model pick (an `llm_models` id from
  * `ConfigSnapshot.modelOptions`), per device. Null/empty means no pick — the
  * admin-assigned main model applies.
@@ -390,13 +377,46 @@ export function setPreferredMainModelPref(id: string | null): void {
   setSetting('preferredMainModelId', id ?? '')
 }
 
-/** Config source. Defaults to 'server'; 'local' means the detached/offline mode. */
+/** Config source. Defaults to 'server'; 'local' means account-less (skip-login) use. */
 export function getConfigModePref(): ConfigMode {
   return getSetting('configMode') === 'local' ? 'local' : 'server'
 }
 
 export function setConfigModePref(value: ConfigMode): void {
   setSetting('configMode', value)
+}
+
+const CONFIG_SOURCE_DEFAULTS: ConfigSources = {
+  llm: 'server',
+  mcpServers: 'server',
+  systemPrompts: 'server',
+  services: 'server',
+  skills: 'server'
+}
+
+/**
+ * Per-category config source choices (JSON in the settings KV). Missing,
+ * malformed, or unknown values — including categories added after this install
+ * wrote the row — fall back to `server` (follow the pushed config).
+ */
+export function getConfigSourcesPref(): ConfigSources {
+  const raw = getSetting('configSources')
+  const out = { ...CONFIG_SOURCE_DEFAULTS }
+  if (!raw) return out
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<keyof ConfigSources, unknown>>
+    for (const key of Object.keys(out) as (keyof ConfigSources)[]) {
+      const v = parsed[key]
+      if (v === 'server' || v === 'local' || v === 'merge') out[key] = v
+    }
+  } catch {
+    // fall through to defaults
+  }
+  return out
+}
+
+export function setConfigSourcesPref(sources: ConfigSources): void {
+  setSetting('configSources', JSON.stringify(sources))
 }
 
 export function createSession({ title, cwd, workspacePath }: CreateSessionArgs): SessionMeta {
