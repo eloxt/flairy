@@ -34,6 +34,8 @@ import { createAskTool } from "./tools/ask";
 import { createMemoryTool } from "./tools/memory";
 import { createTodoTool } from "./tools/todo";
 import { createScheduleTool } from "./tools/schedule";
+import { createSearchToolTool } from "./tools/search-tool";
+import { expandPath } from "./tools/paths";
 import { createWebSearchTool, resolveExaService } from "./tools/web-search";
 import { createWebFetchTool } from "./tools/web-fetch";
 import { createGithubTools } from "../github/tools";
@@ -108,8 +110,17 @@ const MAX_AUTO_RETRIES = 4;
  * - todo_write / remember: approval-exempt, tiny schemas, and invoked
  *   spontaneously by the main prompt's standing instructions — filtering them
  *   silently degrades behavior for near-zero token savings.
+ * - search_tool: the escape hatch for selection misses — the agent uses it to
+ *   enable tools whose need is only discovered mid-turn (e.g. after reading a
+ *   SKILL.md). Filtering the recovery mechanism itself would defeat it.
  */
-const TOOL_SELECTION_FLOOR = new Set(["ask", "read", "todo_write", "remember"]);
+const TOOL_SELECTION_FLOOR = new Set([
+  "ask",
+  "read",
+  "todo_write",
+  "remember",
+  "search_tool",
+]);
 /** Hard cap on the tool-selector side call so it can't stall the turn. */
 const TOOL_SELECTION_TIMEOUT_MS = 10_000;
 /** Trailing conversational messages given to the selector as routing context. */
@@ -266,6 +277,13 @@ export class AgentService {
   /** Aborts the in-flight selector stream (user stop / dispose / timeout). */
   private selectAbort: AbortController | null = null;
   /**
+   * Set when search_tool grows the selection union DURING a run. The agent
+   * loop snapshots tools once per run, so assigning `agent.state.tools` alone
+   * cannot reach the in-flight loop; prepareNextTurnWithContext consumes this
+   * flag to hand the loop a refreshed toolset before its next provider request.
+   */
+  private toolsGrewMidTurn = false;
+  /**
    * Retries already made for the CURRENT user turn (reset on each fresh
    * prompt()). The subscribe handler reads it to decide whether an errored run
    * will be retried; the retry loop in {@link runTurnRetries} increments it.
@@ -382,6 +400,17 @@ export class AgentService {
       // next turn boundary instead of pi's default one-per-turn, which would
       // otherwise spread a quick burst of redirects across several turns.
       steeringMode: "all",
+      // The loop snapshots tools once per run (createContextSnapshot), so a
+      // mid-run search_tool enable has to be handed to the loop explicitly.
+      // Only fires after a step whose tool calls grew the union — every other
+      // step returns undefined and leaves the loop's context untouched.
+      prepareNextTurnWithContext: (ctx: any) => {
+        if (!this.toolsGrewMidTurn) return undefined;
+        this.toolsGrewMidTurn = false;
+        return {
+          context: { ...ctx.context, tools: this.buildTools(this.cwd) },
+        };
+      },
       initialState: {
         systemPrompt: buildSystemPrompt(config, cwd, this.isChatSession()),
         model: buildModel(mainLlm),
@@ -446,6 +475,10 @@ export class AgentService {
         // `schedule` only writes local task metadata (no files/commands run at
         // creation time); the runs themselves are gated per-tool when they fire.
         if (name === "schedule") return undefined;
+        // `search_tool` only changes which tool DEFINITIONS the model sees; every
+        // enabled tool is still individually gated when actually called, so no
+        // privilege is gained by enabling and there is nothing to approve.
+        if (name === "search_tool") return undefined;
         const origin = this.activeTurnOrigin;
         // "Full access" auto-approves everything — but only for a purely
         // desktop-origin turn (most-restrictive-origin-wins). Any telegram
@@ -640,6 +673,36 @@ export class AgentService {
     return !!config && !!findPromptBody(config, TOOL_SELECTION_PROMPT_NAME);
   }
 
+  /**
+   * Grow the selection union with catalog tool names (search_tool's enable
+   * path) and return the names actually newly enabled. No-op while selection
+   * is inactive: the full catalog is already available then, and seeding the
+   * union from null would ACTIVATE filtering and shrink the toolset — the
+   * opposite of what the caller wants. Accumulate-only, like the selector.
+   */
+  private enableSelectedTools(names: string[]): string[] {
+    if (!this.toolSelectionActive()) return [];
+    const valid = new Set(this.buildAllTools(this.cwd).map((t) => t.name));
+    const union = new Set(this.selectedToolNames!);
+    const added: string[] = [];
+    for (const n of names) {
+      if (!valid.has(n) || union.has(n) || TOOL_SELECTION_FLOOR.has(n)) continue;
+      union.add(n);
+      added.push(n);
+    }
+    if (added.length === 0) return [];
+    this.selectedToolNames = union;
+    saveToolSelection(this.sessionId, [...union]);
+    // Reaches the NEXT run immediately; the in-flight run is refreshed via the
+    // toolsGrewMidTurn flag in prepareNextTurnWithContext.
+    this.agent.state.tools = this.buildTools(this.cwd);
+    this.toolsGrewMidTurn = true;
+    console.log(
+      `[ToolSelection] search_tool enabled=[${added.join(", ")}] union=${union.size}`,
+    );
+    return added;
+  }
+
   /** Unfiltered tool catalog — everything the session could have. */
   private buildAllTools(cwd: string): AgentTool<any>[] {
     const chat = this.isChatSession();
@@ -661,6 +724,21 @@ export class AgentService {
         createMemoryTool(this.sessionId, (m) => this.persistMemory(m)),
         createTodoTool(),
       );
+      // The selection escape hatch. Registered only while the server-driven
+      // `tool_selection` feature exists — without it the full catalog is always
+      // enabled and the tool would be dead weight (same "never see a tool you
+      // can't use" rule as web_search). Floor member, so never filtered out.
+      const config = this.server.getConfig();
+      if (config && findPromptBody(config, TOOL_SELECTION_PROMPT_NAME)) {
+        tools.push(
+          createSearchToolTool({
+            getCatalog: () => this.buildAllTools(this.cwd),
+            getEnabledNames: () =>
+              new Set(this.buildTools(this.cwd).map((t) => t.name)),
+            enable: (names) => this.enableSelectedTools(names),
+          }),
+        );
+      }
       // GitHub tools are a generic project-session capability (the orchestrator
       // skill builds on them). Always registered so the model can surface a
       // clear "connect GitHub in Settings" error instead of the tools silently
@@ -1739,7 +1817,9 @@ function injectContext(
     cards: buildCardsPrompt(chat ? CHAT_CARD_SET : MAIN_CARD_SET),
     memory: buildMemoryBlock(),
     language: uiLanguage(),
-    cwd,
+    // Sessions store `~` / `~/...` forms (chat sentinel, Telegram-created);
+    // the prompt should always show the real absolute path.
+    cwd: expandPath(cwd),
     // The active `main`-role model, preferring its admin-facing display name
     // over the raw provider id (mirrors buildModel's naming).
     model: mainModel ? mainModel.name || mainModel.model : "",
@@ -1787,6 +1867,12 @@ function buildSkillsInstructions(config: ConfigSnapshot): string {
   const available = listMaterializedSkills().filter((s) => descById.has(s.id));
   if (available.length === 0) return "";
 
+  // Only advertise the search_tool recovery path when the tool actually exists
+  // (i.e. automatic tool selection is on — see buildAllTools's registration).
+  const searchToolLine = findPromptBody(config, TOOL_SELECTION_PROMPT_NAME)
+    ? "\n- Missing tools: if a `SKILL.md` references a tool you do not currently have, use `search_tool` to find and enable it before falling back."
+    : "";
+
   const entries = available
     .map((s) => {
       const desc = (descById.get(s.id) ?? "").replace(/\s+/g, " ").trim();
@@ -1806,7 +1892,7 @@ ${entries}
 - Progressive disclosure: after deciding to use a skill, expand its \`r0\` short path into an absolute path and \`read\` the whole \`SKILL.md\` before taking task actions. Do not act on a skill you have not read.
 - Relative paths inside a \`SKILL.md\` (e.g. \`scripts/foo.py\`, \`references/\`, \`assets/\`) resolve against that skill's own directory. Prefer running or reusing a skill's scripts/assets over rewriting them.
 - Context hygiene: only read the skill files relevant to the current task; don't load unrelated references.
-- Fallback: if a skill can't be applied cleanly (missing files, unclear instructions), say so briefly and continue with the best alternative.
+- Fallback: if a skill can't be applied cleanly (missing files, unclear instructions), say so briefly and continue with the best alternative.${searchToolLine}
 </skills_instructions>`;
 }
 
