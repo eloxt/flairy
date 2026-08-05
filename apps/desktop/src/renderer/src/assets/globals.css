@@ -377,6 +377,41 @@
 
 }
 
+/* ── Auth gate ───────────────────────────────────────────────────────────────
+   The sign-in screen draws the brand glyph stroke by stroke on load, large
+   shapes first and detail strokes last; greeting / form / footer follow with
+   staggered rise-in (delays set inline in AuthScreen). Decorative only —
+   reduced motion shows everything immediately. */
+.auth-mark :is(path, circle) {
+    /* 62 ≥ the longest path in the mark, so one dash value covers them all. */
+    stroke-dasharray: 62;
+    stroke-dashoffset: 62;
+    animation: auth-draw 0.75s cubic-bezier(0.33, 0, 0.2, 1) forwards;
+}
+/* Draw order (child index → stroke): 5 triangle body, 6+7 legs, 4 vertical
+   stem, 2+3 chevrons, 1 dot. */
+.auth-mark :is(path, circle):nth-child(5) { animation-delay: 0ms; }
+.auth-mark :is(path, circle):nth-child(6) { animation-delay: 140ms; }
+.auth-mark :is(path, circle):nth-child(7) { animation-delay: 210ms; }
+.auth-mark :is(path, circle):nth-child(4) { animation-delay: 300ms; }
+.auth-mark :is(path, circle):nth-child(2) { animation-delay: 430ms; }
+.auth-mark :is(path, circle):nth-child(3) { animation-delay: 510ms; }
+.auth-mark :is(path, circle):nth-child(1) { animation-delay: 640ms; }
+@keyframes auth-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .auth-gate .auth-mark :is(path, circle) {
+        animation: none;
+        stroke-dashoffset: 0;
+    }
+    .auth-gate .animate-rise-in {
+        animation: none;
+    }
+}
+
 /* ── Streamdown surfaces ── */
 
 /* 代码块 / mermaid：外层即容器——单层细边框 + 8px 圆角 */

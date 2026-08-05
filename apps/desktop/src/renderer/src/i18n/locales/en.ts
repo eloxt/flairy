@@ -14,17 +14,19 @@ const en = {
     expand: 'Expand'
   },
   auth: {
+    welcomeBack: 'Welcome back',
     signInToContinue: 'Sign in to continue',
     skipLogin: 'Skip sign-in and use locally',
     createYourAccount: 'Create your account',
+    syncNote: 'Your chats will sync across your devices',
+    noAccountPrompt: 'New to Flairy?',
+    haveAccountPrompt: 'Already have an account?',
     signIn: 'Sign in',
-    register: 'Register',
     name: 'Name',
     namePlaceholder: 'Your name',
     email: 'Email',
     emailPlaceholder: 'you@example.com',
     password: 'Password',
-    passwordPlaceholder: '••••••••',
     pleaseWait: 'Please wait…',
     createAccount: 'Create account'
   },

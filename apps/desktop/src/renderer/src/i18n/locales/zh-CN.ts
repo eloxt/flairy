@@ -13,17 +13,19 @@ const zhCN: typeof En = {
     expand: '展开'
   },
   auth: {
+    welcomeBack: '欢迎回来',
     signInToContinue: '登录以继续',
     skipLogin: '跳过登录，本机使用',
     createYourAccount: '创建你的账户',
+    syncNote: '对话将在你的设备间自动同步',
+    noAccountPrompt: '还没有账户？',
+    haveAccountPrompt: '已经有账户？',
     signIn: '登录',
-    register: '注册',
     name: '姓名',
     namePlaceholder: '你的姓名',
     email: '邮箱',
     emailPlaceholder: 'you@example.com',
     password: '密码',
-    passwordPlaceholder: '••••••••',
     pleaseWait: '请稍候…',
     createAccount: '创建账户'
   },

@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/store/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
 
@@ -12,6 +11,9 @@ type Mode = 'login' | 'register'
  * Full-screen gate shown when the client has no session. The app is unusable
  * until the user signs in or registers; success flips the auth store to
  * `authed` and the shell mounts in its place.
+ *
+ * Load sequence lives under "Auth gate" in globals.css: the brand glyph draws
+ * itself stroke by stroke, then greeting, form and footer rise in staggered.
  */
 export function AuthScreen(): React.JSX.Element {
   const { t } = useTranslation()
@@ -20,55 +22,46 @@ export function AuthScreen(): React.JSX.Element {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const isLogin = mode === 'login'
 
-  const switchMode = (next: Mode): void => {
-    if (next === mode) return
-    setMode(next)
+  const switchMode = (): void => {
+    setMode(isLogin ? 'register' : 'login')
     clearError()
   }
 
   const onSubmit = (e: FormEvent): void => {
     e.preventDefault()
     if (busy) return
-    if (mode === 'login') void login(email.trim(), password)
+    if (isLogin) void login(email.trim(), password)
     else void register(email.trim(), password, displayName.trim())
   }
 
   const canSubmit =
-    email.trim() !== '' &&
-    password !== '' &&
-    (mode === 'login' || displayName.trim() !== '')
+    email.trim() !== '' && password !== '' && (isLogin || displayName.trim() !== '')
 
   return (
-    <div className="app-drag flex h-screen w-screen items-center justify-center bg-background p-6">
-      <div className="app-no-drag w-full max-w-sm">
-        {/* Wordmark */}
-        <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl border border-black/10 bg-white text-black">
-            <BrandMark className="size-6" />
-          </div>
-          <div className="text-center">
-            <h1 className="text-base font-semibold tracking-tight">Flairy</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {mode === 'login' ? t('auth.signInToContinue') : t('auth.createYourAccount')}
-            </p>
-          </div>
+    <div className="auth-gate app-drag flex h-screen w-screen items-center justify-center bg-background p-6">
+      <div className="app-no-drag w-full max-w-xs">
+        <BrandMark className="auth-mark size-12 [stroke-width:1.5]" />
+
+        <div className="animate-rise-in mt-7" style={{ animationDelay: '200ms' }}>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {isLogin ? t('auth.welcomeBack') : t('auth.createYourAccount')}
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {isLogin ? t('auth.signInToContinue') : t('auth.syncNote')}
+          </p>
         </div>
 
-        {/* Tab toggle */}
-        <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-border bg-card p-1">
-          <TabButton active={mode === 'login'} onClick={() => switchMode('login')}>
-            {t('auth.signIn')}
-          </TabButton>
-          <TabButton active={mode === 'register'} onClick={() => switchMode('register')}>
-            {t('auth.register')}
-          </TabButton>
-        </div>
-
-        <form onSubmit={onSubmit} className="space-y-3">
-          {mode === 'register' && (
+        <form
+          onSubmit={onSubmit}
+          className="animate-rise-in mt-8 space-y-4"
+          style={{ animationDelay: '320ms' }}
+        >
+          {!isLogin && (
             <Field label={t('auth.name')}>
               <Input
+                className="h-10"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder={t('auth.namePlaceholder')}
@@ -79,6 +72,7 @@ export function AuthScreen(): React.JSX.Element {
           )}
           <Field label={t('auth.email')}>
             <Input
+              className="h-10"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -90,11 +84,11 @@ export function AuthScreen(): React.JSX.Element {
           </Field>
           <Field label={t('auth.password')}>
             <Input
+              className="h-10"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={t('auth.passwordPlaceholder')}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
               disabled={busy}
             />
           </Field>
@@ -105,50 +99,43 @@ export function AuthScreen(): React.JSX.Element {
             </p>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!canSubmit || busy}>
-            {busy
-              ? t('auth.pleaseWait')
-              : mode === 'login'
-                ? t('auth.signIn')
-                : t('auth.createAccount')}
+          <Button type="submit" size="lg" className="h-10 w-full" disabled={!canSubmit || busy}>
+            {busy ? t('auth.pleaseWait') : isLogin ? t('auth.signIn') : t('auth.createAccount')}
           </Button>
         </form>
 
-        {/* Local, account-less use: unhides Advanced settings (where the
-            detached client is configured) and enters the app. */}
-        <button
-          type="button"
-          onClick={() => void skip()}
-          disabled={busy}
-          className="mt-5 w-full text-center text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+        <p
+          className="animate-rise-in mt-6 text-sm text-muted-foreground"
+          style={{ animationDelay: '440ms' }}
         >
-          {t('auth.skipLogin')}
-        </button>
+          {isLogin ? t('auth.noAccountPrompt') : t('auth.haveAccountPrompt')}{' '}
+          <button
+            type="button"
+            onClick={switchMode}
+            disabled={busy}
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {isLogin ? t('auth.createAccount') : t('auth.signIn')}
+          </button>
+        </p>
+
+        {/* Local, account-less use: enters the app in local mode; models and
+            the rest are configured in the regular Settings tabs. */}
+        <div
+          className="animate-rise-in mt-10 border-t border-border pt-4"
+          style={{ animationDelay: '560ms' }}
+        >
+          <button
+            type="button"
+            onClick={() => void skip()}
+            disabled={busy}
+            className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {t('auth.skipLogin')}
+          </button>
+        </div>
       </div>
     </div>
-  )
-}
-
-function TabButton({
-  active,
-  onClick,
-  children
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'h-7 rounded-md text-sm font-medium transition-colors',
-        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
-      )}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -161,7 +148,7 @@ function Field({
 }): React.JSX.Element {
   return (
     <label className="block space-y-1.5">
-      <span className="eyebrow">{label}</span>
+      <span className="block text-[13px] font-medium">{label}</span>
       {children}
     </label>
   )
