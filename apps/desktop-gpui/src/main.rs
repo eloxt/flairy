@@ -2,15 +2,22 @@ mod agent_runtime;
 mod app;
 mod assets;
 mod auth;
+mod cards;
 mod chat;
+mod config_cache;
 mod contract;
+mod file_tools;
 mod mcp;
 mod right_panel;
+mod schedule;
 mod server_client;
 mod settings;
 mod sidebar;
+mod skills;
 mod store;
 mod theme;
+mod todo;
+mod web_tools;
 
 use gpui::{
     App, AppContext, Application, Bounds, Menu, MenuItem, TitlebarOptions, WindowBounds,
@@ -37,6 +44,7 @@ fn main() {
 
         gpui_component::init(cx);
         theme::init(cx);
+        flairy_markdown::init(cx);
 
         // Own the macOS menu bar (otherwise the previous app's menus linger).
         cx.on_action(|_: &Quit, cx| cx.quit());

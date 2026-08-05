@@ -21,6 +21,10 @@ fn convert_messages(messages: &[Message]) -> Vec<Value> {
                 .iter()
                 .map(|b| match b {
                     ContentBlock::Text { text } => json!({"type": "text", "text": text}),
+                    ContentBlock::Image { media_type, data } => json!({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media_type, "data": data},
+                    }),
                     ContentBlock::ToolUse { id, name, input } => {
                         json!({"type": "tool_use", "id": id, "name": name, "input": input})
                     }
@@ -114,6 +118,14 @@ pub async fn stream_turn(
                     "input_json_delta" => {
                         if let Some((_, _, partial)) = current_tool.as_mut() {
                             partial.push_str(delta["partial_json"].as_str().unwrap_or_default());
+                        }
+                    }
+                    // Extended-thinking deltas: display-only, never committed
+                    // to blocks (round-tripping them needs signatures).
+                    "thinking_delta" => {
+                        let text = delta["thinking"].as_str().unwrap_or_default();
+                        if !text.is_empty() {
+                            on_delta(LlmDelta::Thinking(text.to_string()));
                         }
                     }
                     _ => {}

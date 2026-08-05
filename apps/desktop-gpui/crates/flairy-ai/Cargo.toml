@@ -13,4 +13,3 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
-async-openai = "0.28"

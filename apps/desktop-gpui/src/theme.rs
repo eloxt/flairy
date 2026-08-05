@@ -5,6 +5,7 @@ use gpui::{App, Hsla, WindowAppearance, px, rgb, rgba};
 use gpui_component::highlighter::HighlightTheme;
 use gpui_component::{Theme, ThemeMode};
 
+#[derive(Clone)]
 pub struct Palette {
     pub background: Hsla,
     pub foreground: Hsla,
@@ -101,18 +102,46 @@ pub fn palette(cx: &App) -> Palette {
     if is_dark(cx) { dark() } else { light() }
 }
 
+/// User theme preference: follow the OS, or force light/dark.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ThemePref {
+    System,
+    Light,
+    Dark,
+}
+
+static THEME_PREF: std::sync::Mutex<ThemePref> = std::sync::Mutex::new(ThemePref::System);
+
+pub fn theme_pref() -> ThemePref {
+    *THEME_PREF.lock().unwrap()
+}
+
+/// Set the override and re-apply the palette across all windows.
+pub fn set_theme_pref(pref: ThemePref, cx: &mut App) {
+    *THEME_PREF.lock().unwrap() = pref;
+    let appearance = cx.window_appearance();
+    sync_appearance(appearance, cx);
+    cx.refresh_windows();
+}
+
 /// Apply the Obsidian palette for the current system appearance.
 pub fn init(cx: &mut App) {
+    *THEME_PREF.lock().unwrap() = crate::settings::initial_theme_pref();
     let appearance = cx.window_appearance();
     sync_appearance(appearance, cx);
 }
 
 /// (Re)apply the palette for a given appearance — startup + live switches.
+/// A user preference of light/dark overrides the OS appearance.
 pub fn sync_appearance(appearance: WindowAppearance, cx: &mut App) {
-    let dark_mode = matches!(
-        appearance,
-        WindowAppearance::Dark | WindowAppearance::VibrantDark
-    );
+    let dark_mode = match theme_pref() {
+        ThemePref::Light => false,
+        ThemePref::Dark => true,
+        ThemePref::System => matches!(
+            appearance,
+            WindowAppearance::Dark | WindowAppearance::VibrantDark
+        ),
+    };
     let p = if dark_mode { dark() } else { light() };
 
     let theme = Theme::global_mut(cx);

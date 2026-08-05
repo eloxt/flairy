@@ -13,6 +13,8 @@ use tokio::sync::mpsc::UnboundedSender;
 pub enum AgentEvent {
     TurnStart,
     TextDelta { text: String },
+    /// Model reasoning text (display-only; not part of the committed turn).
+    ThinkingDelta { text: String },
     ToolCallStart { id: String, name: String, input: serde_json::Value },
     ToolResult { id: String, name: String, output: String, is_error: bool },
     TurnEnd { usage: Usage },
@@ -84,13 +86,24 @@ impl Agent {
 
     /// Run the loop until the model ends its turn (or cancel/max_turns).
     /// Emits AgentEvents on `tx`; the final message list arrives in Done.
+    /// Run with a plain-text user message.
     pub async fn run(
         &mut self,
         user_text: String,
         tx: UnboundedSender<AgentEvent>,
         cancel: Arc<AtomicBool>,
     ) {
-        self.messages.push(Message::user_text(user_text));
+        self.run_message(Message::user_text(user_text), tx, cancel).await
+    }
+
+    /// Run with a full user message (text + image blocks).
+    pub async fn run_message(
+        &mut self,
+        user: Message,
+        tx: UnboundedSender<AgentEvent>,
+        cancel: Arc<AtomicBool>,
+    ) {
+        self.messages.push(user);
         if let Err(err) = self.run_inner(&tx, &cancel).await {
             let _ = tx.send(AgentEvent::Error { message: format!("{err:#}") });
         }
@@ -112,8 +125,12 @@ impl Agent {
             let _ = tx.send(AgentEvent::TurnStart);
             let tx_delta = tx.clone();
             let mut on_delta = move |d: LlmDelta| {
-                let LlmDelta::Text(text) = d;
-                let _ = tx_delta.send(AgentEvent::TextDelta { text });
+                let _ = match d {
+                    LlmDelta::Text(text) => tx_delta.send(AgentEvent::TextDelta { text }),
+                    LlmDelta::Thinking(text) => {
+                        tx_delta.send(AgentEvent::ThinkingDelta { text })
+                    }
+                };
             };
 
             // Transient provider/network failures retry with backoff (the

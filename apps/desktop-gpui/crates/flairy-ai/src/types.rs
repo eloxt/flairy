@@ -37,4 +37,8 @@ pub struct AssistantTurn {
 /// Streaming deltas surfaced while a turn is in flight.
 pub enum LlmDelta {
     Text(String),
+    /// Model reasoning/thinking text (e.g. `reasoning_content` from
+    /// OpenAI-compatible providers, Anthropic thinking deltas). Display-only:
+    /// never committed to history.
+    Thinking(String),
 }

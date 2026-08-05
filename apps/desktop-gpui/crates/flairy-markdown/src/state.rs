@@ -12,8 +12,14 @@
 
 use crate::events::{parse_markdown, ParsedMarkdown};
 use crate::remend::remend;
-use gpui::{AppContext as _, Context, SharedString, Task};
+use gpui::{AppContext as _, Context, FocusHandle, SharedString, Task, WeakEntity};
+use std::ops::Range;
+use std::sync::Mutex;
 use std::time::Duration;
+
+/// The one message that currently owns a text selection; starting a drag in
+/// one message clears the previous owner's selection.
+static SELECTION_OWNER: Mutex<Option<WeakEntity<MarkdownState>>> = Mutex::new(None);
 
 const REVEAL_TICK: Duration = Duration::from_millis(16);
 /// Time to fully drain the pending buffer, in ticks (200ms / 16ms).
@@ -29,11 +35,16 @@ pub struct MarkdownState {
     pending_parse: Option<Task<()>>,
     should_reparse: bool,
     reveal_task: Option<Task<()>>,
+    /// Byte range into `parsed.source` (kept across reparses, clamped on use).
+    selection: Option<Range<usize>>,
+    selection_anchor: Option<usize>,
+    /// Focused on click so the cmd-c copy action dispatches to this view.
+    focus_handle: FocusHandle,
 }
 
 impl MarkdownState {
     /// An empty document in streaming mode; feed it with [`Self::append`].
-    pub fn new() -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             source: String::new(),
             revealed: 0,
@@ -42,12 +53,15 @@ impl MarkdownState {
             pending_parse: None,
             should_reparse: false,
             reveal_task: None,
+            selection: None,
+            selection_anchor: None,
+            focus_handle: cx.focus_handle(),
         }
     }
 
     /// A complete document (history hydration); parsed synchronously so the
     /// first frame is never blank.
-    pub fn new_static(text: impl Into<String>) -> Self {
+    pub fn new_static(text: impl Into<String>, cx: &mut Context<Self>) -> Self {
         let source: String = text.into();
         Self {
             revealed: source.len(),
@@ -57,7 +71,77 @@ impl MarkdownState {
             pending_parse: None,
             should_reparse: false,
             reveal_task: None,
+            selection: None,
+            selection_anchor: None,
+            focus_handle: cx.focus_handle(),
         }
+    }
+
+    pub fn focus_handle(&self) -> &FocusHandle {
+        &self.focus_handle
+    }
+
+    // ---- text selection (byte offsets into parsed.source) ----
+
+    /// The active selection, clamped to the current parse and char
+    /// boundaries; `None` when empty.
+    pub fn selection(&self) -> Option<Range<usize>> {
+        let range = self.selection.clone()?;
+        let source = self.parsed.source.as_ref();
+        let start = floor_char_boundary(source, range.start.min(source.len()));
+        let end = floor_char_boundary(source, range.end.min(source.len()));
+        (start < end).then_some(start..end)
+    }
+
+    /// Whether a drag is in progress.
+    pub fn selecting(&self) -> bool {
+        self.selection_anchor.is_some()
+    }
+
+    pub fn begin_selection(&mut self, index: usize, cx: &mut Context<Self>) {
+        let previous = SELECTION_OWNER
+            .lock()
+            .unwrap()
+            .replace(cx.weak_entity());
+        if let Some(previous) = previous {
+            if previous.entity_id() != cx.entity().entity_id() {
+                previous
+                    .update(cx, |state, cx| {
+                        state.selection = None;
+                        state.selection_anchor = None;
+                        cx.notify();
+                    })
+                    .ok();
+            }
+        }
+        self.selection_anchor = Some(index);
+        self.selection = Some(index..index);
+        cx.notify();
+    }
+
+    pub fn extend_selection(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(anchor) = self.selection_anchor {
+            self.selection = Some(anchor.min(index)..anchor.max(index));
+            cx.notify();
+        }
+    }
+
+    /// Ends the drag, keeping the selected range.
+    pub fn end_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        self.selection_anchor = None;
+        if self.selection.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    /// The selected slice of the (markdown) source, for the clipboard.
+    pub fn selected_source(&self) -> Option<String> {
+        self.selection()
+            .map(|range| self.parsed.source[range].to_string())
     }
 
     /// Latest completed parse. May lag `source` by design; stays on the
@@ -160,18 +244,22 @@ impl MarkdownState {
     }
 }
 
-impl Default for MarkdownState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 fn ceil_char_boundary(s: &str, mut index: usize) -> usize {
     if index >= s.len() {
         return s.len();
     }
     while !s.is_char_boundary(index) {
         index += 1;
+    }
+    index
+}
+
+fn floor_char_boundary(s: &str, mut index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    while index > 0 && !s.is_char_boundary(index) {
+        index -= 1;
     }
     index
 }

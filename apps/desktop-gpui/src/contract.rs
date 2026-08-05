@@ -79,22 +79,33 @@ pub fn msgs_from_history(history: &[Message]) -> Vec<crate::app::Msg> {
                 (Role::User, ContentBlock::Text { text }) => {
                     msgs.push(Msg::User(text.clone()));
                 }
-                (Role::Assistant, ContentBlock::Text { text }) => {
-                    msgs.push(Msg::Assistant { md: text.clone(), done: true, view: None });
+                (Role::User, ContentBlock::Image { .. }) => {
+                    msgs.push(Msg::User("🖼 [图片]".into()));
                 }
-                (Role::Assistant, ContentBlock::ToolUse { name, input, .. }) => {
+                (Role::Assistant, ContentBlock::Text { text }) => {
+                    msgs.push(Msg::Assistant {
+                        md: text.clone(),
+                        done: true,
+                        view: None,
+                        reasoning: String::new(),
+                        reasoning_open: false,
+                    });
+                }
+                (Role::Assistant, ContentBlock::ToolUse { id, name, input }) => {
                     msgs.push(Msg::Tool {
+                        id: id.clone(),
                         label: crate::agent_runtime::tool_label(name),
                         preview: crate::agent_runtime::tool_preview(input),
                         output: Some(String::new()),
                         is_error: false,
+                        expanded: false,
                     });
                 }
-                (Role::User, ContentBlock::ToolResult { content, is_error, .. }) => {
+                (Role::User, ContentBlock::ToolResult { tool_use_id, content, is_error }) => {
                     if let Some(Msg::Tool { output, is_error: err, .. }) = msgs
                         .iter_mut()
                         .rev()
-                        .find(|m| matches!(m, Msg::Tool { .. }))
+                        .find(|m| matches!(m, Msg::Tool { id, .. } if id == tool_use_id))
                     {
                         *output = Some(content.clone());
                         *err = *is_error;
