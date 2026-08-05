@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   IconAlertCircle,
-  IconArrowUpCircle,
+  IconCloudDownload,
   IconRefresh,
 } from "@tabler/icons-react";
 import type { UpdateState } from "@shared/ipc";
@@ -116,7 +116,7 @@ export function UpdateBadge(): React.JSX.Element | null {
       ) : state.stage === "error" ? (
         <IconAlertCircle className="h-[1.05rem] w-[1.05rem]" />
       ) : (
-        <IconArrowUpCircle className="h-[1.05rem] w-[1.05rem]" />
+        <IconCloudDownload className="h-[1.05rem] w-[1.05rem]" />
       )}
       {/* Once the installer is on disk the only thing left is a restart, so draw the eye. */}
       {state.stage === "ready" && (
