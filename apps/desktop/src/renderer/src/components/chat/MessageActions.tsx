@@ -5,10 +5,27 @@ import { MessageFooter } from "@/components/ui/message";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/** Wall-clock hour:minute for a message's timestamp; "" when it has none. */
+/**
+ * Wall-clock label for a message's timestamp; "" when it has none. Today's
+ * messages show hour:minute only; older ones are prefixed with the date (and
+ * the year once it differs) so threads spanning days stay unambiguous.
+ */
 function clockTime(ts: number | undefined): string {
   if (!ts) return "";
-  return new Date(ts).toLocaleTimeString(undefined, {
+  const date = new Date(ts);
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return date.toLocaleString(undefined, {
+    ...(sameDay
+      ? {}
+      : {
+          month: "short",
+          day: "numeric",
+          ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+        }),
     hour: "2-digit",
     minute: "2-digit",
   });
