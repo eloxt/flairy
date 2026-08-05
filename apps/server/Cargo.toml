@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+flairy-contract = { path = "../../crates/flairy-contract" }
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 socketioxide = { version = "0.16", features = ["state", "tracing"] }

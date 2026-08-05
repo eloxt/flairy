@@ -42,6 +42,14 @@ pub enum ChatBlock {
     Text {
         text: String,
     },
+    /// An inline image (base64), e.g. a user attachment.
+    #[serde(rename_all = "camelCase")]
+    Image {
+        /// e.g. "image/png".
+        media_type: String,
+        /// Base64-encoded bytes (no data: prefix).
+        data: String,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -166,3 +174,48 @@ pub struct SessionPullPayload {
 
 /// Server -> client: another device changed a session.
 pub type SessionRemotePayload = SessionWithMessages;
+
+// ---------------------------------------------------------------------------
+// Long-term agent memory (mirrors packages/shared/src/memory.ts + events.ts).
+// Timestamps are epoch milliseconds.
+// ---------------------------------------------------------------------------
+
+/// A user-scoped memory (preference/fact the assistant learned). Deletes are
+/// soft: `deleted_at` is set rather than the row removed, so the deletion syncs
+/// to a user's other devices like any other change.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Memory {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<i64>,
+}
+
+/// Client -> server: persist/replace a batch of memories (keyed by id).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryUpsertPayload {
+    pub memories: Vec<Memory>,
+}
+
+/// Client -> server: pull memories changed since a watermark (all if omitted).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryPullPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since: Option<i64>,
+}
+
+/// Server -> client: memories changed on the user's other devices.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryRemotePayload {
+    pub memories: Vec<Memory>,
+}
