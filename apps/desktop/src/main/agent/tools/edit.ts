@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, stat, writeFile } from 'node:fs/promises'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { resolveToCwd } from './paths'
@@ -109,6 +109,14 @@ export function createEditTool(cwd: string): AgentTool<any> {
           throwIfAborted()
           const errorMessage = error instanceof Error && 'code' in error ? `Error code: ${(error as { code: string }).code}` : String(error)
           throw new Error(`Could not edit file: ${path}. ${errorMessage}.`)
+        }
+        throwIfAborted()
+
+        // Editing a directory would only fail later at readFile with a cryptic
+        // EISDIR; report it cleanly (stat follows symlinks, so a symlink to a
+        // regular file still passes).
+        if (!(await stat(absolutePath)).isFile()) {
+          throw new Error(`Could not edit file: ${path}. Path is not a file.`)
         }
         throwIfAborted()
 

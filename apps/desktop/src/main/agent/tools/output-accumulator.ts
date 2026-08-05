@@ -34,6 +34,26 @@ function byteLength(text: string): number {
   return Buffer.byteLength(text, 'utf-8')
 }
 
+/**
+ * Drop characters that garble a transcript when a command emits binary or
+ * terminal-control output: C0 control chars (except \t \n \r) and Unicode
+ * interlinear annotation chars. Ported from pi-agent-core (sanitizeBinaryOutput
+ * in harness/utils/shell-output.ts). Applied to the DISPLAY tail only — the
+ * temp file keeps the raw bytes.
+ */
+function sanitizeBinaryOutput(str: string): string {
+  return Array.from(str)
+    .filter((char) => {
+      const code = char.codePointAt(0)
+      if (code === undefined) return false
+      if (code === 0x09 || code === 0x0a || code === 0x0d) return true
+      if (code <= 0x1f) return false
+      if (code >= 0xfff9 && code <= 0xfffb) return false
+      return true
+    })
+    .join('')
+}
+
 export class OutputAccumulator {
   private readonly maxLines: number
   private readonly maxBytes: number
@@ -147,7 +167,14 @@ export class OutputAccumulator {
     return this.currentLineBytes
   }
 
-  private appendDecodedText(text: string): void {
+  private appendDecodedText(rawText: string): void {
+    if (rawText.length === 0) {
+      return
+    }
+    // Strip binary/control garbage and carriage returns (progress-bar rewrites,
+    // Windows CRLF) so the tail, line counts, and byte counts all describe the
+    // clean text the model actually sees.
+    const text = sanitizeBinaryOutput(rawText).replace(/\r/g, '')
     if (text.length === 0) {
       return
     }

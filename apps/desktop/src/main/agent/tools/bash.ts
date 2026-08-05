@@ -18,6 +18,19 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from './truncate'
  */
 
 const UPDATE_THROTTLE_MS = 100
+/** setTimeout takes a 32-bit signed millisecond count; beyond it, timers fire immediately. */
+const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000
+
+/** Reject non-finite, non-positive, or timer-overflowing timeouts up front. */
+function validateTimeout(timeout: number | undefined): void {
+  if (timeout === undefined) return
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new Error('Invalid timeout: must be a finite number of seconds')
+  }
+  if (timeout > MAX_TIMEOUT_SECONDS) {
+    throw new Error(`Invalid timeout: maximum is ${MAX_TIMEOUT_SECONDS} seconds`)
+  }
+}
 
 export function createBashTool(cwd: string): AgentTool<any> {
   return {
@@ -30,6 +43,7 @@ export function createBashTool(cwd: string): AgentTool<any> {
     }),
     executionMode: 'sequential',
     execute: async (_id, { command, timeout }: any, signal, onUpdate) => {
+      validateTimeout(timeout)
       try {
         await access(cwd, constants.F_OK)
       } catch {

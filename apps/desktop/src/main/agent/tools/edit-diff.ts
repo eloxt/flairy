@@ -66,6 +66,113 @@ export interface AppliedEditsResult {
   newContent: string
 }
 
+interface LineSpan {
+  start: number
+  end: number
+}
+
+function splitLinesWithEndings(content: string): string[] {
+  return content.match(/[^\n]*\n|[^\n]+/g) ?? []
+}
+
+function getLineSpans(content: string): LineSpan[] {
+  let offset = 0
+  return splitLinesWithEndings(content).map((line) => {
+    const span = { start: offset, end: offset + line.length }
+    offset = span.end
+    return span
+  })
+}
+
+function getReplacementLineRange(
+  lines: LineSpan[],
+  replacement: MatchedEdit
+): { startLine: number; endLine: number } {
+  const replacementStart = replacement.matchIndex
+  const replacementEnd = replacement.matchIndex + replacement.matchLength
+  let startLine = -1
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (replacementStart >= line.start && replacementStart < line.end) {
+      startLine = i
+      break
+    }
+  }
+  if (startLine === -1) {
+    throw new Error('Replacement range is outside the base content.')
+  }
+  let endLine = startLine
+  while (endLine < lines.length && lines[endLine].end < replacementEnd) {
+    endLine++
+  }
+  if (endLine >= lines.length) {
+    throw new Error('Replacement range is outside the base content.')
+  }
+  return { startLine, endLine: endLine + 1 }
+}
+
+function applyReplacements(content: string, replacements: MatchedEdit[], offset = 0): string {
+  let result = content
+  for (let i = replacements.length - 1; i >= 0; i--) {
+    const replacement = replacements[i]
+    const matchIndex = replacement.matchIndex - offset
+    result =
+      result.substring(0, matchIndex) +
+      replacement.newText +
+      result.substring(matchIndex + replacement.matchLength)
+  }
+  return result
+}
+
+/**
+ * Apply replacements matched against `baseContent` to `originalContent` while
+ * preserving unchanged line blocks from the original.
+ *
+ * Used when `baseContent` is the fuzzy-normalized view of the original: each
+ * replacement is widened to the lines it actually touches, those touched lines
+ * are rewritten from the normalized base, and every other line is copied back
+ * verbatim from `originalContent` — so fuzzy matching can never rewrite (strip
+ * trailing whitespace, swap Unicode punctuation on) lines an edit never touched.
+ */
+export function applyReplacementsPreservingUnchangedLines(
+  originalContent: string,
+  baseContent: string,
+  replacements: MatchedEdit[]
+): string {
+  const originalLines = splitLinesWithEndings(originalContent)
+  const baseLines = getLineSpans(baseContent)
+  if (originalLines.length !== baseLines.length) {
+    throw new Error('Cannot preserve unchanged lines because the base content has a different line count.')
+  }
+  const groups: { startLine: number; endLine: number; replacements: MatchedEdit[] }[] = []
+  const sortedReplacements = [...replacements].sort((a, b) => a.matchIndex - b.matchIndex)
+  for (const replacement of sortedReplacements) {
+    const range = getReplacementLineRange(baseLines, replacement)
+    const current = groups[groups.length - 1]
+    if (current && range.startLine < current.endLine) {
+      current.endLine = Math.max(current.endLine, range.endLine)
+      current.replacements.push(replacement)
+      continue
+    }
+    groups.push({ ...range, replacements: [replacement] })
+  }
+  let originalLineIndex = 0
+  let result = ''
+  for (const group of groups) {
+    result += originalLines.slice(originalLineIndex, group.startLine).join('')
+    const groupStartOffset = baseLines[group.startLine].start
+    const groupEndOffset = baseLines[group.endLine - 1].end
+    result += applyReplacements(
+      baseContent.slice(groupStartOffset, groupEndOffset),
+      group.replacements,
+      groupStartOffset
+    )
+    originalLineIndex = group.endLine
+  }
+  result += originalLines.slice(originalLineIndex).join('')
+  return result
+}
+
 /**
  * Find oldText in content, trying exact match first, then fuzzy match.
  */
@@ -155,6 +262,14 @@ function getNoChangeError(path: string, totalEdits: number): Error {
 
 /**
  * Apply one or more exact-text replacements to LF-normalized content.
+ *
+ * All edits are matched against the same original content. Replacements are
+ * then applied in reverse order so offsets remain stable. If any edit needs
+ * fuzzy matching, matching runs in fuzzy-normalized content space and the
+ * line-level changes are overlaid onto the original content so unchanged line
+ * blocks keep their original bytes — and the returned `baseContent` is always
+ * the ORIGINAL normalized content, so diffs never show phantom normalization
+ * changes.
  */
 export function applyEditsToNormalizedContent(
   normalizedContent: string,
@@ -173,19 +288,20 @@ export function applyEditsToNormalizedContent(
   }
 
   const initialMatches = normalizedEdits.map((edit) => fuzzyFindText(normalizedContent, edit.oldText))
-  const baseContent = initialMatches.some((match) => match.usedFuzzyMatch)
+  const usedFuzzyMatch = initialMatches.some((match) => match.usedFuzzyMatch)
+  const replacementBaseContent = usedFuzzyMatch
     ? normalizeForFuzzyMatch(normalizedContent)
     : normalizedContent
 
   const matchedEdits: MatchedEdit[] = []
   for (let i = 0; i < normalizedEdits.length; i++) {
     const edit = normalizedEdits[i]
-    const matchResult = fuzzyFindText(baseContent, edit.oldText)
+    const matchResult = fuzzyFindText(replacementBaseContent, edit.oldText)
     if (!matchResult.found) {
       throw getNotFoundError(path, i, normalizedEdits.length)
     }
 
-    const occurrences = countOccurrences(baseContent, edit.oldText)
+    const occurrences = countOccurrences(replacementBaseContent, edit.oldText)
     if (occurrences > 1) {
       throw getDuplicateError(path, i, normalizedEdits.length, occurrences)
     }
@@ -209,14 +325,10 @@ export function applyEditsToNormalizedContent(
     }
   }
 
-  let newContent = baseContent
-  for (let i = matchedEdits.length - 1; i >= 0; i--) {
-    const edit = matchedEdits[i]
-    newContent =
-      newContent.substring(0, edit.matchIndex) +
-      edit.newText +
-      newContent.substring(edit.matchIndex + edit.matchLength)
-  }
+  const baseContent = normalizedContent
+  const newContent = usedFuzzyMatch
+    ? applyReplacementsPreservingUnchangedLines(normalizedContent, replacementBaseContent, matchedEdits)
+    : applyReplacements(replacementBaseContent, matchedEdits)
 
   if (baseContent === newContent) {
     throw getNoChangeError(path, normalizedEdits.length)

@@ -13,11 +13,30 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
  * This is the same containment the previous hand-written tools enforced.
  */
 
+/**
+ * Unicode spaces models sometimes emit inside paths (NBSP, en/em spaces,
+ * narrow NBSP, ideographic space) — normalized to a regular space before
+ * resolution. Ported from pi-agent-core (harness/tools/path-utils.ts).
+ */
+const UNICODE_SPACES = /[  -   　]/g
+const NARROW_NO_BREAK_SPACE = ' '
+
+/**
+ * Clean up model-authored path quirks before resolution: normalize Unicode
+ * spaces to ASCII space and strip a leading `@` (models copy `@path` mention
+ * syntax from prompts into tool calls). Ported from pi-agent-core.
+ */
+function normalizeToolPath(filePath: string): string {
+  const normalized = filePath.replace(UNICODE_SPACES, ' ')
+  return normalized.startsWith('@') ? normalized.slice(1) : normalized
+}
+
 /** Expand a leading `~` to the home directory. */
 export function expandPath(filePath: string): string {
-  if (filePath === '~') return homedir()
-  if (filePath.startsWith('~/')) return resolve(homedir(), filePath.slice(2))
-  return filePath
+  const path = normalizeToolPath(filePath)
+  if (path === '~') return homedir()
+  if (path.startsWith('~/')) return resolve(homedir(), path.slice(2))
+  return path
 }
 
 /** True when `abs` is `root` itself or nested anywhere beneath it. */
@@ -63,4 +82,33 @@ export async function pathExists(filePath: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/**
+ * Like `resolveWithinRoots`, but when the exact path doesn't exist, try
+ * filename variants the model plausibly meant: macOS screenshot names carry a
+ * narrow no-break space before "AM"/"PM" (the model types a regular space),
+ * macOS filesystems store names NFD-decomposed, and smart apostrophes in names
+ * arrive as ASCII `'`. First existing variant wins; all variants are character
+ * substitutions of the already-contained resolved path, so containment holds.
+ * Read-only callers only — mutating tools must not guess at names. Ported from
+ * pi-agent-core (resolveReadToolPath).
+ */
+export async function resolveReadPathWithinRoots(
+  filePath: string,
+  cwd: string,
+  extraRoots: string[] = []
+): Promise<string> {
+  const resolved = resolveWithinRoots(filePath, cwd, extraRoots)
+  const variants = [
+    resolved,
+    resolved.replace(/ (AM|PM)\./gi, `${NARROW_NO_BREAK_SPACE}$1.`),
+    resolved.normalize('NFD'),
+    resolved.replace(/'/g, '’'),
+    resolved.normalize('NFD').replace(/'/g, '’')
+  ]
+  for (const variant of new Set(variants)) {
+    if (await pathExists(variant)) return variant
+  }
+  return resolved
 }

@@ -1,28 +1,24 @@
 import { constants } from 'node:fs'
 import { access, readFile } from 'node:fs/promises'
-import { extname } from 'node:path'
 import { Type } from 'typebox'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { resolveWithinRoots } from './paths'
+import { resolveReadPathWithinRoots } from './paths'
+import { detectSupportedImageMimeType } from './image'
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from './truncate'
 
 /**
  * read — ported from pi-coding-agent (tools/read.ts). Text reads support
- * offset/limit and head-truncation with actionable continuation hints.
+ * offset/limit and head-truncation with actionable continuation hints. Images
+ * are detected by magic bytes (not extension), so misnamed files still render;
+ * BMP and animated PNG are omitted (providers can't decode them and pi's
+ * imageProcessor conversion pipeline is not ported).
  *
  * FLAIRY DEVIATIONS:
- * - Paths are confined to cwd (see resolveToCwd).
+ * - Paths are confined to cwd + read roots (see resolveReadPathWithinRoots).
  * - Images are returned inline as base64 without pi's photon/WASM auto-resize;
  *   files over MAX_INLINE_IMAGE_BYTES are reported as a note instead.
  */
 
-const IMAGE_MIME: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp'
-}
 const MAX_INLINE_IMAGE_BYTES = 3 * 1024 * 1024
 
 export function createReadTool(cwd: string, extraRoots: string[] = []): AgentTool<any> {
@@ -38,12 +34,25 @@ export function createReadTool(cwd: string, extraRoots: string[] = []): AgentToo
     executionMode: 'parallel',
     execute: async (_id, { path, offset, limit }: any, signal) => {
       if (signal?.aborted) throw new Error('Operation aborted')
-      const absolutePath = resolveWithinRoots(path, cwd, extraRoots)
+      const absolutePath = await resolveReadPathWithinRoots(path, cwd, extraRoots)
       await access(absolutePath, constants.R_OK)
 
-      const mimeType = IMAGE_MIME[extname(absolutePath).toLowerCase()]
+      const buffer = await readFile(absolutePath)
+      const mimeType = detectSupportedImageMimeType(buffer)
       if (mimeType) {
-        const buffer = await readFile(absolutePath)
+        // BMP is detected but not inlined: providers don't accept it and the
+        // conversion pipeline isn't ported. Report it instead of sending bytes.
+        if (mimeType === 'image/bmp') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Read image file [image/bmp]\n[Image omitted: BMP is not supported for inline viewing.]'
+              }
+            ],
+            details: {}
+          }
+        }
         if (buffer.length > MAX_INLINE_IMAGE_BYTES) {
           return {
             content: [
@@ -64,7 +73,6 @@ export function createReadTool(cwd: string, extraRoots: string[] = []): AgentToo
         }
       }
 
-      const buffer = await readFile(absolutePath)
       const textContent = buffer.toString('utf-8')
       const allLines = textContent.split('\n')
       const totalFileLines = allLines.length
