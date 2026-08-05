@@ -134,13 +134,15 @@ export function SettingsPage(): React.JSX.Element {
 
   const displayName = user?.displayName || t('settings.signedIn')
   const initial = (user?.displayName || user?.email || '?').charAt(0).toUpperCase()
+  const isMac = window.api.platform === 'darwin'
 
   return (
     <div className="flex h-full flex-1 overflow-hidden">
       {/* ── Frosted sidebar rail ── */}
       <aside className="app-drag flex w-[212px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-3">
-        {/* Traffic-light zone (frameless window, hiddenInset) */}
-        <div className="h-[52px] shrink-0" />
+        {/* Traffic-light zone (macOS frameless window). On Windows the caption
+            buttons sit top-right, so just a small breathing gap. */}
+        <div className={isMac ? 'h-[52px] shrink-0' : 'h-3 shrink-0'} />
 
         {/* Account card — tapping it opens the Account section */}
         <button
