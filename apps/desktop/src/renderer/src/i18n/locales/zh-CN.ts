@@ -142,7 +142,8 @@ const zhCN: typeof En = {
     input: '输入',
     output: '输出',
     cache: '缓存',
-    tokensSuffix: 'token'
+    tokensSuffix: 'token',
+    cacheRateSuffix: '缓存命中'
   },
   activity: {
     read_one: '读取了 {{count}} 个文件',

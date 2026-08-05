@@ -30,6 +30,7 @@ interface Totals {
   input: number
   output: number
   cache: number
+  cacheRead: number
   tokens: number
   any: boolean
 }
@@ -83,12 +84,18 @@ export function ModelPanel({ messages }: { messages: UiMessage[] }): React.JSX.E
         input: acc.input + u.input,
         output: acc.output + u.output,
         cache: acc.cache + u.cacheRead + u.cacheWrite,
+        cacheRead: acc.cacheRead + u.cacheRead,
         tokens: acc.tokens + u.totalTokens,
         any: true
       }
     },
-    { cost: 0, input: 0, output: 0, cache: 0, tokens: 0, any: false }
+    { cost: 0, input: 0, output: 0, cache: 0, cacheRead: 0, tokens: 0, any: false }
   )
+
+  // Share of all prompt tokens served from cache (reads over input + reads +
+  // writes). null until any prompt tokens exist so we never render "NaN%".
+  const promptTokens = totals.input + totals.cache
+  const cacheRate = promptTokens > 0 ? (totals.cacheRead / promptTokens) * 100 : null
 
   if (!model || !provider) {
     return (
@@ -194,6 +201,9 @@ export function ModelPanel({ messages }: { messages: UiMessage[] }): React.JSX.E
               </div>
               <div className="mt-1 text-xs tabular-nums text-muted-foreground">
                 {numberFmt.format(totals.tokens)} {t('panel.tokensSuffix')}
+                {cacheRate !== null && (
+                  <> · {cacheRate.toFixed(1)}% {t('panel.cacheRateSuffix')}</>
+                )}
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2">
                 <Stat label={t('panel.input')} value={numberFmt.format(totals.input)} />

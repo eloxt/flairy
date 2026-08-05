@@ -145,7 +145,8 @@ const en = {
     input: 'Input',
     output: 'Output',
     cache: 'Cache',
-    tokensSuffix: 'tokens'
+    tokensSuffix: 'tokens',
+    cacheRateSuffix: 'served from cache'
   },
   /**
    * Aggregated, jargon-free summary clauses for a grouped run of tool calls
