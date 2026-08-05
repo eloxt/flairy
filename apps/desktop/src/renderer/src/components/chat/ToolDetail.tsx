@@ -9,6 +9,7 @@ import {
   IconListSearch,
   IconPencil,
   IconSearch,
+  IconTool,
   IconWorld,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,8 @@ export function ToolDetail({ m }: { m: UiMessage }): React.JSX.Element | null {
     }
     case "schedule":
       return <ScheduleDetail m={m} args={args} text={text} />;
+    case "search_tool":
+      return <SearchToolDetail m={m} args={args} text={text} />;
   }
   return <GenericDetail m={m} args={args} text={text} />;
 }
@@ -913,6 +916,81 @@ function ScheduleDetail({
         <div className="px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
           {text.trim()}
         </div>
+      )}
+    </Card>
+  );
+}
+
+/* ── search_tool · matched tools with enabled chips ─────────────────────── */
+
+/** One `- name (now enabled|already enabled): desc` row of the result text. */
+interface SearchToolRow {
+  name: string;
+  enabled: boolean;
+  desc: string;
+}
+
+/**
+ * Parse the search_tool result (a header sentence, then one `- …` line per
+ * match — see tools/search-tool.ts); null if the shape differs (error text).
+ */
+function parseSearchToolResult(text: string): SearchToolRow[] | null {
+  const lines = text.split("\n").filter((l) => l.trim());
+  if (lines.length < 2) return null;
+  const rows: SearchToolRow[] = [];
+  for (const line of lines.slice(1)) {
+    const match = /^- (\S+) \((now enabled|already enabled)\): (.*)$/.exec(line.trim());
+    if (!match) return null;
+    rows.push({ name: match[1], enabled: match[2] === "now enabled", desc: match[3] });
+  }
+  return rows;
+}
+
+function SearchToolDetail({
+  m,
+  args,
+  text,
+}: {
+  m: UiMessage;
+  args?: Record<string, unknown>;
+  text: string;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const query = argStr(args, "query") ?? m.toolArg ?? "";
+  const rows = m.isError ? null : parseSearchToolResult(text);
+  const enabledCount = rows?.filter((r) => r.enabled).length ?? 0;
+  if (!query && !rows && !text.trim()) return null;
+  return (
+    <Card>
+      <CardHead
+        icon={<IconTool strokeWidth={2} />}
+        primary={query}
+        mono={false}
+        meta={rows ? t("toolDetail.toolsEnabled", { count: enabledCount }) : undefined}
+      />
+      {rows ? (
+        <Clamp collapsedClass="max-h-72">
+          <div className="flex flex-col gap-0.5 p-1.5">
+            {rows.map((r) => (
+              <div key={r.name} className="flex min-w-0 items-center gap-2.5 rounded-[7px] px-2 py-1">
+                <span className="shrink-0 font-mono text-xs text-foreground">{r.name}</span>
+                {r.enabled && (
+                  <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    {t("toolDetail.toolNowEnabled")}
+                  </span>
+                )}
+                <span
+                  className="ml-auto min-w-0 truncate pl-3 text-xs text-muted-foreground/60"
+                  title={r.desc}
+                >
+                  {r.desc}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Clamp>
+      ) : (
+        text.trim() && <MonoBody text={text} />
       )}
     </Card>
   );

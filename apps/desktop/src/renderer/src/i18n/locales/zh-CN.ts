@@ -174,6 +174,8 @@ const zhCN: typeof En = {
     dispatch_other: '派发了 {{count}} 个任务',
     schedule_one: '管理了 {{count}} 个定时任务',
     schedule_other: '管理了 {{count}} 个定时任务',
+    search_tool_one: '查找了 {{count}} 次工具',
+    search_tool_other: '查找了 {{count}} 次工具',
     other_one: '使用了 {{count}} 个工具',
     other_other: '使用了 {{count}} 个工具',
     separator: '、'
@@ -191,6 +193,9 @@ const zhCN: typeof En = {
     entryCount_other: '{{count}} 项',
     resultCount_one: '{{count}} 条结果',
     resultCount_other: '{{count}} 条结果',
+    toolsEnabled_one: '启用了 {{count}} 个工具',
+    toolsEnabled_other: '启用了 {{count}} 个工具',
+    toolNowEnabled: '已启用',
     planProgress: '{{done}}/{{total}} 已完成',
     scheduleTask: '定时任务',
     scheduleNextRun: '下次运行',
@@ -519,6 +524,7 @@ const zhCN: typeof En = {
     dispatch_task: '派发编码任务',
     dispatch_review: '派发代码评审',
     schedule: '管理定时任务',
+    search_tool: '查找更多工具',
     fallback: '工具'
   },
   citations: {

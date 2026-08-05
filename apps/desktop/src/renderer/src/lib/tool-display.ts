@@ -28,7 +28,8 @@ const BUILTIN_KEYS: Record<string, string> = {
   github_pr_write: 'tools.github_pr_write',
   dispatch_task: 'tools.dispatch_task',
   dispatch_review: 'tools.dispatch_review',
-  schedule: 'tools.schedule'
+  schedule: 'tools.schedule',
+  search_tool: 'tools.search_tool'
 }
 
 /** Resolve the i18n key for a tool name's user-facing label. */
@@ -65,7 +66,8 @@ const ACTIVITY_BUCKETS: Record<string, string> = {
   github_pr_write: 'github',
   dispatch_task: 'dispatch',
   dispatch_review: 'dispatch',
-  schedule: 'schedule'
+  schedule: 'schedule',
+  search_tool: 'search_tool'
 }
 
 /** Resolve the activity bucket stem (e.g. `'read'`, `'other'`) for a tool name. */
@@ -102,6 +104,7 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
     case 'find':
       return str(a.pattern)
     case 'web_search':
+    case 'search_tool':
       return str(a.query)
     case 'web_fetch':
       return str(a.url)

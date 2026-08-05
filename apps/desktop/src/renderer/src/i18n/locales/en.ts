@@ -183,6 +183,8 @@ const en = {
     dispatch_other: 'dispatched {{count}} agent runs',
     schedule_one: 'managed 1 scheduled task',
     schedule_other: 'managed {{count}} scheduled tasks',
+    search_tool_one: 'ran 1 tool search',
+    search_tool_other: 'ran {{count}} tool searches',
     other_one: 'used 1 tool',
     other_other: 'used {{count}} tools',
     separator: ', '
@@ -200,6 +202,9 @@ const en = {
     entryCount_other: '{{count}} items',
     resultCount_one: '{{count}} result',
     resultCount_other: '{{count}} results',
+    toolsEnabled_one: '{{count}} tool enabled',
+    toolsEnabled_other: '{{count}} tools enabled',
+    toolNowEnabled: 'Enabled',
     planProgress: '{{done}}/{{total}} done',
     scheduleTask: 'Scheduled task',
     scheduleNextRun: 'Next run',
@@ -548,6 +553,7 @@ const en = {
     dispatch_task: 'Dispatch a coding task',
     dispatch_review: 'Dispatch a code review',
     schedule: 'Manage scheduled tasks',
+    search_tool: 'Find more tools',
     fallback: 'Use a tool'
   },
   citations: {
