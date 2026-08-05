@@ -1,8 +1,6 @@
 import { useEffect } from "react";
 import { createHashRouter, RouterProvider, Outlet, useNavigate } from "react-router";
-import { useTranslation } from "react-i18next";
 import type { ChatWidth, SessionMeta } from "@shared/ipc";
-import { IconLayoutSidebarRight } from "@tabler/icons-react";
 import { useChat } from "@/store/chat-store";
 import { useAuth } from "@/store/auth-store";
 import { useUi } from "@/store/ui-store";
@@ -178,13 +176,11 @@ function ChatView(): React.JSX.Element {
 
 /** Header lives inside the provider so it can clear the traffic lights when collapsed. */
 function ChatHeader(): React.JSX.Element {
-  const { t } = useTranslation();
   const { state, isMobile } = useSidebar();
   const collapsed = state === "collapsed";
   // Only macOS has traffic lights to clear; Windows/Linux need no left inset.
   const isMac = window.api.platform === "darwin";
   const rightOpen = useUi((s) => s.rightPanelOpen);
-  const toggleRight = useUi((s) => s.toggleRightPanel);
 
   // Show the active session's title; fall back to the product name on the home
   // screen (no session) or for an untitled session.
@@ -230,19 +226,6 @@ function ChatHeader(): React.JSX.Element {
         </span>
       </div>
       <UpdateBadge />
-      <button
-        type="button"
-        onClick={toggleRight}
-        aria-label={t("panel.toggle")}
-        aria-pressed={rightOpen}
-        title={t("panel.toggle")}
-        className={cn(
-          "app-no-drag flex size-7 items-center justify-center rounded-md transition-colors hover:bg-accent",
-          "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <IconLayoutSidebarRight className="size-4" />
-      </button>
     </header>
   );
 }
