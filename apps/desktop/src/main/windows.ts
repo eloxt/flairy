@@ -1,4 +1,4 @@
-import { shell, BrowserWindow, screen } from "electron";
+import { shell, BrowserWindow, nativeTheme, screen } from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
 import { IPC } from "@shared/ipc";
@@ -85,6 +85,33 @@ function windowMaterialOptions():
   return supportsWindowMaterial() ? { backgroundMaterial: "acrylic" } : {};
 }
 
+/**
+ * Frameless chrome on Windows. With the default frame, DWM paints the native
+ * title bar with the raw backdrop material — visibly different from the tinted
+ * rails below it. `titleBarStyle: "hidden"` + the Window Controls Overlay keeps
+ * only the native caption buttons, drawn over the web content on a transparent
+ * background, so the rail tint runs to the window's top edge and the title-bar
+ * band disappears. Height matches the h-12 (48px) in-app headers; the renderer
+ * clears the button cluster via `--caption-clearance` (env(titlebar-area-*)).
+ * `symbolColor` follows the OS theme — re-applied by the nativeTheme listener
+ * below, since a transparent overlay can't adapt on its own.
+ */
+const CAPTION_OVERLAY_HEIGHT = 48;
+function captionOverlay(): { color: string; symbolColor: string; height: number } {
+  return {
+    color: "#00000000",
+    symbolColor: nativeTheme.shouldUseDarkColors ? "#e6e6e6" : "#2e2e2e",
+    height: CAPTION_OVERLAY_HEIGHT,
+  };
+}
+
+nativeTheme.on("updated", () => {
+  if (process.platform !== "win32") return;
+  for (const win of [getMainWindow(), settingsWindow]) {
+    if (win && !win.isDestroyed()) win.setTitleBarOverlay(captionOverlay());
+  }
+});
+
 // contextIsolation is the real renderer<->main boundary. sandbox is false
 // because with "type": "module" the preload is ESM, and Electron's sandbox
 // requires a CommonJS preload. nodeIntegration stays off.
@@ -136,11 +163,15 @@ export function createMainWindow(): BrowserWindow {
     height: 800,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: "hiddenInset",
-    // Center the traffic lights inside the 48px (h-12) custom title bar, which
-    // now sits 8px lower (the inset panel's top gutter): ~14px cluster →
-    // y = 8 + (48 - 14) / 2 ≈ 25.
-    trafficLightPosition: { x: 20, y: 25 },
+    ...(process.platform === "win32"
+      ? { titleBarStyle: "hidden" as const, titleBarOverlay: captionOverlay() }
+      : {
+          titleBarStyle: "hiddenInset" as const,
+          // Center the traffic lights inside the 48px (h-12) custom title bar,
+          // which now sits 8px lower (the inset panel's top gutter): ~14px
+          // cluster → y = 8 + (48 - 14) / 2 ≈ 25.
+          trafficLightPosition: { x: 20, y: 25 },
+        }),
     // Translucent rails: the renderer paints the chat surface opaque and leaves
     // the side rails see-through (the `.vibrancy` class) over the platform
     // backing chosen in windowMaterialOptions().
@@ -189,8 +220,12 @@ export function openSettingsWindow(tab?: string): void {
     show: false,
     title: "Settings",
     autoHideMenuBar: true,
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 15 },
+    ...(process.platform === "win32"
+      ? { titleBarStyle: "hidden" as const, titleBarOverlay: captionOverlay() }
+      : {
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 16, y: 15 },
+        }),
     // Same frosted treatment as the main window: the settings sidebar is a
     // translucent rail (`.vibrancy` on <html>), the content pane paints opaque.
     ...windowMaterialOptions(),

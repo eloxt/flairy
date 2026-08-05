@@ -196,7 +196,11 @@ function ChatHeader(): React.JSX.Element {
   return (
     <header
       className={cn(
-        "app-drag absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2.5 pr-4",
+        "app-drag absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2.5",
+        // Clear the Windows caption buttons, but only while this header's right
+        // edge is the window's right edge — with the details panel open the
+        // buttons overlay the panel instead (which carries its own clearance).
+        rightOpen ? "pr-4" : "pr-[max(1rem,var(--caption-clearance))]",
         !isMobile ? "transition-[padding] duration-200 ease-linear" : "",
         isMac && (collapsed || isMobile) ? "pl-20" : "pl-3",
       )}

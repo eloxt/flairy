@@ -184,6 +184,12 @@
     /* Seam shadow where the opaque chat surface meets the frosted rails. */
     --rail-shadow: rgba(0, 0, 0, 0.2);
 
+    /* Width of the native window-controls cluster overlaying the top-right
+       corner (Windows frameless windows, WCO). Evaluates to 0 where there is
+       no overlay (the env() fallback). Only meaningful as right clearance on
+       elements whose right edge sits at the window's right edge. */
+    --caption-clearance: calc(100vw - env(titlebar-area-width, 100vw));
+
     /* Chat column width (user preference, `data-chat-width` on <html>).
        Messages cap at --chat-width; the composer sits 2rem wider so its frame
        visually wraps the thread. Defaults match the old max-w-3xl / max-w-200. */

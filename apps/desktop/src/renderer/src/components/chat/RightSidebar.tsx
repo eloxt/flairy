@@ -54,7 +54,9 @@ export function RightSidebar(): React.JSX.Element {
       {/* The bar keeps the chat header's height (h-12) so the two columns'
           top rows line up, and stays draggable so the window can still be
           moved from the top-right; the segmented control itself must not be. */}
-      <div className="app-drag flex h-12 shrink-0 items-center px-3">
+      {/* pr also clears the Windows caption buttons overlaying the panel's
+          top-right corner (0 elsewhere). */}
+      <div className="app-drag flex h-12 shrink-0 items-center pl-3 pr-[max(0.75rem,var(--caption-clearance))]">
         <TabsList className="app-no-drag">
           <TabsTrigger value="model" className="px-2.5">
             {t('panel.model')}

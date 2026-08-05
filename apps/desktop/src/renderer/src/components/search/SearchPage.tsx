@@ -94,7 +94,7 @@ export function SearchPage(): React.JSX.Element {
     <div className="relative z-10 flex flex-1 flex-col bg-background shadow-[-4px_0_12px_-8px_var(--rail-shadow)]">
       <header
         className={cn(
-          "app-drag flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-4",
+          "app-drag flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-[max(1rem,var(--caption-clearance))]",
           !isMobile ? "transition-[padding] duration-200 ease-linear" : "",
           collapsed || isMobile ? "pl-20" : "pl-3",
         )}
