@@ -15,6 +15,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChat } from "@/store/chat-store";
 
@@ -79,53 +80,107 @@ const ATTR_TONE_CLS = {
 
 export function CompareCard({ data }: { data: CompareBlock }) {
   const { t } = useTranslation();
+  const labels = Array.from(
+    new Set(
+      data.rows.flatMap((row) => row.attrs?.map((attr) => attr.label) ?? []),
+    ),
+  );
+
   return (
-    <CardShell title={data.title}>
-      <div>
-        {data.rows.map((row, i) => (
-          <div
-            key={i}
-            className={cn(
-              "py-2 first:pt-0 last:pb-0",
-              i > 0 && "border-t border-border/60",
-            )}
-          >
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-              <span className="font-medium">{row.name}</span>
-              {row.pick ? (
-                <span className="rounded-full bg-primary px-2 py-px text-[11px] font-medium text-primary-foreground">
-                  {t("chat.cardRecommended")}
-                </span>
-              ) : null}
-            </div>
-            {row.attrs?.length ? (
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                {row.attrs.map((attr, j) => (
-                  <span key={j} className="inline-flex items-baseline gap-1.5">
-                    <span className="text-xs text-muted-foreground">
-                      {attr.label}
+    <div className="my-2">
+      {data.title ? (
+        <div className="mb-2 text-xs font-medium tracking-wide text-muted-foreground">
+          {data.title}
+        </div>
+      ) : null}
+      <ScrollArea className="w-full rounded-lg border border-border/70 *:data-[slot=scroll-area-scrollbar]:hidden">
+        <table
+          className="w-full table-fixed border-separate border-spacing-0 text-sm"
+          style={{ minWidth: `${120 + data.rows.length * 176}px` }}
+        >
+          <thead>
+            <tr>
+              <th
+                aria-hidden="true"
+                className="sticky left-0 z-10 w-30 border-b border-r border-border/70 bg-muted/45 p-3"
+              />
+              {data.rows.map((row, i) => (
+                <th
+                  key={i}
+                  scope="col"
+                  className={cn(
+                    "border-b border-r border-border/70 bg-muted/25 p-3 text-left align-top font-normal last:border-r-0",
+                    row.pick && "bg-primary/[0.07]",
+                  )}
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-semibold text-foreground">
+                      {row.name}
                     </span>
-                    <span
-                      className={cn(
-                        "tabular-nums text-foreground/90",
-                        attr.tone && ATTR_TONE_CLS[attr.tone],
-                      )}
-                    >
-                      {attr.value}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {row.note ? (
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                {row.note}
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </CardShell>
+                    {row.pick ? (
+                      <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                        {t("chat.cardRecommended")}
+                      </span>
+                    ) : null}
+                  </div>
+                  {row.note ? (
+                    <div className="mt-1.5 text-xs font-normal leading-relaxed text-muted-foreground">
+                      {row.note}
+                    </div>
+                  ) : null}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          {labels.length ? (
+            <tbody>
+              {labels.map((label) => (
+                <tr key={label} className="group">
+                  <th
+                    scope="row"
+                    className="sticky left-0 z-10 border-b border-r border-border/70 bg-card p-3 text-left text-xs font-medium text-muted-foreground group-last:border-b-0"
+                  >
+                    {label}
+                  </th>
+                  {data.rows.map((row, i) => {
+                    const attr = row.attrs?.find(
+                      (candidate) => candidate.label === label,
+                    );
+
+                    return (
+                      <td
+                        key={i}
+                        className={cn(
+                          "border-b border-r border-border/70 p-3 align-top last:border-r-0 group-last:border-b-0",
+                          row.pick && "bg-primary/[0.035]",
+                        )}
+                      >
+                        {attr ? (
+                          <span
+                            className={cn(
+                              "tabular-nums leading-relaxed text-foreground/90",
+                              attr.tone && ATTR_TONE_CLS[attr.tone],
+                            )}
+                          >
+                            {attr.value}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          ) : null}
+        </table>
+        <ScrollBar
+          orientation="horizontal"
+          className="z-20"
+        />
+      </ScrollArea>
+    </div>
   );
 }
 

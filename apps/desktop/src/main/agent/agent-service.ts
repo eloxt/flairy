@@ -1,5 +1,5 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 // pi 0.81 split the provider catalog out of the main entry: the global
 // api-dispatch `streamSimple` now lives behind the `/compat` subpath. We build
 // every Model from server config, so the catalog itself is not needed — only
@@ -80,6 +80,21 @@ const BASE_IMAGE_DESCRIPTION_PROMPT =
   "text verbatim, and describe layout, UI elements, charts, diagrams, code, " +
   "and anything else relevant. Number the descriptions when there are several " +
   "images. Output plain text only — no preamble, no commentary.";
+
+const CONVERSATION_ID_HEADER = "x-bf-lh-conversation-id";
+
+function withConversationHeader(
+  sessionId: string,
+  options?: SimpleStreamOptions,
+): SimpleStreamOptions {
+  return {
+    ...options,
+    headers: {
+      ...options?.headers,
+      [CONVERSATION_ID_HEADER]: sessionId,
+    },
+  };
+}
 
 /**
  * Context-compression tunables.
@@ -426,7 +441,8 @@ export class AgentService {
     this.agent = new Agent({
       // pi 0.81 made the stream function an explicit dependency (pi-agent-core no
       // longer reaches into pi-ai's provider registry itself).
-      streamFn: streamSimple,
+      streamFn: (model, context, options) =>
+        streamSimple(model, context, withConversationHeader(sessionId, options)),
       // Credential is resolved per-request from the latest server config — never
       // embedded in the model object or sent to the renderer.
       getApiKey: () => server.getConfig()?.llm.main?.provider.credential,
@@ -1243,12 +1259,12 @@ export class AgentService {
         // maxRetries re-enables the provider SDK's own backoff (pi defaults it
         // to 0). 512 output tokens: a {"tools":[...]} over a large catalog
         // would truncate at title-gen's 64.
-        {
+        withConversationHeader(this.sessionId, {
           apiKey: llm.provider.credential,
           maxTokens: 512,
           maxRetries: 2,
           signal: this.selectAbort.signal,
-        },
+        }),
       );
       const result = await stream.result();
       // .result() resolves even on a SOFT stream error — treat both as failure.
@@ -1367,7 +1383,11 @@ export class AgentService {
         },
         // maxRetries re-enables the provider SDK's own backoff (pi defaults it
         // to 0) — right for an invisible best-effort side call.
-        { apiKey: llm.provider.credential, maxTokens: 64, maxRetries: 2 },
+        withConversationHeader(this.sessionId, {
+          apiKey: llm.provider.credential,
+          maxTokens: 64,
+          maxRetries: 2,
+        }),
       );
       const result = await stream.result();
       // .result() resolves even on a SOFT stream error (an AssistantMessage with
@@ -1506,7 +1526,11 @@ export class AgentService {
         },
         // SDK-level backoff (see maybeGenerateTitle) — a transient failure here
         // shouldn't silently drop the image description.
-        { apiKey: visual.provider.credential, maxTokens: 2048, maxRetries: 2 },
+        withConversationHeader(this.sessionId, {
+          apiKey: visual.provider.credential,
+          maxTokens: 2048,
+          maxRetries: 2,
+        }),
       );
       const result = await stream.result();
       // .result() resolves even on a SOFT stream error (an AssistantMessage with
@@ -1688,11 +1712,11 @@ export class AgentService {
           ],
         },
         // SDK-level backoff (see maybeGenerateTitle); still abortable via signal.
-        {
+        withConversationHeader(this.sessionId, {
           apiKey: llm.provider.credential,
           signal: this.compressAbort.signal,
           maxRetries: 2,
-        },
+        }),
       );
       const result = await stream.result();
       if (result.stopReason === "error" || result.stopReason === "aborted")
