@@ -1,0 +1,13 @@
+[package]
+name = "flairy-doc"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+
+[dependencies]
+anydoc = "=0.2.4"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

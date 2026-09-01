@@ -17,8 +17,10 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
+            rust-target: aarch64-apple-darwin
           - os: windows-latest
             platform: win
+            rust-target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -36,6 +38,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
       # Installs all workspaces; desktop's postinstall runs electron-rebuild
       # to rebuild better-sqlite3 against the Electron ABI for this platform.
       - name: Install dependencies
@@ -44,6 +51,11 @@ jobs:
       # @flairy/desktop imports @flairy/shared's dist output, so build it first.
       - name: Build shared package
         run: pnpm --filter @flairy/shared build
+
+      - name: Build bundled document converter
+        run: pnpm --filter @flairy/desktop native:build
+        env:
+          FLAIRY_NATIVE_TARGET: ${{ matrix.rust-target }}
 
       # Compile main/preload/renderer into out/ — electron-builder packages
       # this directory, so it must exist before electron-builder runs.

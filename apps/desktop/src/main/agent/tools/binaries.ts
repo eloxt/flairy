@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs'
 import { app } from 'electron'
 
 /**
- * Resolves the path to a bundled CLI binary (`rg`, `fd`).
+ * Resolves the path to a bundled CLI binary (`rg`, `fd`). Other shipped CLIs
+ * such as `flairy-doc` and `officecli` are exposed through the shell `PATH`.
  *
  * The binaries are shipped per platform/arch (currently darwin-arm64 and
  * win32-x64) and copied into the app at build time via electron-builder's

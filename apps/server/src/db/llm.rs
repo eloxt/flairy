@@ -210,7 +210,7 @@ const MODEL_RETURNING: &str = "id, provider_id, name, model, input_modalities, t
 
 /// All models across every provider, oldest first.
 pub async fn list_models(pool: &PgPool) -> AppResult<Vec<LlmModelConfig>> {
-    let rows = sqlx::query(&format!("{MODEL_SELECT} ORDER BY created_at ASC"))
+    let rows = sqlx::query(&format!("{MODEL_SELECT} ORDER BY name ASC"))
         .fetch_all(pool)
         .await?;
     Ok(rows.iter().map(map_model).collect())
