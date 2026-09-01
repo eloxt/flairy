@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AuthUser } from '@shared/ipc'
+import i18n from '@/i18n'
 
 /**
  * `loading` — checking persisted status on launch (avoid flashing the login form).
@@ -40,6 +41,10 @@ export const useAuth = create<AuthState>((set) => ({
     const status = await window.api.authStatus()
     if (status.authenticated) {
       set({ phase: 'authed', user: status.user ?? null })
+      return
+    }
+    if (status.reason === 'expired') {
+      set({ phase: 'anon', user: null, error: i18n.t('auth.sessionExpired') })
       return
     }
     // A detached (local-mode) client runs without an account — don't put the

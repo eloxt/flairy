@@ -3,12 +3,15 @@
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::auth::Claims;
 
 /// Token lifetime in days.
-const TOKEN_TTL_DAYS: i64 = 30;
+const TOKEN_TTL_DAYS: i64 = 90;
+pub const REFRESH_TOKEN_TTL_DAYS: i64 = 365;
 
 /// Issue an HS256 JWT for the given user id and role, signed with `secret`.
 pub fn issue_token(user_id: &str, role: &str, secret: &str) -> AppResult<String> {
@@ -37,6 +40,15 @@ pub fn validate_token(token: &str, secret: &str) -> AppResult<Claims> {
     Ok(data.claims)
 }
 
+/// Generate a high-entropy opaque refresh token. It is never stored in plaintext server-side.
+pub fn issue_refresh_token() -> String {
+    format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
+}
+
+pub fn hash_refresh_token(token: &str) -> Vec<u8> {
+    Sha256::digest(token.as_bytes()).to_vec()
+}
+
 /// Hash a plaintext password with bcrypt.
 pub fn hash_password(password: &str) -> AppResult<String> {
     hash(password, DEFAULT_COST).map_err(|_| AppError::PasswordHash)
@@ -59,10 +71,16 @@ mod tests {
     #[test]
     fn jwt_round_trip_and_rejections() {
         let secret = "test-secret";
+        let issued_at = Utc::now().timestamp();
         let tok = issue_token("user-1", "admin", secret).expect("issue");
         let claims = validate_token(&tok, secret).expect("validate");
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.role, "admin");
+        let lifetime = claims.exp - issued_at;
+        assert!(
+            (Duration::days(90).num_seconds()..=Duration::days(90).num_seconds() + 1)
+                .contains(&lifetime)
+        );
         assert!(validate_token(&tok, "wrong-secret").is_err());
         assert!(validate_token("not.a.token", secret).is_err());
     }
@@ -73,6 +91,17 @@ mod tests {
         assert!(h.starts_with("$2"));
         assert!(verify_password("s3cret", &h).expect("verify"));
         assert!(!verify_password("nope", &h).expect("verify"));
+    }
+
+    #[test]
+    fn refresh_tokens_are_random_and_hash_deterministically() {
+        let first = issue_refresh_token();
+        let second = issue_refresh_token();
+        assert_eq!(first.len(), 64);
+        assert_ne!(first, second);
+        assert_eq!(hash_refresh_token(&first), hash_refresh_token(&first));
+        assert_ne!(hash_refresh_token(&first), hash_refresh_token(&second));
+        assert_ne!(hash_refresh_token(&first), first.as_bytes());
     }
 
     /// Passwords already stored in the database were hashed by an older bcrypt.

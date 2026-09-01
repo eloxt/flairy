@@ -8,13 +8,15 @@ use axum::{Json, Router};
 use crate::auth;
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::auth::{LoginRequest, LoginResponse, RegisterRequest};
+use crate::models::auth::{LoginRequest, LoginResponse, RefreshTokenRequest, RegisterRequest};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/auth/login", post(login))
         .route("/api/auth/register", post(register))
+        .route("/api/auth/refresh", post(refresh))
+        .route("/api/auth/logout", post(logout))
 }
 
 async fn login(
@@ -36,7 +38,12 @@ async fn login(
     }
 
     let token = auth::issue_token(&user.id, &user.role, &state.jwt_secret)?;
-    Ok(Json(LoginResponse { token, user }))
+    let refresh_token = db::refresh_tokens::issue(pool, &user.id).await?;
+    Ok(Json(LoginResponse {
+        token,
+        refresh_token,
+        user,
+    }))
 }
 
 async fn register(
@@ -54,5 +61,35 @@ async fn register(
     // provisioned out-of-band via the `create-admin` CLI.
     let user = db::create_user(pool, &req.email, &req.display_name, &hash, "user").await?;
     let token = auth::issue_token(&user.id, &user.role, &state.jwt_secret)?;
-    Ok((StatusCode::CREATED, Json(LoginResponse { token, user })))
+    let refresh_token = db::refresh_tokens::issue(pool, &user.id).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(LoginResponse {
+            token,
+            refresh_token,
+            user,
+        }),
+    ))
+}
+
+async fn refresh(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshTokenRequest>,
+) -> AppResult<Json<LoginResponse>> {
+    let pool = state.pool()?;
+    let (refresh_token, user) = db::refresh_tokens::rotate(pool, &req.refresh_token).await?;
+    let token = auth::issue_token(&user.id, &user.role, &state.jwt_secret)?;
+    Ok(Json(LoginResponse {
+        token,
+        refresh_token,
+        user,
+    }))
+}
+
+async fn logout(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshTokenRequest>,
+) -> AppResult<StatusCode> {
+    db::refresh_tokens::revoke(state.pool()?, &req.refresh_token).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

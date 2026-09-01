@@ -2,7 +2,21 @@ import { app } from "electron";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
 import { initDb } from "./store/db";
 import { initProfile } from "./store/profile";
-import { getAuthUser, migrateDeviceSecretsToProfile } from "./store/secrets";
+import {
+  expireAuth,
+  getAuthRefreshToken,
+  getAuthToken,
+  getAuthUser,
+  migrateDeviceSecretsToProfile,
+  setAuthTokens,
+  setAuthUser,
+} from "./store/secrets";
+import {
+  AuthHttpError,
+  isAuthTokenExpired,
+  refreshSession,
+  shouldRefreshAuthToken,
+} from "./auth";
 import {
   registerImageProtocol,
   registerImageProtocolPrivileges,
@@ -52,7 +66,7 @@ if (!app.requestSingleInstanceLock()) {
   // image scheme fetch/stream semantics; the handler itself registers below.
   registerImageProtocolPrivileges();
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     electronApp.setAppUserModelId("com.eloxt.flairy");
 
     app.on("browser-window-created", (_, window) => {
@@ -63,6 +77,21 @@ if (!app.requestSingleInstanceLock()) {
     // db, image store, skills, transcripts, and integration secrets all live
     // under profiles/<userId> (or profiles/local when signed out). Auth changes
     // relaunch the process, so this is decided exactly once per run.
+    const storedToken = getAuthToken();
+    const storedRefreshToken = getAuthRefreshToken();
+    if ((!storedToken || shouldRefreshAuthToken(storedToken)) && storedRefreshToken) {
+      try {
+        const refreshed = await refreshSession(storedRefreshToken);
+        setAuthTokens(refreshed.token, refreshed.refreshToken);
+        setAuthUser(refreshed.user);
+      } catch (err) {
+        // A network outage must not lock the user out of their local data. Only
+        // an explicit server rejection proves the refresh credential is invalid.
+        if (err instanceof AuthHttpError && [401, 403].includes(err.status)) expireAuth();
+      }
+    } else if (storedToken && isAuthTokenExpired(storedToken)) {
+      expireAuth();
+    }
     initProfile(getAuthUser()?.id ?? null);
     migrateDeviceSecretsToProfile();
     initDb();

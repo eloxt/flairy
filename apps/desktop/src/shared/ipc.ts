@@ -423,6 +423,7 @@ export interface AuthUser {
 export interface AuthStatus {
   authenticated: boolean
   user?: AuthUser
+  reason?: 'expired'
 }
 
 /**

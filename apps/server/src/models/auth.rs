@@ -27,7 +27,15 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     /// JWT bearer token.
     pub token: String,
+    /// Rotating opaque token; only its hash is persisted server-side.
+    pub refresh_token: String,
     pub user: User,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshTokenRequest {
+    pub refresh_token: String,
 }
 
 /// Carried in the socket.io handshake `auth` field.

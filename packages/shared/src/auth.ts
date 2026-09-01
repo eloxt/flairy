@@ -30,7 +30,13 @@ export interface RegisterRequest {
 export interface LoginResponse {
   /** JWT bearer token. Stored client-side only (safeStorage), never in the renderer. */
   token: string
+  /** Rotating opaque token. Stored in safeStorage and never exposed to the renderer. */
+  refreshToken: string
   user: User
+}
+
+export interface RefreshTokenRequest {
+  refreshToken: string
 }
 
 /** Carried in the socket.io handshake `auth` field; server validates before connecting. */

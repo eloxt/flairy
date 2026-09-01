@@ -1,4 +1,9 @@
-import type { LoginRequest, LoginResponse, RegisterRequest } from '@flairy/shared'
+import type {
+  LoginRequest,
+  LoginResponse,
+  RefreshTokenRequest,
+  RegisterRequest
+} from '@flairy/shared'
 import { SERVER_URL } from './sync/server-client'
 
 /**
@@ -24,12 +29,60 @@ export async function register(
   return authPost('/api/auth/register', body, 'Registration')
 }
 
+export function refreshSession(refreshToken: string): Promise<LoginResponse> {
+  const body: RefreshTokenRequest = { refreshToken }
+  return authPost('/api/auth/refresh', body, 'Session refresh', AbortSignal.timeout(10_000))
+}
+
+export async function revokeSession(refreshToken: string): Promise<void> {
+  const body: RefreshTokenRequest = { refreshToken }
+  const res = await fetch(`${SERVER_URL}/api/auth/logout`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(3_000)
+  })
+  if (!res.ok) throw new AuthHttpError(`Logout failed (${res.status})`, res.status)
+}
+
+/** Refresh during the final week so normal use never reaches access-token expiry. */
+export function shouldRefreshAuthToken(token: string): boolean {
+  const expiresAt = authTokenExpiresAt(token)
+  return expiresAt === null || expiresAt <= Date.now() + 7 * 24 * 60 * 60 * 1000
+}
+
+export function isAuthTokenExpired(token: string): boolean {
+  const expiresAt = authTokenExpiresAt(token)
+  return expiresAt === null || expiresAt <= Date.now()
+}
+
+function authTokenExpiresAt(token: string): number | null {
+  const payload = token.split('.')[1]
+  if (!payload) return null
+  try {
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+      exp?: unknown
+    }
+    return typeof claims.exp === 'number' && Number.isFinite(claims.exp)
+      ? claims.exp * 1000
+      : null
+  } catch {
+    return null
+  }
+}
+
 /** POST a JSON body to an auth endpoint and parse the LoginResponse, or throw a friendly error. */
-async function authPost(path: string, body: unknown, label: string): Promise<LoginResponse> {
+async function authPost(
+  path: string,
+  body: unknown,
+  label: string,
+  signal?: AbortSignal
+): Promise<LoginResponse> {
   const res = await fetch(`${SERVER_URL}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   })
 
   if (!res.ok) {
@@ -42,8 +95,18 @@ async function authPost(path: string, body: unknown, label: string): Promise<Log
         d && typeof d === 'object' && 'error' in d ? String((d as { error: unknown }).error) : ''
       )
       .catch(() => '')
-    throw new Error(detail || `${label} failed (${res.status})`)
+    throw new AuthHttpError(detail || `${label} failed (${res.status})`, res.status)
   }
 
   return (await res.json()) as LoginResponse
+}
+
+export class AuthHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message)
+    this.name = 'AuthHttpError'
+  }
 }

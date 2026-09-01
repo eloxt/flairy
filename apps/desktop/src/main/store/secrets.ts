@@ -60,17 +60,26 @@ export function hasSecret(provider: Provider): boolean {
  * learns whether a token exists, never its value.
  */
 const AUTH_TOKEN_KEY = '__auth_token__'
+const AUTH_REFRESH_TOKEN_KEY = '__auth_refresh_token__'
 /** The signed-in user's public profile, persisted so the gate can restore it on launch. */
 const AUTH_USER_KEY = '__auth_user__'
+/** Survives the expiry-triggered relaunch so the renderer can explain why sign-in is required. */
+const AUTH_EXPIRED_KEY = '__auth_expired__'
 
-export function setAuthToken(token: string): void {
+export function setAuthTokens(token: string, refreshToken: string): void {
   const all = loadAll(deviceFile())
   all[AUTH_TOKEN_KEY] = token
+  all[AUTH_REFRESH_TOKEN_KEY] = refreshToken
+  delete all[AUTH_EXPIRED_KEY]
   saveAll(deviceFile(), all)
 }
 
 export function getAuthToken(): string | undefined {
   return loadAll(deviceFile())[AUTH_TOKEN_KEY]
+}
+
+export function getAuthRefreshToken(): string | undefined {
+  return loadAll(deviceFile())[AUTH_REFRESH_TOKEN_KEY]
 }
 
 export function hasAuthToken(): boolean {
@@ -93,11 +102,27 @@ export function getAuthUser(): AuthUser | undefined {
   }
 }
 
+/** Remove an expired login and remember why the app returned to the auth gate. */
+export function expireAuth(): void {
+  const all = loadAll(deviceFile())
+  delete all[AUTH_TOKEN_KEY]
+  delete all[AUTH_REFRESH_TOKEN_KEY]
+  delete all[AUTH_USER_KEY]
+  all[AUTH_EXPIRED_KEY] = '1'
+  saveAll(deviceFile(), all)
+}
+
+export function hasExpiredAuth(): boolean {
+  return loadAll(deviceFile())[AUTH_EXPIRED_KEY] === '1'
+}
+
 /** Wipe token + user profile on sign-out. Profile-scoped secrets stay put. */
 export function clearAuth(): void {
   const all = loadAll(deviceFile())
   delete all[AUTH_TOKEN_KEY]
+  delete all[AUTH_REFRESH_TOKEN_KEY]
   delete all[AUTH_USER_KEY]
+  delete all[AUTH_EXPIRED_KEY]
   saveAll(deviceFile(), all)
 }
 
@@ -108,7 +133,13 @@ export function clearAuth(): void {
  */
 export function migrateDeviceSecretsToProfile(): void {
   const device = loadAll(deviceFile())
-  const toMove = Object.keys(device).filter((k) => k !== AUTH_TOKEN_KEY && k !== AUTH_USER_KEY)
+  const toMove = Object.keys(device).filter(
+    (k) =>
+      k !== AUTH_TOKEN_KEY &&
+      k !== AUTH_REFRESH_TOKEN_KEY &&
+      k !== AUTH_USER_KEY &&
+      k !== AUTH_EXPIRED_KEY
+  )
   if (toMove.length === 0) return
   try {
     const profile = loadAll(profileFile())

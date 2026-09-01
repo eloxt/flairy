@@ -26,6 +26,7 @@ const zhCN: typeof En = {
     email: '邮箱',
     emailPlaceholder: 'you@example.com',
     password: '密码',
+    sessionExpired: '登录已过期，请重新登录。',
     pleaseWait: '请稍候…',
     createAccount: '创建账户'
   },

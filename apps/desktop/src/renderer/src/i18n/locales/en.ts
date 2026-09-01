@@ -27,6 +27,7 @@ const en = {
     email: 'Email',
     emailPlaceholder: 'you@example.com',
     password: 'Password',
+    sessionExpired: 'Your sign-in has expired. Please sign in again.',
     pleaseWait: 'Please wait…',
     createAccount: 'Create account'
   },

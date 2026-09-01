@@ -36,11 +36,14 @@ import { reconcileJobs } from '../schedule/scheduler'
 import {
   setSecret,
   hasSecret,
-  setAuthToken,
+  setAuthTokens,
   getAuthToken,
+  getAuthRefreshToken,
   hasAuthToken,
   setAuthUser,
   getAuthUser,
+  expireAuth,
+  hasExpiredAuth,
   clearAuth
 } from '../store/secrets'
 import {
@@ -67,7 +70,15 @@ import {
   setChatWidthPref
 } from '../store/db'
 import { scheduleImageSweep } from '../store/image-gc'
-import { login, register } from '../auth'
+import {
+  AuthHttpError,
+  isAuthTokenExpired,
+  login,
+  refreshSession,
+  register,
+  revokeSession,
+  shouldRefreshAuthToken
+} from '../auth'
 import type { ServerClient } from '../sync/server-client'
 import type { UpdateManager } from '../update'
 import { redactConfig } from '../sync/config-redact'
@@ -108,8 +119,8 @@ let pendingLauncherSession: SessionMeta | null = null
  * instead of hot-swapping the DB, image store, secrets, and every subsystem
  * seeded from them. The fresh process boots signed-in and connects normally.
  */
-function establishSession(token: string, user: AuthUser): AuthStatus {
-  setAuthToken(token)
+function establishSession(token: string, refreshToken: string, user: AuthUser): AuthStatus {
+  setAuthTokens(token, refreshToken)
   setAuthUser(user)
   relaunchIntoProfile()
   return { authenticated: true, user }
@@ -295,6 +306,41 @@ export function registerIpcHandlers(
   } else if (existingToken) {
     server.connect(existingToken)
   }
+
+  // Refresh during the access token's final week. The periodic check also
+  // catches a laptop waking after either token crossed its expiry boundary.
+  let refreshInFlight = false
+  setInterval(async () => {
+    const token = getAuthToken()
+    if (!token || !shouldRefreshAuthToken(token) || refreshInFlight) return
+    const refreshToken = getAuthRefreshToken()
+    if (!refreshToken) {
+      if (isAuthTokenExpired(token)) {
+        expireAuth()
+        server.disconnect()
+        relaunchIntoProfile()
+      }
+      return
+    }
+    refreshInFlight = true
+    try {
+      const refreshed = await refreshSession(refreshToken)
+      setAuthTokens(refreshed.token, refreshed.refreshToken)
+      setAuthUser(refreshed.user)
+      server.connect(refreshed.token)
+      broadcast(IPC.AuthChanged)
+    } catch (err) {
+      if (err instanceof AuthHttpError && [401, 403].includes(err.status)) {
+        expireAuth()
+        server.disconnect()
+        relaunchIntoProfile()
+      } else {
+        console.warn('[auth] refresh failed; will retry:', err)
+      }
+    } finally {
+      refreshInFlight = false
+    }
+  }, 60_000).unref()
 
   ipcMain.handle(IPC.AgentPrompt, async (_e, args: PromptArgs) => {
     // Telegram-created sessions are read-only on desktop — they are driven only
@@ -608,14 +654,18 @@ export function registerIpcHandlers(
   // Auth: log in over REST, persist the JWT + user (main-process only), then open
   // the authenticated socket so config + session sync start flowing.
   ipcMain.handle(IPC.AuthLogin, async (_e, args: LoginArgs): Promise<AuthStatus> => {
-    const { token, user } = await login(args.email, args.password)
-    return establishSession(token, user)
+    const { token, refreshToken, user } = await login(args.email, args.password)
+    return establishSession(token, refreshToken, user)
   })
 
   // Registration mirrors login: create the account, persist, relaunch.
   ipcMain.handle(IPC.AuthRegister, async (_e, args: RegisterArgs): Promise<AuthStatus> => {
-    const { token, user } = await register(args.email, args.password, args.displayName)
-    return establishSession(token, user)
+    const { token, refreshToken, user } = await register(
+      args.email,
+      args.password,
+      args.displayName
+    )
+    return establishSession(token, refreshToken, user)
   })
 
   // Sign out: drop only the device-level login state and relaunch. The account's
@@ -625,12 +675,20 @@ export function registerIpcHandlers(
   // the Telegram token, which would otherwise let the paired chat keep driving
   // an agent) is reachable until that account signs in again.
   ipcMain.handle(IPC.AuthLogout, async () => {
+    const refreshToken = getAuthRefreshToken()
+    if (refreshToken) {
+      await revokeSession(refreshToken).catch((err) => {
+        console.warn('[auth] refresh-token revocation failed:', err)
+      })
+    }
     clearAuth()
     relaunchIntoProfile()
   })
 
   ipcMain.handle(IPC.AuthStatus, (): AuthStatus => {
-    if (!hasAuthToken()) return { authenticated: false }
+    if (!hasAuthToken()) {
+      return { authenticated: false, reason: hasExpiredAuth() ? 'expired' : undefined }
+    }
     return { authenticated: true, user: getAuthUser() }
   })
 
@@ -643,6 +701,9 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.ConfigGetMode, (): ConfigMode => server.getConfigMode())
 
   ipcMain.handle(IPC.ConfigSetMode, (_e, mode: ConfigMode) => {
+    // Choosing local use from the expiry gate acknowledges the notice so it
+    // does not reappear on the next launch.
+    if (mode === 'local' && !hasAuthToken()) clearAuth()
     server.setConfigMode(mode)
     broadcast(IPC.ConfigModeChanged, mode)
   })
