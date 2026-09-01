@@ -1,7 +1,7 @@
 //! Single source of truth for cross-process contracts: socket.io event names,
-//! session-sync payloads, and the unified chat message format. Server and
-//! Rust client both depend on this crate; `packages/shared/src/*.ts` mirrors
-//! it for the TS clients — change one side, sync the other.
+//! session-sync payloads, and the unified chat message format. The server
+//! depends on this crate; `packages/shared/src/*.ts` mirrors it for the
+//! TypeScript clients — change one side, sync the other.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +25,8 @@ pub mod events {
 
 // ---------------------------------------------------------------------------
 // Unified chat message format — the canonical shape of `SyncMessage.raw`.
-// Every client (Rust/GPUI, Electron) reads and writes this; provider-specific
-// formats never cross the wire.
+// The desktop client reads and writes this; provider-specific formats never
+// cross the wire.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

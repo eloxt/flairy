@@ -13,8 +13,7 @@ export type MessageRole = 'user' | 'assistant' | 'toolResult'
  * Unified cross-client chat message — the canonical shape of `SyncMessage.raw`.
  * Single source of truth: `crates/flairy-contract` (Rust); this mirrors it.
  * Every client reads/writes this format on the wire; provider- or
- * kernel-specific message shapes (pi, flairy-agent) must be converted at the
- * sync boundary.
+ * kernel-specific message shapes must be converted at the sync boundary.
  */
 export type ChatRole = 'user' | 'assistant'
 
