@@ -174,14 +174,6 @@ export interface SessionRuntime {
    */
   hydrated: boolean
   /**
-   * True for a Telegram-created session (read-only on desktop). Its user turns are
-   * authored remotely, so the desktop never adds an optimistic user bubble on send
-   * — instead `applyEvent` builds the user bubble from the `message_end(role:user)`
-   * event. Gating on this is safe: desktop sessions never receive Telegram turns,
-   * so a false value keeps their optimistic-bubble path untouched (no duplicates).
-   */
-  fromTelegram: boolean
-  /**
    * True from the moment a run ends (agent_end / error / abort) until the next
    * run starts. Lets the composer's plan card linger after the run — showing
    * "done" or "paused" — instead of vanishing with `running`. Deliberately not
@@ -266,7 +258,6 @@ function emptyRuntime(): SessionRuntime {
     approvalQueue: [],
     questionQueue: [],
     hydrated: true,
-    fromTelegram: false,
     planAfterglow: false
   }
 }
@@ -338,6 +329,8 @@ interface ChatState {
     attachments?: Attachment[],
     opts?: { imagesIgnored?: boolean }
   ) => Promise<void>
+  /** Permanently replace one user turn and discard every message after it. */
+  rerunMessage: (messageId: string, text: string) => Promise<void>
   abort: () => void
   compressContext: () => Promise<void>
   respondApproval: (approvalId: string, approved: boolean, scope?: ApprovalScope) => void
@@ -498,8 +491,7 @@ export const useChat = create<ChatState>((set, get) => ({
       // us via broadcast — seed them so the cards render instead of the turn
       // silently hanging on an invisible prompt.
       approvalQueue: pendingApprovals ?? [],
-      questionQueue: pendingQuestions ?? [],
-      fromTelegram: Boolean(meta.fromTelegram)
+      questionQueue: pendingQuestions ?? []
     }
     set((s) => ({
       sessionId: meta.id,
@@ -590,6 +582,49 @@ export const useChat = create<ChatState>((set, get) => ({
     }))
     try {
       await window.api.prompt({ sessionId, text, attachments })
+    } catch (err) {
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
+        running: false,
+        messages: [
+          ...rt.messages,
+          {
+            id: crypto.randomUUID(),
+            role: 'tool',
+            text: err instanceof Error ? err.message : String(err),
+            isError: true
+          }
+        ]
+      }))
+    }
+  },
+
+  rerunMessage: async (messageId, text) => {
+    const { sessionId, runtimes, sessions } = get()
+    if (!sessionId || runtimes[sessionId]?.running) return
+    if (sessions.find((session) => session.id === sessionId)?.fromTelegram) return
+
+    const current = runtimes[sessionId]
+    const index = current?.messages.findIndex((message) => message.id === messageId) ?? -1
+    const target = index >= 0 ? current.messages[index] : undefined
+    if (!target || target.role !== 'user' || target.sourceIndex == null) return
+
+    const replacement = text.trim()
+    if (!replacement && !target.images?.length) return
+
+    updateRuntime(set, get, sessionId, (rt) => ({
+      ...rt,
+      running: true,
+      retrying: null,
+      liveBatchId: null
+    }))
+
+    try {
+      await window.api.rerun({
+        sessionId,
+        messageIndex: target.sourceIndex,
+        text: replacement
+      })
     } catch (err) {
       updateRuntime(set, get, sessionId, (rt) => ({
         ...rt,
@@ -908,6 +943,18 @@ function applyEvent(
     case 'agent_start':
       updateRuntime(set, get, sessionId, (rt) => ({ ...rt, running: true, planAfterglow: false }))
       break
+    case 'history_reset':
+      updateRuntime(set, get, sessionId, (rt) => ({
+        ...rt,
+        running: true,
+        messages: hydrateMessages(e.messages),
+        retrying: null,
+        liveBatchId: null,
+        approvalQueue: [],
+        questionQueue: [],
+        planAfterglow: false
+      }))
+      break
     case 'message_start':
       // New turn → new batch for the tool calls it's about to issue. Also clear
       // any "queued" flags: reaching a turn boundary means a steered message is
@@ -956,20 +1003,16 @@ function applyEvent(
       break
     }
     case 'message_end':
-      // pi emits message_end for the user prompt too; only assistant turns echo.
+      // pi emits message_end for user prompts and tool results too. User events
+      // also stamp sourceIndex onto the optimistic bubble, enabling edit/retry.
       if (e.role !== 'assistant') {
         updateRuntime(set, get, sessionId, (rt) => {
           const cleared = rt.messages.some((m) => m.streaming)
             ? rt.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m))
             : rt.messages
-          // A desktop turn already rendered its user bubble optimistically in
-          // send(); a Telegram (read-only) session never did — its user turn is
-          // authored remotely, so build the bubble here from the message_end. Only
-          // for `user` (not toolResult, which also ends here) and only when
-          // there's real content, so an empty prompt doesn't spawn a blank bubble.
-          // Skip if the tail is already this exact user bubble: a cold open can
-          // hydrate the message from live state right before its message_end lands,
-          // and we must not render it twice.
+          // Desktop sends already have an optimistic bubble; remotely-authored
+          // turns and other watching windows do not. Match and enrich the former,
+          // append the latter, and ignore toolResult events below.
           const last = cleared[cleared.length - 1]
           // A machine-injected turn (worker report / GitHub event, submitted by
           // the main process): no optimistic bubble exists, so append its system
@@ -990,6 +1033,7 @@ function applyEvent(
                       role: 'user' as const,
                       text: injected.body,
                       injectedEvent: injected.kind,
+                      sourceIndex: e.sourceIndex,
                       timestamp: e.timestamp ?? Date.now()
                     }
                   ]
@@ -999,7 +1043,20 @@ function applyEvent(
             last?.role === 'user' &&
             last.text === (e.text ?? '') &&
             (last.images?.length ?? 0) === (e.images?.length ?? 0)
-          if (rt.fromTelegram && e.role === 'user' && (e.text || e.images?.length) && !alreadyShown) {
+          if (alreadyShown && last) {
+            return {
+              ...rt,
+              messages: [
+                ...cleared.slice(0, -1),
+                {
+                  ...last,
+                  sourceIndex: e.sourceIndex ?? last.sourceIndex,
+                  timestamp: e.timestamp ?? last.timestamp
+                }
+              ]
+            }
+          }
+          if (e.role === 'user' && (e.text || e.images?.length)) {
             return {
               ...rt,
               messages: [
@@ -1009,6 +1066,7 @@ function applyEvent(
                   role: 'user',
                   text: e.text ?? '',
                   images: e.images?.length ? e.images : undefined,
+                  sourceIndex: e.sourceIndex,
                   timestamp: e.timestamp ?? Date.now()
                 }
               ]

@@ -27,6 +27,16 @@ import {
 import { Message, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
   Collapsible,
@@ -902,6 +912,24 @@ function MessageRow({
 /** User turn: a quiet, right-aligned chip. Restraint over a loud bubble. */
 function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
   const { t } = useTranslation();
+  const running = useChat((s) => s.running);
+  const readOnly = useChat((s) =>
+    Boolean(s.sessions.find((session) => session.id === s.sessionId)?.fromTelegram),
+  );
+  const rerunMessage = useChat((s) => s.rerunMessage);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(m.text);
+  const [pendingAction, setPendingAction] = useState<"edit" | "retry" | null>(null);
+  const canModify = !running && !readOnly && !m.queued && m.sourceIndex != null;
+  const editedText = draft.trim();
+
+  const confirmRerun = (): void => {
+    const nextText = pendingAction === "edit" ? editedText : m.text;
+    setPendingAction(null);
+    setEditing(false);
+    void rerunMessage(m.id, nextText);
+  };
+
   return (
     <div className="mx-auto w-full max-w-(--chat-width) px-6 py-2.5">
       <Message
@@ -935,7 +963,51 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
           )}
           {/* Sent text is plain (not markdown), so keep the author's own line
               breaks instead of letting HTML collapse them. */}
-          {m.text && <UserText text={m.text} />}
+          {editing ? (
+            <Bubble variant="secondary" className="w-full max-w-[80%]">
+              <BubbleContent className="w-full px-3 py-2">
+                <textarea
+                  autoFocus
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                    if (event.key === "Escape") {
+                      setDraft(m.text);
+                      setEditing(false);
+                    } else if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      if (editedText || m.images?.length) setPendingAction("edit");
+                    }
+                  }}
+                  aria-label={t("chat.editMessage")}
+                  rows={Math.min(8, Math.max(2, draft.split("\n").length))}
+                  className="max-h-48 w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none"
+                />
+                <div className="flex justify-end gap-1 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDraft(m.text);
+                      setEditing(false);
+                    }}
+                  >
+                    {t("chat.cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!editedText && !m.images?.length}
+                    onClick={() => setPendingAction("edit")}
+                  >
+                    {t("chat.submitEdit")}
+                  </Button>
+                </div>
+              </BubbleContent>
+            </Bubble>
+          ) : (
+            m.text && <UserText text={m.text} />
+          )}
           {m.queued && (
             <span className="px-1 text-xs text-muted-foreground">
               {t("chat.queued")}
@@ -943,11 +1015,46 @@ function UserRow({ m }: { m: UiMessage }): React.JSX.Element {
           )}
           {/* Copy the sent prompt + send time. Right-aligned to match the
               bubble; skipped while queued so it doesn't sit under the dim chip. */}
-          {m.text && !m.queued && (
-            <MessageActions text={m.text} timestamp={m.timestamp} />
+          {!editing && !m.queued && (m.text || canModify) && (
+            <MessageActions
+              text={m.text}
+              timestamp={m.timestamp}
+              onEdit={
+                canModify
+                  ? () => {
+                      setDraft(m.text);
+                      setEditing(true);
+                    }
+                  : undefined
+              }
+              onRetry={canModify ? () => setPendingAction("retry") : undefined}
+            />
           )}
         </MessageContent>
       </Message>
+      <AlertDialog
+        open={pendingAction != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAction(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction === "edit"
+                ? t("chat.confirmEditTitle")
+                : t("chat.confirmRetryTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t("chat.rerunWarning")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("chat.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRerun}>
+              {pendingAction === "edit" ? t("chat.submitEdit") : t("chat.retryMessage")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

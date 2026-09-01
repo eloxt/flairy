@@ -53,6 +53,7 @@ import {
   upsertMemory,
   listActiveMemoriesForPrompt,
   loadCompression,
+  clearCompression,
   saveCompression,
   loadToolSelection,
   saveToolSelection,
@@ -672,7 +673,14 @@ export class AgentService {
         // (possibly desktop-only) turn re-evaluates the gate from scratch.
         this.gatedByTelegram = false;
       }
-      this.send(sessionId, normalizeEvent(event));
+      const sourceIndex =
+        event.type === "message_end"
+          ? this.agent.state.messages.indexOf(event.message)
+          : -1;
+      this.send(
+        sessionId,
+        normalizeEvent(event, sourceIndex >= 0 ? sourceIndex : undefined),
+      );
       // Persist policy: `turn_end` fires on EVERY model round-trip (a 20-tool
       // run has 20 of them) and the full save — stringify + FTS rebuild + sync
       // snapshot — runs synchronously inside pi's event dispatch, blocking the
@@ -979,6 +987,73 @@ export class AgentService {
       if (text.trim() || attachments?.length) this.steer(text, attachments, origin);
       return;
     }
+    await this.prompt(text, attachments, origin);
+  }
+
+  /**
+   * Permanently replace a historical user turn. The target message and the
+   * entire suffix are removed before the replacement prompt starts, so neither
+   * local persistence nor server sync retains a hidden copy of the old branch.
+   * Images attached to the original turn are reused for both edit and retry.
+   */
+  async rerun(
+    messageIndex: number,
+    text: string,
+    origin: TurnOrigin = DESKTOP_ORIGIN,
+  ): Promise<void> {
+    if (this.running)
+      throw new Error("Cannot edit or retry while a response is running");
+    if (!Number.isInteger(messageIndex) || messageIndex < 0)
+      throw new Error("Invalid message index");
+
+    const messages = this.agent.state.messages as any[];
+    const target = messages[messageIndex];
+    if (!target || target.role !== "user")
+      throw new Error("User message not found");
+
+    const hydrated = rehydrateImages([target])[0] as { content?: unknown };
+    const attachments = projectImages(hydrated.content)?.map((image) => ({
+      type: "image" as const,
+      ...image,
+    }));
+    if (!text.trim() && !attachments?.length)
+      throw new Error("Message cannot be empty");
+
+    this.agent.clearAllQueues();
+    this.agent.state.messages = messages.slice(0, messageIndex) as AgentMessage[];
+    this.compressedSummary = "";
+    this.compressedUpTo = 0;
+    clearCompression(this.sessionId);
+
+    const stored = await saveMessages(
+      this.sessionId,
+      this.agent.state.messages,
+    );
+    this.agent.state.messages = stored as AgentMessage[];
+    this.syncToServer(stored);
+    const imageParts = Array.isArray(target.content)
+      ? target.content.filter(
+          (part: any) => part && typeof part === "object" && part.type === "image",
+        )
+      : [];
+    this.send(this.sessionId, {
+      type: "history_reset",
+      // Include the replacement as a display-only preview. Agent.prompt adds the
+      // authoritative copy after image description/tool selection finishes; its
+      // message_end then enriches this bubble with the real timestamp/index.
+      messages: [
+        ...stored,
+        {
+          role: "user",
+          content:
+            imageParts.length > 0
+              ? [{ type: "text", text }, ...imageParts]
+              : text,
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
     await this.prompt(text, attachments, origin);
   }
 
@@ -2171,7 +2246,7 @@ function projectThinking(content: unknown): string {
 }
 
 /** Map pi-agent-core's raw events to our minimal AgentStreamEvent union. */
-function normalizeEvent(event: any): AgentStreamEvent {
+function normalizeEvent(event: any, sourceIndex?: number): AgentStreamEvent {
   switch (event.type) {
     case "message_start":
       // Carry the new message's id so the renderer can tag the tool calls that
@@ -2225,6 +2300,7 @@ function normalizeEvent(event: any): AgentStreamEvent {
         // dollar cost) and a timestamp; forward both for the timeline/cost tabs.
         usage: event.message?.usage,
         timestamp: event.message?.timestamp,
+        sourceIndex,
       };
     }
     case "tool_execution_start":

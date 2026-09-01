@@ -2,6 +2,7 @@ import { app, ipcMain, dialog, Menu, shell } from 'electron'
 import {
   IPC,
   type PromptArgs,
+  type RerunArgs,
   type SteerArgs,
   type AbortArgs,
   type CompressContextArgs,
@@ -352,6 +353,19 @@ export function registerIpcHandlers(
     } catch (err) {
       // Creating the service can throw (e.g. no LLM config delivered yet). Push
       // it back as a visible error event instead of a swallowed invoke rejection.
+      const message = err instanceof Error ? err.message : String(err)
+      deliverAgentEvent({
+        sessionId: args.sessionId,
+        event: { type: 'error', message }
+      })
+    }
+  })
+
+  ipcMain.handle(IPC.AgentRerun, async (_e, args: RerunArgs) => {
+    if (getTelegramThreadBySession(args.sessionId)) return
+    try {
+      await agents.getOrCreate(args.sessionId).rerun(args.messageIndex, args.text)
+    } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       deliverAgentEvent({
         sessionId: args.sessionId,

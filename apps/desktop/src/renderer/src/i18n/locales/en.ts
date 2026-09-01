@@ -78,6 +78,13 @@ const en = {
     error: 'Error',
     copy: 'Copy',
     copied: 'Copied',
+    editMessage: 'Edit message',
+    retryMessage: 'Retry',
+    submitEdit: 'Submit',
+    confirmEditTitle: 'Replace this message?',
+    confirmRetryTitle: 'Retry from this message?',
+    rerunWarning:
+      'This message and every message below it will be permanently discarded. They cannot be recovered or viewed again.',
     showMore: 'Show more',
     showLess: 'Show less',
     cardRecommended: 'Recommended',

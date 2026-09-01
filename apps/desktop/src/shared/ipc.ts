@@ -43,6 +43,7 @@ export type Platform =
 export const IPC = {
   // commands (invoke)
   AgentPrompt: 'agent:prompt',
+  AgentRerun: 'agent:rerun',
   AgentSteer: 'agent:steer',
   AgentAbort: 'agent:abort',
   AgentApprovalResponse: 'agent:approval-response',
@@ -240,6 +241,15 @@ export interface PromptArgs {
   sessionId: string
   text: string
   attachments?: Attachment[]
+}
+
+/** Replace one persisted user turn and permanently discard everything after it. */
+export interface RerunArgs {
+  sessionId: string
+  /** Index in the persisted pi message array, carried by UiMessage.sourceIndex. */
+  messageIndex: number
+  /** Edited text, or the original text for a plain retry. */
+  text: string
 }
 
 export interface SteerArgs {
@@ -544,6 +554,8 @@ export interface MessageUsage {
 export type AgentStreamEvent =
   | { type: 'agent_start' }
   | { type: 'agent_end' }
+  /** The transcript was destructively rewound before a replacement turn starts. */
+  | { type: 'history_reset'; messages: unknown[] }
   | { type: 'turn_start' }
   | { type: 'turn_end' }
   | { type: 'message_start'; messageId: string }
@@ -562,6 +574,8 @@ export type AgentStreamEvent =
       // the timeline tab show real times.
       usage?: MessageUsage
       timestamp?: number
+      /** Index of this message in the authoritative pi transcript. */
+      sourceIndex?: number
     }
   | { type: 'tool_execution_start'; toolCallId: string; name: string; args: unknown }
   | { type: 'tool_execution_update'; toolCallId: string; partial: unknown }
@@ -879,6 +893,7 @@ export interface TelegramPairing {
 /** The surface exposed to the renderer via contextBridge as `window.api`. */
 export interface FlairyApi {
   prompt(args: PromptArgs): Promise<void>
+  rerun(args: RerunArgs): Promise<void>
   steer(args: SteerArgs): Promise<void>
   abort(args: AbortArgs): Promise<void>
   /**

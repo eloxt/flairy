@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconCheck, IconCopy } from "@tabler/icons-react";
+import { IconCheck, IconCopy, IconPencil, IconRefresh } from "@tabler/icons-react";
 import { MessageFooter } from "@/components/ui/message";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -32,8 +33,8 @@ function clockTime(ts: number | undefined): string {
 }
 
 /**
- * The action row for a message — the send/receive time plus copy (and later
- * retry/feedback). Placed inside a {@link MessageFooter} per the shadcn Message
+ * The action row for a message — send/receive time plus its available actions.
+ * Placed inside a {@link MessageFooter} per the shadcn Message
  * convention. Hidden until the message is hovered (or an action is focused for
  * keyboard users), so the prose stays uncluttered; `opacity` reveal keeps the
  * row's space reserved so the thread never shifts on hover.
@@ -41,12 +42,17 @@ function clockTime(ts: number | undefined): string {
 export function MessageActions({
   text,
   timestamp,
+  onEdit,
+  onRetry,
   className,
 }: {
   text: string;
   timestamp?: number;
+  onEdit?: () => void;
+  onRetry?: () => void;
   className?: string;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const time = clockTime(timestamp);
   return (
     <MessageFooter
@@ -55,7 +61,31 @@ export function MessageActions({
         className,
       )}
     >
-      <CopyButton text={text} />
+      {text && <CopyButton text={text} />}
+      {onEdit && (
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" />}
+            onClick={onEdit}
+            aria-label={t("chat.editMessage")}
+          >
+            <IconPencil />
+          </TooltipTrigger>
+          <TooltipContent>{t("chat.editMessage")}</TooltipContent>
+        </Tooltip>
+      )}
+      {onRetry && (
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" />}
+            onClick={onRetry}
+            aria-label={t("chat.retryMessage")}
+          >
+            <IconRefresh />
+          </TooltipTrigger>
+          <TooltipContent>{t("chat.retryMessage")}</TooltipContent>
+        </Tooltip>
+      )}
       {time && (
         <time
           dateTime={new Date(timestamp!).toISOString()}
@@ -95,15 +125,11 @@ export function CopyButton({ text }: { text: string }): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger
+        render={<Button variant="ghost" size="icon-sm" />}
         onClick={onCopy}
         aria-label={label}
-        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        {copied ? (
-          <IconCheck className="size-3.5" />
-        ) : (
-          <IconCopy className="size-3.5" />
-        )}
+        {copied ? <IconCheck /> : <IconCopy />}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

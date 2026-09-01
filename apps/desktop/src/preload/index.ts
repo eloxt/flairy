@@ -29,6 +29,7 @@ import { supportsWindowMaterial } from '@shared/native-material'
  */
 const api: FlairyApi = {
   prompt: (args) => ipcRenderer.invoke(IPC.AgentPrompt, args),
+  rerun: (args) => ipcRenderer.invoke(IPC.AgentRerun, args),
   steer: (args) => ipcRenderer.invoke(IPC.AgentSteer, args),
   abort: (args) => ipcRenderer.invoke(IPC.AgentAbort, args),
   watchSession: (sessionId) => ipcRenderer.invoke(IPC.AgentWatchSession, sessionId),
