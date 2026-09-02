@@ -483,7 +483,7 @@ pub async fn list_selectable_active(pool: &PgPool) -> AppResult<Vec<ActiveLlm>> 
          FROM llm_models m
          JOIN llm_providers p ON p.id = m.provider_id
          WHERE m.selectable
-         ORDER BY m.created_at ASC",
+         ORDER BY m.name ASC",
     )
     .fetch_all(pool)
     .await?;
