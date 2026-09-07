@@ -1,17 +1,20 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { stat, readFile, realpath } from 'node:fs/promises'
+import { stat, readFile, realpath, copyFile } from 'node:fs/promises'
 import path from 'node:path'
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, shell } from 'electron'
+import { z } from 'zod'
+import type { AgentManager } from '../agent/agent-manager'
 import {
   IPC,
+  type ArtifactAccessResult,
   type ListWorkspaceFilesArgs,
   type ListWorkspaceFilesResult,
   type ReadWorkspaceFileArgs,
   type ReadWorkspaceFileResult,
   type WorkspaceGitStatusEntry
 } from '@shared/ipc'
-import { listSessions, listRecentDirectories } from '../store/db'
+import { listSessions, listRecentDirectories, getSession, loadMessages } from '../store/db'
 import { resolveBinary } from '../agent/tools/binaries'
 
 /**
@@ -155,7 +158,57 @@ function mapGitStatus(x: string, y: string): WorkspaceGitStatusEntry['status'] |
   return null
 }
 
-export function registerFsHandlers(): void {
+export function registerFsHandlers(agents: AgentManager): void {
+  ipcMain.handle(IPC.ArtifactAccess, async (_e, input: unknown): Promise<ArtifactAccessResult> => {
+    const args = z
+      .object({
+        sessionId: z.string().min(1).max(200),
+        artifactId: z.string().min(1).max(200),
+        action: z.enum(['preview', 'reveal', 'save'])
+      })
+      .safeParse(input)
+    if (!args.success) return { kind: 'error' }
+    const { sessionId, artifactId, action } = args.data
+    const session = getSession(sessionId)
+    if (!session) return { kind: 'error' }
+    const messages = agents.get(sessionId)?.getLiveMessages() ?? loadMessages(sessionId)
+    // Only a successful built-in write/present_file result can register a file. Neither
+    // the fence nor this IPC accepts a filesystem path from the renderer.
+    const resultSchema = z.object({
+      role: z.literal('toolResult'),
+      toolName: z.enum(['write', 'present_file']),
+      toolCallId: z.literal(artifactId),
+      isError: z.literal(false).optional(),
+      details: z.object({ artifact: z.object({ id: z.literal(artifactId), path: z.string() }) })
+    })
+    const result = messages.map((m) => resultSchema.safeParse(m)).find((m) => m.success)
+    if (!result?.success) return { kind: 'error' }
+    try {
+      const realRoot = await realpath(session.cwd)
+      const real = await realpath(result.data.details.artifact.path)
+      if (!isWithin(real, realRoot)) return { kind: 'error' }
+      const info = await stat(real)
+      if (!info.isFile()) return { kind: 'error' }
+      if (action === 'reveal') {
+        shell.showItemInFolder(real)
+        return { kind: 'done' }
+      }
+      if (action === 'save') {
+        const save = await dialog.showSaveDialog({ defaultPath: path.basename(real) })
+        if (save.canceled || !save.filePath) return { kind: 'cancelled' }
+        if (path.resolve(save.filePath) !== real) await copyFile(real, save.filePath)
+        return { kind: 'done' }
+      }
+      let content: string | undefined
+      if (info.size <= MAX_PREVIEW_BYTES) {
+        const buffer = await readFile(real)
+        if (!buffer.subarray(0, BINARY_SNIFF_BYTES).includes(0)) content = buffer.toString('utf8')
+      }
+      return { kind: 'file', name: path.basename(real), size: info.size, content }
+    } catch {
+      return { kind: 'error' }
+    }
+  })
   ipcMain.handle(
     IPC.FsListFiles,
     async (_e, args: ListWorkspaceFilesArgs): Promise<ListWorkspaceFilesResult> => {

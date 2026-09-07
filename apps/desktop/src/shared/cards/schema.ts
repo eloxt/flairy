@@ -1,7 +1,7 @@
 /**
  * Inline card protocol schema — the model embeds structured UI inside its
  * markdown body as ```ui:<type> code fences whose body is a JSON object.
- * 9 card types; the vocabulary is deliberately small: plain lists / tables /
+ * 10 card types; the vocabulary is deliberately small: plain lists / tables /
  * headings / links are expressed by markdown itself, cards only carry the
  * semantics markdown can't (comparison + recommendation, status emphasis,
  * process state machines, leveled alerts, quick follow-ups, big-number
@@ -17,12 +17,21 @@ import { z } from "zod";
 
 /** Uniform cap for string fields; overlong input is truncated at the parse
  * layer (deepTruncate) rather than rejected by validation. */
-export const MAX_FIELD_LEN = 500;
+export const MAX_FIELD_LEN = 8000;
 
 const str = z.string().max(MAX_FIELD_LEN);
+const optionalText = str.optional().catch(undefined);
+const sourceRefs = z
+  .array(z.number().int().positive())
+  .max(12)
+  .optional()
+  .catch(undefined);
+
+// Optional enum fields are presentation hints: discard invalid values so the
+// card's content still renders. Required enums remain strict.
 
 // ---------------------------------------------------------------------------
-// ui:compare — side-by-side comparison of options (3+ items, arbitrary
+// ui:compare — side-by-side comparison of options (2+ items, arbitrary
 // dimensions + a recommendation marker)
 // ---------------------------------------------------------------------------
 
@@ -31,7 +40,7 @@ export const CompareAttrSchema = z.object({
   label: str,
   value: str,
   /** Semantic accent for the value: good=positive (green) bad=negative (red) */
-  tone: z.enum(["good", "bad"]).optional(),
+  tone: z.enum(["good", "bad"]).optional().catch(undefined),
 });
 export type CompareAttr = z.infer<typeof CompareAttrSchema>;
 
@@ -39,16 +48,18 @@ export const CompareRowSchema = z.object({
   /** Option name (the only required field) */
   name: str,
   /** Recommended item (at most one; the renderer doesn't enforce it) */
-  pick: z.boolean().optional(),
+  pick: z.boolean().optional().catch(undefined),
+  pickReason: optionalText,
   /** Compared dimensions */
   attrs: z.array(CompareAttrSchema).max(8).optional(),
   /** One-line note */
-  note: str.optional(),
+  note: optionalText,
 });
 export type CompareRow = z.infer<typeof CompareRowSchema>;
 
 export const CompareBlockSchema = z.object({
-  title: str.optional(),
+  sourceRefs,
+  title: optionalText,
   rows: z.array(CompareRowSchema).max(20),
 });
 export type CompareBlock = z.infer<typeof CompareBlockSchema>;
@@ -61,14 +72,15 @@ export const KvItemSchema = z.object({
   label: str,
   value: str,
   /** Secondary hint text */
-  hint: str.optional(),
+  hint: optionalText,
   /** Accent: good=positive (green) bad=negative (red) */
-  emphasis: z.enum(["good", "bad"]).optional(),
+  emphasis: z.enum(["good", "bad"]).optional().catch(undefined),
 });
 export type KvItem = z.infer<typeof KvItemSchema>;
 
 export const KvListBlockSchema = z.object({
-  title: str.optional(),
+  sourceRefs,
+  title: optionalText,
   items: z.array(KvItemSchema).max(30),
 });
 export type KvListBlock = z.infer<typeof KvListBlockSchema>;
@@ -79,15 +91,15 @@ export type KvListBlock = z.infer<typeof KvListBlockSchema>;
 
 export const TimelineStepSchema = z.object({
   label: str,
-  status: z.enum(["done", "active", "pending", "failed"]),
+  status: z.enum(["done", "active", "pending", "failed", "event"]),
   /** Time text, e.g. "07-10 14:00" */
-  time: str.optional(),
-  note: str.optional(),
+  time: optionalText,
+  note: optionalText,
 });
 export type TimelineStep = z.infer<typeof TimelineStepSchema>;
 
 export const TimelineBlockSchema = z.object({
-  title: str.optional(),
+  title: optionalText,
   steps: z.array(TimelineStepSchema).max(30),
 });
 export type TimelineBlock = z.infer<typeof TimelineBlockSchema>;
@@ -98,7 +110,7 @@ export type TimelineBlock = z.infer<typeof TimelineBlockSchema>;
 
 export const NoteBlockSchema = z.object({
   tone: z.enum(["info", "warning", "danger", "success"]),
-  title: str.optional(),
+  title: optionalText,
   text: str,
 });
 export type NoteBlock = z.infer<typeof NoteBlockSchema>;
@@ -132,15 +144,17 @@ export const StatItemSchema = z.object({
   label: str,
   value: str,
   /** Unit text, rendered smaller after the value */
-  unit: str.optional(),
+  unit: optionalText,
   /** Trend text, e.g. "+12% MoM" */
-  trendText: str.optional(),
-  trendTone: z.enum(["good", "bad", "neutral"]).optional(),
+  description: optionalText,
+  trendText: optionalText,
+  trendTone: z.enum(["good", "bad", "neutral"]).optional().catch(undefined),
 });
 export type StatItem = z.infer<typeof StatItemSchema>;
 
 export const StatBlockSchema = z.object({
-  title: str.optional(),
+  sourceRefs,
+  title: optionalText,
   items: z.array(StatItemSchema).min(1).max(6),
 });
 export type StatBlock = z.infer<typeof StatBlockSchema>;
@@ -155,16 +169,17 @@ export type StatBlock = z.infer<typeof StatBlockSchema>;
 export const TableRowSchema = z.object({
   cells: z.array(str).max(12),
   /** Row-level semantic color */
-  tone: z.enum(["good", "bad", "muted"]).optional(),
+  tone: z.enum(["good", "bad", "muted"]).optional().catch(undefined),
 });
 export type TableRow = z.infer<typeof TableRowSchema>;
 
 export const TableBlockSchema = z.object({
-  title: str.optional(),
+  sourceRefs,
+  title: optionalText,
   columns: z.array(str).min(1).max(12),
   rows: z.array(TableRowSchema).max(50),
   /** Highlighted row index (0-based) */
-  emphasizeRowIndex: z.number().int().min(0).optional(),
+  emphasizeRowIndex: z.number().int().min(0).optional().catch(undefined),
 });
 export type TableBlock = z.infer<typeof TableBlockSchema>;
 
@@ -177,8 +192,11 @@ export const ProgressBlockSchema = z.object({
   /** Progress value 0-100 */
   value: z.number().min(0).max(100),
   /** Text shown to the right; defaults to the percentage */
-  valueText: str.optional(),
-  tone: z.enum(["info", "warning", "danger", "success"]).optional(),
+  valueText: optionalText,
+  tone: z
+    .enum(["info", "warning", "danger", "success"])
+    .optional()
+    .catch(undefined),
 });
 export type ProgressBlock = z.infer<typeof ProgressBlockSchema>;
 
@@ -195,14 +213,24 @@ export const ChartPointSchema = z.object({
 export type ChartPoint = z.infer<typeof ChartPointSchema>;
 
 export const ChartBlockSchema = z.object({
+  sourceRefs,
   /** bar=category comparison line=time trend */
   type: z.enum(["bar", "line"]),
-  title: str.optional(),
+  title: optionalText,
+  caption: optionalText,
   /** Unit text annotated on the value axis, e.g. "USD" */
-  unit: str.optional(),
+  unit: optionalText,
   points: z.array(ChartPointSchema).max(12),
 });
 export type ChartBlock = z.infer<typeof ChartBlockSchema>;
+
+// Artifact IDs refer to successful write/present_file calls, never model-supplied paths.
+export const ArtifactBlockSchema = z.object({
+  artifactId: z.string().min(1).max(200),
+  title: optionalText,
+  description: optionalText,
+});
+export type ArtifactBlock = z.infer<typeof ArtifactBlockSchema>;
 
 // ---------------------------------------------------------------------------
 // Type registry
@@ -240,6 +268,7 @@ export const CARD_DEFS = {
     streaming: { key: "rows", item: TableRowSchema },
   },
   "ui:progress": { schema: ProgressBlockSchema },
+  "ui:artifact": { schema: ArtifactBlockSchema },
   "ui:chart": {
     schema: ChartBlockSchema,
     streaming: { key: "points", item: ChartPointSchema },
@@ -251,7 +280,7 @@ export type CardLanguage = keyof typeof CARD_DEFS;
 export const CARD_LANGUAGES = Object.keys(CARD_DEFS) as CardLanguage[];
 
 /** Discriminated union of parse results; the renderer dispatches on `type`. */
-export type CardBlock =
+export type CardBlock = (
   | { type: "ui:compare"; data: CompareBlock }
   | { type: "ui:kv_list"; data: KvListBlock }
   | { type: "ui:timeline"; data: TimelineBlock }
@@ -260,4 +289,6 @@ export type CardBlock =
   | { type: "ui:stat"; data: StatBlock }
   | { type: "ui:table"; data: TableBlock }
   | { type: "ui:progress"; data: ProgressBlock }
-  | { type: "ui:chart"; data: ChartBlock };
+  | { type: "ui:chart"; data: ChartBlock }
+  | { type: "ui:artifact"; data: ArtifactBlock }
+) & { notices?: ("partial" | "truncated" | "recovered")[] };

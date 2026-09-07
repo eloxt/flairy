@@ -64,8 +64,8 @@ export function createWriteTool(cwd: string): AgentTool<any> {
             ? generateUnifiedPatch(path, oldContent, content)
             : undefined
         return {
-          content: [{ type: 'text', text: `Successfully wrote ${content.length} bytes to ${path}` }],
-          details: patch ? { patch } : {}
+          content: [{ type: 'text', text: `Successfully wrote ${content.length} bytes to ${path}. Artifact ID: ${_id}. You may present this file with a ui:artifact card using this exact artifactId.` }],
+          details: { ...(patch ? { patch } : {}), artifact: { id: _id, path: absolutePath } }
         }
       })
     }

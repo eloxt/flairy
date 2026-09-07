@@ -83,6 +83,7 @@ const api: FlairyApi = {
     ipcRenderer.invoke(IPC.SettingsSetLauncherShortcut, accelerator),
   growWindowWidth: (delta) => ipcRenderer.invoke(IPC.WindowGrowWidth, delta),
   openExternal: (url) => ipcRenderer.invoke(IPC.ShellOpenExternal, url),
+  accessArtifact: (args) => ipcRenderer.invoke(IPC.ArtifactAccess, args),
   openImageViewer: (image) => ipcRenderer.invoke(IPC.ImageViewerOpen, image),
   getViewerImage: (id) => ipcRenderer.invoke(IPC.ImageViewerGet, id),
   getAppVersion: () => ipcRenderer.sendSync(IPC.AppGetVersion) as string,

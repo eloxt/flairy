@@ -99,6 +99,8 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:cards": "vite --config vite.cards.config.ts",
+    "test:cards": "node --experimental-strip-types --test src/shared/cards/cards.test.mjs src/main/ipc/artifacts.test.mjs",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",

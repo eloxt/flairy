@@ -12,6 +12,7 @@
 const BUILTIN_KEYS: Record<string, string> = {
   read: 'tools.read',
   write: 'tools.write',
+  present_file: 'tools.present_file',
   edit: 'tools.edit',
   bash: 'tools.bash',
   grep: 'tools.grep',
@@ -48,6 +49,7 @@ export function toolDisplayKey(name: string | undefined): string {
 const ACTIVITY_BUCKETS: Record<string, string> = {
   read: 'read',
   write: 'write',
+  present_file: 'read',
   edit: 'edit',
   bash: 'bash',
   grep: 'grep',
@@ -95,6 +97,7 @@ export function toolArgSummary(name: string | undefined, args: unknown): string 
   switch (name) {
     case 'read':
     case 'write':
+    case 'present_file':
     case 'edit':
     case 'ls':
       return str(a.path)

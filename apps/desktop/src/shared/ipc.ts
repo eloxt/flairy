@@ -70,6 +70,7 @@ export const IPC = {
   DialogPickDirectory: 'dialog:pick-directory',
   FsListFiles: 'fs:list-files',
   FsReadFile: 'fs:read-file',
+  ArtifactAccess: 'artifact:access',
   ImageViewerOpen: 'image-viewer:open',
   ImageViewerGet: 'image-viewer:get',
   ShellOpenExternal: 'shell:open-external',
@@ -377,6 +378,18 @@ export interface ReadWorkspaceFileArgs {
   /** Root-relative path of the file to read (posix separators). */
   relPath: string
 }
+
+export interface ArtifactAccessArgs {
+  sessionId: string
+  artifactId: string
+  action: 'preview' | 'reveal' | 'save'
+}
+
+export type ArtifactAccessResult =
+  | { kind: 'file'; name: string; size: number; content?: string }
+  | { kind: 'done' }
+  | { kind: 'cancelled' }
+  | { kind: 'error' }
 
 /** Discriminated preview payload; failures come back as values, never as thrown IPC errors. */
 export type ReadWorkspaceFileResult =
@@ -986,6 +999,7 @@ export interface FlairyApi {
   listWorkspaceFiles(args: ListWorkspaceFilesArgs): Promise<ListWorkspaceFilesResult>
   /** Read one workspace file for preview: text content, or a binary/tooLarge/error marker. */
   readWorkspaceFile(args: ReadWorkspaceFileArgs): Promise<ReadWorkspaceFileResult>
+  accessArtifact(args: ArtifactAccessArgs): Promise<ArtifactAccessResult>
   setSecret(args: SetSecretArgs): Promise<void>
   hasSecret(provider: SetSecretArgs['provider']): Promise<boolean>
   /** Current Telegram integration status (bot, pairing, binding). */

@@ -138,7 +138,7 @@ if (!app.requestSingleInstanceLock()) {
     registerWorkerRunHandlers();
     registerScheduleHandlers();
     registerAcpHandlers();
-    registerFsHandlers();
+    registerFsHandlers(agents);
     telegram.maybeAutoStart();
     updates.start();
     createTray();

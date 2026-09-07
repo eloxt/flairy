@@ -1,5 +1,6 @@
 import {
   memo,
+  useMemo,
   useEffect,
   useReducer,
   useRef,
@@ -61,6 +62,7 @@ import {
   remarkCitations,
   SourcesList,
 } from "./Citations";
+import { CardContext } from "./cards/context";
 import { cardRenderers } from "./cards/renderers";
 import { ToolDetail } from "./ToolDetail";
 import { AgentDispatchCard } from "./AgentDispatchCard";
@@ -1110,6 +1112,8 @@ function AssistantRow({
   showSources?: boolean;
   showActions?: boolean;
 }): React.JSX.Element {
+  const sessionId = useChat((s) => s.sessionId);
+  const cardEnvironment = useMemo(() => ({ streaming: Boolean(m.streaming), preview: false, sessionId }), [m.streaming, sessionId]);
   const hasText = Boolean(m.text.trim());
   // Module-level fallback so sourceless messages keep a STABLE (empty) context
   // value — a fresh [] every render would re-render all CitationChips under it.
@@ -1130,6 +1134,7 @@ function AssistantRow({
           )}
           {hasText && (
             <CitationsProvider sources={cites}>
+              <CardContext.Provider value={cardEnvironment}>
               <Streamdown
                 animated
                 isAnimating={Boolean(m.streaming)}
@@ -1141,6 +1146,7 @@ function AssistantRow({
               >
                 {m.text}
               </Streamdown>
+              </CardContext.Provider>
               {/* Sources footer: only on the turn's final answer, after the turn
                   ends (showSources) — never under an intermediate answer that
                   still has tool calls to follow. */}

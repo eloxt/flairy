@@ -4,6 +4,7 @@ export {
   MAX_FIELD_LEN,
 } from "./schema";
 export type {
+  ArtifactBlock,
   CardBlock,
   CardLanguage,
   CompareBlock,

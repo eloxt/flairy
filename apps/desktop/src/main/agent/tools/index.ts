@@ -1,6 +1,7 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { createReadTool } from './read'
 import { createWriteTool } from './write'
+import { createPresentFileTool } from './present-file'
 import { createEditTool } from './edit'
 import { createBashTool } from './bash'
 import { createGrepTool } from './grep'
@@ -27,6 +28,7 @@ export { createReadTool, createWriteTool, createEditTool, createBashTool, create
  */
 export const READ_ONLY_TOOLS = new Set([
   'read',
+  'present_file',
   'grep',
   'find',
   'ls',
@@ -62,6 +64,7 @@ export function createTools(cwd: string): AgentTool<any>[] {
   return [
     createReadTool(cwd, extraReadRoots),
     createWriteTool(cwd),
+    createPresentFileTool(cwd),
     createEditTool(cwd),
     createBashTool(cwd),
     createGrepTool(cwd, extraReadRoots),

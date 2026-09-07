@@ -460,3 +460,10 @@ export function SourcesList({
     </div>
   );
 }
+
+/** Cards resolve reference IDs against the same tool-backed source registry. */
+export function CardSources({ refs }: { refs: number[] }): React.JSX.Element | null {
+  const sources = useContext(CitationsContext);
+  const selected = sources.filter((source) => refs.includes(source.i));
+  return selected.length ? <SourcesList sources={selected} /> : null;
+}
