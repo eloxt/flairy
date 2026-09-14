@@ -214,7 +214,7 @@ function PromptEditor({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="max-h-[90vh] gap-0 overflow-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] gap-0 overflow-auto sm:max-w-4xl">
         <DialogHeader className="mb-4">
           <DialogTitle>
             {form.id ? `Edit ${form.name}` : "New system prompt"}
